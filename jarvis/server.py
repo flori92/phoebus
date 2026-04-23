@@ -219,7 +219,7 @@ def run_mobile_server():
 
 # ── Écoute Vocale (STT) ────────────────────────────────────────────────────
 
-def listen_and_process():
+def listen_and_process(main_loop):
     if not sr:
         print("[MIC] speech_recognition non installe.")
         return
@@ -234,16 +234,16 @@ def listen_and_process():
                     continue
                 try:
                     state.is_listening = True
-                    asyncio.run(state.send_web_state("listening"))
+                    asyncio.run_coroutine_threadsafe(state.send_web_state("listening"), main_loop)
                     audio = r.listen(source, timeout=5, phrase_time_limit=10)
                     
                     if state.is_speaking or state.is_thinking:
                         state.is_listening = False
-                        asyncio.run(state.send_web_state("idle"))
+                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
                     state.is_listening = False
-                    asyncio.run(state.send_web_state("thinking"))
+                    asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
                     
                     texte = r.recognize_google(audio, language="fr-FR")
                     print(f"\n[VOUS] {texte}")
@@ -251,23 +251,28 @@ def listen_and_process():
                     if "jarvis" in texte.lower():
                         if "mode iron man" in texte.lower() and "active" in texte.lower():
                             state.MODE_IRON_MAN = True
-                            asyncio.run(parler("Mode Iron Man activé."))
+                            asyncio.run_coroutine_threadsafe(parler("Mode Iron Man activé."), main_loop)
                             continue
                             
-                        rep = asyncio.run(demander_ia(texte))
-                        if not asyncio.run(traiter_reponse_ia(rep)):
-                            asyncio.run(parler(rep))
+                        # Pour demander_ia, comme c'est async et renvoie une valeur, on l'exécute dans notre event loop local 
+                        # ou on fait tout dans une fonction wrap async
+                        async def process_ia(q):
+                            rep = await demander_ia(q)
+                            if not await traiter_reponse_ia(rep):
+                                await parler(rep)
+                        
+                        asyncio.run_coroutine_threadsafe(process_ia(texte), main_loop)
                             
                 except sr.WaitTimeoutError:
                     state.is_listening = False
-                    asyncio.run(state.send_web_state("idle"))
+                    asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                 except sr.UnknownValueError:
                     state.is_listening = False
-                    asyncio.run(state.send_web_state("idle"))
+                    asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                 except Exception as e:
                     print(f"[MIC] Erreur de reconnaissance : {e}")
                     state.is_listening = False
-                    asyncio.run(state.send_web_state("idle"))
+                    asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                     time.sleep(2)
     except Exception as e:
         print(f"[MIC] Impossible d'ouvrir le micro : {e}")
@@ -280,9 +285,10 @@ async def main():
     print(" JARVIS CORE - DEMARRAGE (MODULARISÉ)".center(60))
     print("="*60)
 
+    main_loop = asyncio.get_running_loop()
     # Threads annexes
     threading.Thread(target=run_mobile_server, daemon=True).start()
-    threading.Thread(target=listen_and_process, daemon=True).start()
+    threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
     threading.Thread(target=monitor_claps, daemon=True).start()
 
     from jarvis.utils import launch_app, get_lan_ip
