@@ -43,6 +43,17 @@ type TimedLipsyncFrame = VisemeState & {
   duration_ms: number;
 };
 
+type AvatarFrameKey =
+  | "neutral"
+  | "speak-light"
+  | "speak-oh"
+  | "speak-open"
+  | "thinking"
+  | "blink"
+  | "smile"
+  | "alert"
+  | "serious";
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const WS_HOST = window.location.hostname || "localhost";
 const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
@@ -125,6 +136,17 @@ const PHONEME_CLUSTERS = [
   "gn",
   "ph",
 ];
+const FACE_FRAME_URLS: Record<AvatarFrameKey, string> = {
+  neutral: "/avatar/neutral.png",
+  "speak-light": "/avatar/speak-light.png",
+  "speak-oh": "/avatar/speak-oh.png",
+  "speak-open": "/avatar/speak-open.png",
+  thinking: "/avatar/thinking.png",
+  blink: "/avatar/blink.png",
+  smile: "/avatar/smile.png",
+  alert: "/avatar/alert.png",
+  serious: "/avatar/serious.png",
+};
 
 function getStoredToken(): string {
   const params = new URLSearchParams(window.location.search);
@@ -151,6 +173,186 @@ function clamp(value: number, min: number, max: number): number {
 
 function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
+}
+
+class FaceAvatar {
+  private state: OrbState = "idle";
+  private mood: JarvisMood = "neutral";
+  private activeFrame: AvatarFrameKey = "neutral";
+  private targetVolume = 0;
+  private smoothedVolume = 0;
+  private lastVolumeAt = 0;
+  private blinking = false;
+  private blinkTimer: ReturnType<typeof setTimeout> | null = null;
+  private blinkHoldTimer: ReturnType<typeof setTimeout> | null = null;
+  private mouthTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(private readonly imageEl: HTMLImageElement) {
+    this.preloadFrames();
+    this.applyFrame("neutral");
+    this.scheduleBlink();
+  }
+
+  setState(state: OrbState): void {
+    this.state = state;
+
+    if (state === "speaking") {
+      this.stopBlink();
+      this.startMouthLoop();
+    } else {
+      this.stopMouthLoop();
+      this.targetVolume = 0;
+      this.smoothedVolume = 0;
+      this.scheduleBlink();
+    }
+
+    this.updateFrame();
+  }
+
+  setMood(mood: JarvisMood): void {
+    this.mood = mood;
+    this.updateFrame();
+  }
+
+  setVolume(volume: number): void {
+    this.targetVolume = clamp(volume || 0, 0, 1);
+    this.lastVolumeAt = Date.now();
+
+    if (this.state === "speaking" && !this.mouthTimer) {
+      this.startMouthLoop();
+    }
+  }
+
+  private preloadFrames(): void {
+    for (const url of Object.values(FACE_FRAME_URLS)) {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = url;
+    }
+  }
+
+  private applyFrame(frame: AvatarFrameKey): void {
+    if (this.activeFrame === frame) {
+      return;
+    }
+
+    this.activeFrame = frame;
+    this.imageEl.src = FACE_FRAME_URLS[frame];
+    this.imageEl.dataset.frame = frame;
+  }
+
+  private resolveIdleFrame(): AvatarFrameKey {
+    if (this.state === "thinking") {
+      return "thinking";
+    }
+
+    if (this.state === "listening") {
+      return "neutral";
+    }
+
+    switch (this.mood) {
+      case "warm":
+      case "joy":
+        return "smile";
+      case "alert":
+        return "alert";
+      case "serious":
+        return "serious";
+      default:
+        return "neutral";
+    }
+  }
+
+  private resolveSpeakingFrame(): AvatarFrameKey {
+    if (this.smoothedVolume >= 0.58) {
+      return "speak-open";
+    }
+    if (this.smoothedVolume >= 0.34) {
+      return "speak-oh";
+    }
+    if (this.smoothedVolume >= 0.14) {
+      return "speak-light";
+    }
+    return "neutral";
+  }
+
+  private updateFrame(): void {
+    if (this.blinking && this.state !== "speaking") {
+      this.applyFrame("blink");
+      return;
+    }
+
+    if (this.state === "speaking") {
+      this.applyFrame(this.resolveSpeakingFrame());
+      return;
+    }
+
+    this.applyFrame(this.resolveIdleFrame());
+  }
+
+  private startMouthLoop(): void {
+    if (this.mouthTimer) {
+      return;
+    }
+
+    const cadenceMs = Math.round(1000 / 12);
+    this.mouthTimer = window.setInterval(() => {
+      if (Date.now() - this.lastVolumeAt > cadenceMs * 1.5) {
+        this.targetVolume *= 0.72;
+        if (this.targetVolume < 0.01) {
+          this.targetVolume = 0;
+        }
+      }
+
+      this.smoothedVolume += (this.targetVolume - this.smoothedVolume) * 0.38;
+      if (this.smoothedVolume < 0.01) {
+        this.smoothedVolume = 0;
+      }
+
+      this.updateFrame();
+    }, cadenceMs);
+  }
+
+  private stopMouthLoop(): void {
+    if (this.mouthTimer) {
+      clearInterval(this.mouthTimer);
+      this.mouthTimer = null;
+    }
+  }
+
+  private scheduleBlink(): void {
+    this.clearBlinkTimers();
+
+    if (this.state === "speaking") {
+      return;
+    }
+
+    this.blinkTimer = setTimeout(() => {
+      this.blinking = true;
+      this.updateFrame();
+      this.blinkHoldTimer = setTimeout(() => {
+        this.blinking = false;
+        this.updateFrame();
+        this.scheduleBlink();
+      }, 120);
+    }, rand(3_000, 6_000));
+  }
+
+  private stopBlink(): void {
+    this.clearBlinkTimers();
+    this.blinking = false;
+  }
+
+  private clearBlinkTimers(): void {
+    if (this.blinkTimer) {
+      clearTimeout(this.blinkTimer);
+      this.blinkTimer = null;
+    }
+    if (this.blinkHoldTimer) {
+      clearTimeout(this.blinkHoldTimer);
+      this.blinkHoldTimer = null;
+    }
+  }
 }
 
 function cleanSpeechText(text: string): string {
@@ -251,6 +453,7 @@ function scheduleMoodReset(ms = 3_600): void {
   }
   moodResetTimer = setTimeout(() => {
     currentMood = currentState === "thinking" ? "serious" : "neutral";
+    faceAvatar.setMood(currentMood);
     renderFace();
   }, ms);
 }
@@ -432,6 +635,7 @@ function consumeExpressionText(
   lastExpressionId = options.id ?? "";
 
   currentMood = inferMood(cleaned);
+  faceAvatar.setMood(currentMood);
   renderFace();
   if (options.animateMouth) {
     startVisemeSequence(cleaned);
@@ -483,12 +687,14 @@ function scheduleGazeLoop(): void {
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
+const avatarEl = document.getElementById("avatar-face") as HTMLImageElement;
 const statusEl = document.getElementById("status-text") as HTMLDivElement;
 const errorEl = document.getElementById("error-text") as HTMLDivElement;
 const badgeEl = document.getElementById("connection-badge") as HTMLDivElement;
 const badgeLabelEl = document.getElementById(
   "connection-label"
 ) as HTMLSpanElement;
+const faceAvatar = new FaceAvatar(avatarEl);
 
 // ── Orb ───────────────────────────────────────────────────────────────────────
 const orb = createOrb(canvas);
@@ -521,6 +727,7 @@ let lastExpressionId = "";
 function setVoiceLevel(level: number): void {
   const baseline = currentState === "speaking" ? 0.08 : 0;
   currentVoiceLevel = Math.max(baseline, Math.min(1, level || 0));
+  faceAvatar.setVolume(Math.max(0, Math.min(1, level || 0)));
   FACE_ROOT.style.setProperty("--jarvis-voice", currentVoiceLevel.toFixed(3));
   renderFace();
 }
@@ -538,6 +745,9 @@ function applyState(state: OrbState): void {
   } else if (state === "idle" && currentMood !== "warm" && currentMood !== "joy") {
     currentMood = "neutral";
   }
+
+  faceAvatar.setMood(currentMood);
+  faceAvatar.setState(state);
 
   if (state !== "speaking") {
     stopVisemeSequence();

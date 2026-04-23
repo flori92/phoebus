@@ -195,6 +195,7 @@ html, body {
     drop-shadow(0 0 40px rgba(78, 188, 255, 0.12));
   mask-image: radial-gradient(circle at center, black 0 58%, transparent 82%);
   -webkit-mask-image: radial-gradient(circle at center, black 0 58%, transparent 82%);
+  transition: filter 180ms ease, opacity 180ms ease;
 }
 
 #avatar-halo,
@@ -203,6 +204,11 @@ html, body {
 #avatar-mouth {
   position: absolute;
   inset: 0;
+}
+
+#avatar-eyes,
+#avatar-mouth {
+  display: none;
 }
 
 #avatar-eyes {
