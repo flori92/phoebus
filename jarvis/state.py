@@ -172,9 +172,25 @@ async def send_web_volume(volume):
                              return_exceptions=True)
 
 
-async def send_web_expression(text):
+async def send_web_expression(text, utterance_id=None):
     recipients = get_authenticated_clients()
     if recipients and text:
-        message = json.dumps({"action": "jarvis_expression", "text": text}, ensure_ascii=False)
+        payload = {"action": "jarvis_expression", "text": text}
+        if utterance_id:
+            payload["id"] = utterance_id
+        message = json.dumps(payload, ensure_ascii=False)
+        await asyncio.gather(*[ws.send(message) for ws in recipients],
+                             return_exceptions=True)
+
+
+async def send_web_lipsync(frames, utterance_id=None, backend=None):
+    recipients = get_authenticated_clients()
+    if recipients and frames:
+        payload = {"action": "jarvis_lipsync", "frames": frames}
+        if utterance_id:
+            payload["id"] = utterance_id
+        if backend:
+            payload["backend"] = backend
+        message = json.dumps(payload, ensure_ascii=False)
         await asyncio.gather(*[ws.send(message) for ws in recipients],
                              return_exceptions=True)

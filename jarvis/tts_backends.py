@@ -28,6 +28,7 @@ import wave
 import requests
 
 from jarvis.config import edge_tts
+from jarvis.lipsync import build_lipsync_frames_from_word_boundaries
 
 
 # ── Configuration Edge-TTS ─────────────────────────────────────────────────
@@ -118,7 +119,7 @@ def _backend_actif() -> str:
 
 # ── Back-ends ──────────────────────────────────────────────────────────────
 
-async def _synth_edge(texte: str, out_path: str) -> None:
+async def _synth_edge(texte: str, out_path: str) -> dict:
     if edge_tts is None:
         raise TtsUnavailable("edge_tts non installé")
     communicate = edge_tts.Communicate(
@@ -127,8 +128,41 @@ async def _synth_edge(texte: str, out_path: str) -> None:
         rate=EDGE_RATE,
         pitch=EDGE_PITCH,
         volume=EDGE_VOLUME,
+        boundary="WordBoundary",
     )
-    await communicate.save(out_path)
+    audio_chunks = []
+    boundaries = []
+
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_chunks.append(chunk["data"])
+        elif chunk["type"] == "WordBoundary":
+            boundaries.append(
+                {
+                    "offset_ms": round(float(chunk["offset"]) / 10000.0, 1),
+                    "duration_ms": round(float(chunk["duration"]) / 10000.0, 1),
+                    "text": chunk.get("text", ""),
+                }
+            )
+
+    if not audio_chunks:
+        raise TtsUnavailable("Aucun audio recu depuis edge-tts")
+
+    with open(out_path, "wb") as f:
+        for chunk in audio_chunks:
+            f.write(chunk)
+
+    result = {"backend": "edge"}
+    frames = build_lipsync_frames_from_word_boundaries(boundaries)
+    if frames:
+        result["lipsync"] = {
+            "source": "edge_word_boundaries",
+            "frames": frames,
+            "duration_ms": round(
+                frames[-1]["time_ms"] + frames[-1]["duration_ms"], 1
+            ),
+        }
+    return result
 
 
 def _synth_eleven_sync(texte: str, out_path: str) -> None:
@@ -196,8 +230,8 @@ def _synth_piper_sync(texte: str, out_path: str) -> None:
 
 # ── Point d'entrée ─────────────────────────────────────────────────────────
 
-async def synthesize_to_file(texte: str, out_path: str) -> str:
-    """Synthétise `texte` dans `out_path`. Renvoie le nom du back-end utilisé.
+async def synthesize_to_file(texte: str, out_path: str) -> dict:
+    """Synthétise `texte` dans `out_path`.
 
     Chaîne de repli : priorité au back-end configuré, repli sur Edge-TTS.
     """
@@ -208,7 +242,7 @@ async def synthesize_to_file(texte: str, out_path: str) -> str:
     if backend == "piper":
         try:
             await asyncio.to_thread(_synth_piper_sync, texte, out_path)
-            return "piper"
+            return {"backend": "piper"}
         except Exception as e:
             print(f"[TTS] Piper indisponible ({e}), repli.")
             backend = "eleven" if ELEVEN_API_KEY else "edge"
@@ -216,13 +250,12 @@ async def synthesize_to_file(texte: str, out_path: str) -> str:
     if backend == "eleven":
         try:
             await asyncio.to_thread(_synth_eleven_sync, texte, out_path)
-            return "eleven"
+            return {"backend": "eleven"}
         except Exception as e:
             print(f"[TTS] ElevenLabs indisponible ({e}), repli Edge-TTS.")
             backend = "edge"
 
     if backend == "edge":
-        await _synth_edge(texte, out_path)
-        return "edge"
+        return await _synth_edge(texte, out_path)
 
     raise TtsUnavailable("Aucun back-end TTS opérationnel.")

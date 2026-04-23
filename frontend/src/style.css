@@ -15,6 +15,15 @@ body {
   background: #050508;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  --jarvis-voice: 0;
+  --jarvis-gaze-x: 0px;
+  --jarvis-gaze-y: 0px;
+  --jarvis-eye-open: 1;
+  --jarvis-eye-wide: 0;
+  --jarvis-mouth-open: 0.05;
+  --jarvis-mouth-width: 1;
+  --jarvis-mouth-skew: 0;
+  --jarvis-mouth-lift: 0;
 }
 
 /* ── Canvas — fills the viewport behind everything ───────────────────────── */
@@ -24,6 +33,237 @@ body {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Avatar visage ───────────────────────────────────────────────────────── */
+#avatar-shell {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  width: min(42vw, 420px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -56%);
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.94;
+}
+
+#avatar-core {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: avatar-float 7s ease-in-out infinite;
+}
+
+#avatar-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter:
+    grayscale(1)
+    contrast(1.08)
+    brightness(0.92)
+    drop-shadow(0 0 24px rgba(78, 188, 255, 0.12))
+    drop-shadow(0 0 58px rgba(78, 188, 255, 0.12));
+  mask-image: radial-gradient(circle at center, black 0 58%, transparent 82%);
+  -webkit-mask-image: radial-gradient(circle at center, black 0 58%, transparent 82%);
+}
+
+#avatar-halo,
+#avatar-scan,
+#avatar-eyes,
+#avatar-mouth {
+  position: absolute;
+  inset: 0;
+}
+
+#avatar-eyes {
+  transform: translate(var(--jarvis-gaze-x), var(--jarvis-gaze-y));
+  transition: transform 260ms ease;
+}
+
+#avatar-halo {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(63, 175, 255, 0.18), transparent 30%),
+    radial-gradient(circle at 50% 50%, rgba(7, 20, 34, 0), rgba(7, 20, 34, 0.86) 72%);
+  mix-blend-mode: screen;
+  opacity: 0.75;
+}
+
+#avatar-scan::before {
+  content: "";
+  position: absolute;
+  left: 13%;
+  right: 13%;
+  top: 18%;
+  height: 32%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(111, 209, 255, 0.08) 40%,
+    rgba(111, 209, 255, 0.42) 50%,
+    rgba(111, 209, 255, 0.08) 60%,
+    transparent 100%
+  );
+  filter: blur(10px);
+  opacity: 0.65;
+  animation: avatar-scan 5.8s linear infinite;
+}
+
+.avatar-eye {
+  position: absolute;
+  top: 42%;
+  width: 14%;
+  height: 2.4%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(74, 192, 255, 0.1), rgba(149, 229, 255, 0.95), rgba(74, 192, 255, 0.1));
+  box-shadow:
+    0 0 10px rgba(117, 220, 255, 0.62),
+    0 0 24px rgba(64, 180, 255, 0.36);
+  transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(var(--jarvis-eye-open));
+  transform-origin: center;
+  animation: avatar-blink 6.4s infinite;
+  opacity: 0.92;
+}
+
+.avatar-eye::before {
+  content: "";
+  position: absolute;
+  inset: -120% 32%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(172, 236, 255, 0.95) 0%, rgba(172, 236, 255, 0.2) 45%, transparent 80%);
+}
+
+.avatar-eye-left {
+  left: 36.5%;
+}
+
+.avatar-eye-right {
+  left: 63.5%;
+}
+
+#avatar-mouth {
+  inset: auto auto 29% 50%;
+  width: 15%;
+  height: 4.2%;
+  border-radius: 0 0 999px 999px;
+  border: 1px solid rgba(115, 218, 255, 0.58);
+  border-top: 0;
+  background: linear-gradient(180deg, rgba(13, 30, 43, 0.08), rgba(90, 205, 255, 0.25));
+  box-shadow:
+    0 0 10px rgba(66, 183, 255, 0.35),
+    inset 0 0 12px rgba(173, 236, 255, 0.2);
+  transform:
+    translate(-50%, calc(var(--jarvis-mouth-lift) * -18px))
+    scaleX(var(--jarvis-mouth-width))
+    skewX(calc(var(--jarvis-mouth-skew) * 10deg))
+    scaleY(calc(0.46 + var(--jarvis-mouth-open)));
+  transform-origin: center top;
+  transition:
+    transform 120ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+  opacity: 0.82;
+}
+
+#avatar-mouth::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 20%;
+  height: 1px;
+  background: rgba(194, 242, 255, 0.78);
+  box-shadow: 0 0 10px rgba(115, 218, 255, 0.5);
+}
+
+body[data-jarvis-state="listening"] .avatar-eye {
+  background: linear-gradient(90deg, rgba(35, 197, 94, 0.08), rgba(132, 255, 181, 0.9), rgba(35, 197, 94, 0.08));
+  box-shadow:
+    0 0 10px rgba(128, 255, 178, 0.5),
+    0 0 24px rgba(35, 197, 94, 0.28);
+}
+
+body[data-jarvis-state="thinking"] .avatar-eye {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.08), rgba(255, 217, 118, 0.9), rgba(245, 158, 11, 0.08));
+  box-shadow:
+    0 0 10px rgba(255, 217, 118, 0.46),
+    0 0 24px rgba(245, 158, 11, 0.28);
+}
+
+body[data-jarvis-state="speaking"] #avatar-shell {
+  opacity: 1;
+}
+
+body[data-jarvis-state="speaking"] #avatar-mouth {
+  box-shadow:
+    0 0 14px rgba(66, 183, 255, 0.52),
+    0 0 32px rgba(66, 183, 255, 0.24),
+    inset 0 0 12px rgba(173, 236, 255, 0.26);
+}
+
+body[data-jarvis-mood="warm"] #avatar-mouth::before,
+body[data-jarvis-mood="joy"] #avatar-mouth::before {
+  background: rgba(218, 248, 255, 0.92);
+}
+
+body[data-jarvis-mood="joy"] #avatar-halo {
+  opacity: 0.86;
+}
+
+body[data-jarvis-mood="confident"] #avatar-mouth {
+  border-color: rgba(154, 226, 255, 0.72);
+}
+
+body[data-jarvis-mood="alert"] .avatar-eye {
+  background: linear-gradient(90deg, rgba(255, 111, 111, 0.08), rgba(179, 234, 255, 0.95), rgba(255, 111, 111, 0.08));
+}
+
+body[data-jarvis-mood="serious"] #avatar-halo {
+  opacity: 0.64;
+}
+
+@keyframes avatar-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes avatar-scan {
+  0% {
+    transform: translateY(-16%);
+    opacity: 0;
+  }
+  10%,
+  85% {
+    opacity: 0.72;
+  }
+  100% {
+    transform: translateY(115%);
+    opacity: 0;
+  }
+}
+
+@keyframes avatar-blink {
+  0%,
+  46%,
+  50%,
+  100% {
+    transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(var(--jarvis-eye-open));
+    opacity: 0.92;
+  }
+  48%,
+  49% {
+    transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(calc(var(--jarvis-eye-open) * 0.08));
+    opacity: 0.45;
+  }
 }
 
 /* ── Status text — "listening…" / "thinking…" ────────────────────────────── */
@@ -186,4 +426,11 @@ body {
   opacity: 0;
   transition: opacity 0.4s ease;
   white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  #avatar-shell {
+    width: min(66vw, 360px);
+    transform: translate(-50%, -54%);
+  }
 }

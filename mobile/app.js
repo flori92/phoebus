@@ -74,6 +74,463 @@ let ws           = null;
 let isListening  = false;
 let reconnectTimer = null;
 let authToken = getStoredToken();
+const faceRoot = document.documentElement;
+const MOOD_PRESETS = {
+  neutral: {
+    eyeOpen: 1,
+    eyeWide: 0,
+    mouthBase: 0.04,
+    mouthWidth: 1,
+    mouthSkew: 0,
+    mouthLift: 0,
+  },
+  warm: {
+    eyeOpen: 0.98,
+    eyeWide: 0.06,
+    mouthBase: 0.05,
+    mouthWidth: 1.04,
+    mouthSkew: 0.02,
+    mouthLift: 0.03,
+  },
+  joy: {
+    eyeOpen: 0.92,
+    eyeWide: 0.18,
+    mouthBase: 0.06,
+    mouthWidth: 1.1,
+    mouthSkew: 0.02,
+    mouthLift: 0.07,
+  },
+  confident: {
+    eyeOpen: 0.94,
+    eyeWide: 0.04,
+    mouthBase: 0.04,
+    mouthWidth: 1.03,
+    mouthSkew: 0.05,
+    mouthLift: 0.02,
+  },
+  alert: {
+    eyeOpen: 1.14,
+    eyeWide: 0.22,
+    mouthBase: 0.02,
+    mouthWidth: 0.95,
+    mouthSkew: 0,
+    mouthLift: -0.02,
+  },
+  serious: {
+    eyeOpen: 0.86,
+    eyeWide: -0.02,
+    mouthBase: 0.02,
+    mouthWidth: 0.92,
+    mouthSkew: -0.03,
+    mouthLift: -0.01,
+  },
+};
+const PHONEME_CLUSTERS = [
+  "eaux",
+  "eau",
+  "oin",
+  "ion",
+  "ain",
+  "ein",
+  "ien",
+  "ou",
+  "on",
+  "an",
+  "en",
+  "in",
+  "ai",
+  "ei",
+  "au",
+  "eu",
+  "oeu",
+  "oe",
+  "oi",
+  "ui",
+  "ch",
+  "gn",
+  "ph",
+];
+let currentMood = "neutral";
+let currentVoiceLevel = 0;
+let currentGaze = { x: 0, y: 0 };
+let currentViseme = { open: 0.01, width: 1, skew: 0, lift: 0 };
+let gazeTimer = null;
+let visemeTimer = null;
+let moodResetTimer = null;
+let pendingExpressionTimer = null;
+let timedLipsyncTimers = [];
+let pendingExpressionId = "";
+let pendingLipsyncById = new Map();
+let activeSpeechId = "";
+let lastExpressionText = "";
+let lastExpressionAt = 0;
+let lastExpressionId = "";
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function rand(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function cleanSpeechText(text) {
+  return String(text || "")
+    .replace(/\{[^}]*\}/gs, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeSpeech(text) {
+  return cleanSpeechText(text)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function inferMood(text) {
+  const normalized = normalizeSpeech(text);
+
+  if (/\b(alerte|attention|urgence|urgent|alarme|fuite|fumee|intrusion|erreur|impossible|probleme|danger)\b/.test(normalized)) {
+    return "alert";
+  }
+  if (/\b(parfait|excellent|super|felicitations|bravo|bonne nouvelle)\b/.test(normalized)) {
+    return "joy";
+  }
+  if (/\b(bien sur|pas de souci|pas d inquietude|ne t inquiete pas|je m en occupe|avec plaisir)\b/.test(normalized)) {
+    return "warm";
+  }
+  if (/\b(c est fait|termine|effectue|active|desactive|regle|configure|pret)\b/.test(normalized)) {
+    return "confident";
+  }
+  if (/\b(analyse|verification|resume|diagnostic|securite|architecture|hypothese|risque)\b/.test(normalized)) {
+    return "serious";
+  }
+  return "neutral";
+}
+
+function getRestViseme() {
+  return currentState === "speaking"
+    ? { open: 0.07, width: 1, skew: 0, lift: 0 }
+    : { open: 0.01, width: 1, skew: 0, lift: 0 };
+}
+
+function renderFace() {
+  const preset = MOOD_PRESETS[currentMood];
+  const eyeOpen = clamp(
+    preset.eyeOpen +
+      (currentState === "listening" ? 0.06 : 0) +
+      (currentState === "thinking" ? -0.04 : 0),
+    0.72,
+    1.24
+  );
+  const eyeWide = clamp(
+    preset.eyeWide +
+      (currentState === "listening" ? 0.08 : 0) +
+      (currentState === "thinking" ? 0.03 : 0),
+    -0.05,
+    0.34
+  );
+  const mouthOpen = clamp(
+    preset.mouthBase +
+      currentViseme.open +
+      (currentState === "speaking" ? currentVoiceLevel * 0.14 : 0),
+    0,
+    0.58
+  );
+  const mouthWidth = clamp(preset.mouthWidth * currentViseme.width, 0.84, 1.22);
+  const mouthSkew = clamp(preset.mouthSkew + currentViseme.skew, -0.18, 0.18);
+  const mouthLift = clamp(preset.mouthLift + currentViseme.lift, -0.08, 0.18);
+
+  faceRoot.style.setProperty("--jarvis-gaze-x", `${currentGaze.x.toFixed(2)}px`);
+  faceRoot.style.setProperty("--jarvis-gaze-y", `${currentGaze.y.toFixed(2)}px`);
+  faceRoot.style.setProperty("--jarvis-eye-open", eyeOpen.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-eye-wide", eyeWide.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-open", mouthOpen.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-width", mouthWidth.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-skew", mouthSkew.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-lift", mouthLift.toFixed(3));
+  document.body.dataset.jarvisMood = currentMood;
+}
+
+function scheduleMoodReset(ms = 3600) {
+  if (moodResetTimer) {
+    clearTimeout(moodResetTimer);
+  }
+  moodResetTimer = setTimeout(() => {
+    currentMood = currentState === "thinking" ? "serious" : "neutral";
+    renderFace();
+  }, ms);
+}
+
+function cancelPendingExpressionFallback() {
+  if (pendingExpressionTimer) {
+    clearTimeout(pendingExpressionTimer);
+    pendingExpressionTimer = null;
+  }
+  pendingExpressionId = "";
+}
+
+function cancelTimedLipsync() {
+  for (const timer of timedLipsyncTimers) {
+    clearTimeout(timer);
+  }
+  timedLipsyncTimers = [];
+}
+
+function setCurrentViseme(state) {
+  currentViseme = state;
+  renderFace();
+}
+
+function stopVisemeSequence() {
+  cancelPendingExpressionFallback();
+  cancelTimedLipsync();
+  if (visemeTimer) {
+    clearTimeout(visemeTimer);
+    visemeTimer = null;
+  }
+  setCurrentViseme(getRestViseme());
+}
+
+function tokenizeSpeech(text) {
+  const normalized = normalizeSpeech(text).replace(/[^a-z\s]/g, " ");
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const tokens = [];
+
+  for (const word of words) {
+    let index = 0;
+    while (index < word.length) {
+      const cluster = PHONEME_CLUSTERS.find((item) => word.startsWith(item, index));
+      if (cluster) {
+        tokens.push(cluster);
+        index += cluster.length;
+      } else {
+        tokens.push(word[index]);
+        index += 1;
+      }
+    }
+    tokens.push(" ");
+  }
+
+  return tokens;
+}
+
+function visemeForToken(token) {
+  if (token === " ") {
+    return { ...getRestViseme(), hold: 60 };
+  }
+  if (/^[mbp]$/.test(token)) {
+    return { open: 0, width: 0.98, skew: 0, lift: 0.02, hold: 70 };
+  }
+  if (/^(f|v|ph)$/.test(token)) {
+    return { open: 0.12, width: 1.01, skew: 0.02, lift: 0.01, hold: 78 };
+  }
+  if (/^(ou|o|on|au|eu|u)$/.test(token)) {
+    return { open: 0.24, width: 0.88, skew: 0, lift: 0, hold: 105 };
+  }
+  if (/^(a|an|en|eau|ain|ein)$/.test(token)) {
+    return { open: 0.36, width: 1.14, skew: 0, lift: 0.02, hold: 96 };
+  }
+  if (/^(e|i|y|ai|ei|ui|ien|oi)$/.test(token)) {
+    return { open: 0.2, width: 1.12, skew: 0.02, lift: 0.05, hold: 86 };
+  }
+  return { open: 0.16, width: 1.02, skew: 0, lift: 0, hold: 72 };
+}
+
+function buildVisemeFrames(text) {
+  return tokenizeSpeech(text)
+    .slice(0, 72)
+    .map((token) => visemeForToken(token));
+}
+
+function startVisemeSequence(text) {
+  const frames = buildVisemeFrames(text);
+  stopVisemeSequence();
+
+  if (!frames.length) {
+    return;
+  }
+
+  let index = 0;
+  const step = () => {
+    const frame = frames[index];
+    setCurrentViseme({
+      open: frame.open,
+      width: frame.width,
+      skew: frame.skew,
+      lift: frame.lift,
+    });
+    index += 1;
+
+    if (index < frames.length) {
+      visemeTimer = setTimeout(step, frame.hold);
+      return;
+    }
+
+    visemeTimer = setTimeout(() => {
+      visemeTimer = null;
+      setCurrentViseme(getRestViseme());
+    }, 90);
+  };
+
+  step();
+}
+
+function scheduleExpressionFallback(text, utteranceId) {
+  cancelPendingExpressionFallback();
+  pendingExpressionId = utteranceId || "";
+  pendingExpressionTimer = setTimeout(() => {
+    pendingExpressionTimer = null;
+    pendingExpressionId = "";
+    startVisemeSequence(text);
+  }, 180);
+}
+
+function startTimedLipsync(frames, utteranceId) {
+  if (!Array.isArray(frames) || !frames.length) {
+    return;
+  }
+
+  if (utteranceId && pendingExpressionId && pendingExpressionId !== utteranceId) {
+    return;
+  }
+
+  stopVisemeSequence();
+  const sortedFrames = [...frames].sort((a, b) => a.time_ms - b.time_ms);
+
+  for (const frame of sortedFrames) {
+    const timer = setTimeout(() => {
+      setCurrentViseme({
+        open: frame.open,
+        width: frame.width,
+        skew: frame.skew,
+        lift: frame.lift,
+      });
+    }, Math.max(0, frame.time_ms));
+    timedLipsyncTimers.push(timer);
+  }
+
+  const lastFrame = sortedFrames[sortedFrames.length - 1];
+  const resetTimer = setTimeout(() => {
+    timedLipsyncTimers = timedLipsyncTimers.filter((timer) => timer !== resetTimer);
+    setCurrentViseme(getRestViseme());
+  }, Math.max(0, lastFrame.time_ms + lastFrame.duration_ms + 40));
+  timedLipsyncTimers.push(resetTimer);
+}
+
+function rememberPendingLipsync(frames, utteranceId) {
+  if (!utteranceId || !Array.isArray(frames) || !frames.length) {
+    return;
+  }
+  pendingLipsyncById.set(utteranceId, frames);
+  if (pendingLipsyncById.size > 8) {
+    const oldestKey = pendingLipsyncById.keys().next().value;
+    pendingLipsyncById.delete(oldestKey);
+  }
+}
+
+function consumePendingLipsync(utteranceId) {
+  if (!utteranceId || !pendingLipsyncById.has(utteranceId)) {
+    return null;
+  }
+  const frames = pendingLipsyncById.get(utteranceId);
+  pendingLipsyncById.delete(utteranceId);
+  return frames || null;
+}
+
+function startSpeechAnimation(speechMeta = {}) {
+  const utteranceId = speechMeta.id || "";
+  const text = cleanSpeechText(speechMeta.text || "");
+
+  activeSpeechId = utteranceId;
+  if (text) {
+    consumeExpressionText(text, { id: utteranceId });
+  }
+
+  const frames = consumePendingLipsync(utteranceId);
+  if (frames && frames.length) {
+    startTimedLipsync(frames, utteranceId);
+    return;
+  }
+  if (text) {
+    startVisemeSequence(text);
+  }
+}
+
+function consumeExpressionText(text, options = {}) {
+  const cleaned = cleanSpeechText(text);
+  if (!cleaned) {
+    return;
+  }
+
+  const now = Date.now();
+  if (options.id && options.id === lastExpressionId) {
+    return;
+  }
+  if (!options.id && cleaned === lastExpressionText && now - lastExpressionAt < 1500) {
+    return;
+  }
+  lastExpressionText = cleaned;
+  lastExpressionAt = now;
+  lastExpressionId = options.id || "";
+
+  currentMood = inferMood(cleaned);
+  renderFace();
+  if (options.animateMouth) {
+    startVisemeSequence(cleaned);
+  } else if (options.scheduleFallback) {
+    scheduleExpressionFallback(cleaned, options.id);
+  }
+  scheduleMoodReset(clamp(cleaned.length * 38, 2800, 6400));
+}
+
+function scheduleGazeLoop() {
+  if (gazeTimer) {
+    clearTimeout(gazeTimer);
+    gazeTimer = null;
+  }
+
+  const tick = () => {
+    let maxX = 2.4;
+    let maxY = 1.4;
+    let minDelay = 1800;
+    let maxDelay = 3200;
+
+    if (currentState === "thinking") {
+      maxX = 4.8;
+      maxY = 2.8;
+      minDelay = 1100;
+      maxDelay = 2000;
+    } else if (currentState === "listening") {
+      maxX = 3.2;
+      maxY = 1.7;
+      minDelay = 1300;
+      maxDelay = 2400;
+    } else if (currentState === "speaking") {
+      maxX = 2.2;
+      maxY = 1.2;
+      minDelay = 900;
+      maxDelay = 1800;
+    }
+
+    currentGaze = {
+      x: rand(-maxX, maxX),
+      y: rand(-maxY, maxY),
+    };
+    renderFace();
+    gazeTimer = setTimeout(tick, rand(minDelay, maxDelay));
+  };
+
+  gazeTimer = setTimeout(tick, 450);
+}
+
+function setVoiceLevel(level) {
+  const baseline = currentState === "speaking" ? 0.08 : 0;
+  currentVoiceLevel = Math.max(baseline, Math.min(1, level || 0));
+  faceRoot.style.setProperty("--jarvis-voice", currentVoiceLevel.toFixed(3));
+  renderFace();
+}
 
 // ── Gestion des états ───────────────────────────────────────────────────────
 const STATE_LABELS = {
@@ -91,6 +548,24 @@ function applyState(state) {
   document.body.classList.add(`state-${state}`);
   currentState = state;
   statusEl.textContent = STATE_LABELS[state] || state;
+  if (state === "listening") {
+    currentMood = "alert";
+  } else if (state === "thinking") {
+    currentMood = "serious";
+  } else if (state === "idle" && currentMood !== "warm" && currentMood !== "joy") {
+    currentMood = "neutral";
+  }
+
+  if (state !== "speaking") {
+    activeSpeechId = "";
+    stopVisemeSequence();
+  } else {
+    currentViseme = getRestViseme();
+    renderFace();
+  }
+
+  setVoiceLevel(0);
+  scheduleGazeLoop();
 
   // Affichage du bouton Stop global seulement si ca parle
   if (state === "speaking") {
@@ -116,6 +591,7 @@ function applyState(state) {
   }
 }
 
+renderFace();
 applyState("idle");
 
 let currentAudio = null;
@@ -196,6 +672,22 @@ function connectWS() {
         return;
       }
 
+      if (data.action === "jarvis_expression" && data.text) {
+        consumeExpressionText(data.text, { id: data.id });
+        return;
+      }
+
+      if (data.action === "jarvis_lipsync" && Array.isArray(data.frames)) {
+        rememberPendingLipsync(data.frames, data.id);
+        if (data.id && data.id === activeSpeechId && currentState === "speaking") {
+          const activeFrames = consumePendingLipsync(data.id);
+          if (activeFrames && activeFrames.length) {
+            startTimedLipsync(activeFrames, data.id);
+          }
+        }
+        return;
+      }
+
       // État de l'orbe (envoyé par le backend lors de ses propres actions)
       if (data.action === "set_state" && data.state) {
         // Ignorer les états de microphone local du PC ("listening", "active") car le mobile gère son propre micro
@@ -213,12 +705,12 @@ function connectWS() {
       // Réponse textuelle de JARVIS destinée au mobile avec audio distant (même voix que web)
       if (data.action === "jarvis_audio" && data.audio_b64) {
         afficherReponseJarvis(data.text);
-        jouerAudioBase64(data.audio_b64);
+        jouerAudioBase64(data.audio_b64, { id: data.id, text: data.text });
       }
       // Fallback ancienne méthode (sans audio)
       else if (data.action === "jarvis_response" && data.text) {
         afficherReponseJarvis(data.text);
-        parleSynthese(data.text);
+        parleSynthese(data.text, { id: data.id, text: data.text });
       }
     } catch (e) {
       console.error("[WS] Erreur parsing message :", e);
@@ -261,11 +753,7 @@ function afficherTexteUtilisateur(text) {
 }
 
 function afficherReponseJarvis(text) {
-  // Nettoyer les éventuels blocs JSON de la réponse pour l'affichage
-  const textePropre = text
-    .replace(/\{[^}]*\}/gs, "")        // supprimer blocs JSON
-    .replace(/\s{2,}/g, " ")           // normaliser espaces
-    .trim();
+  const textePropre = cleanSpeechText(text);
   jarvisTextEl.textContent = textePropre || text;
 }
 
@@ -283,11 +771,12 @@ function jouerAudioBase64(base64) {
   // Fake volume for ORB
   if (fakeVolumeInterval) clearInterval(fakeVolumeInterval);
   fakeVolumeInterval = setInterval(() => {
+    const t = Date.now() / 50;
+    const vol = Math.max(0.1, Math.min(1.0, 0.4 + 0.3 * Math.sin(t) + 0.2 * Math.sin(t * 0.5) + (Math.random() * 0.2 - 0.1)));
     if (orb) {
-      const t = Date.now() / 50;
-      const vol = 0.4 + 0.3 * Math.sin(t) + 0.2 * Math.sin(t * 0.5);
-      orb.setVolume(Math.max(0.1, Math.min(1.0, vol + (Math.random() * 0.2 - 0.1))));
+      orb.setVolume(vol);
     }
+    setVoiceLevel(vol);
   }, 50);
 
   currentAudio.addEventListener("ended", () => {
@@ -297,6 +786,7 @@ function jouerAudioBase64(base64) {
       fakeVolumeInterval = null;
     }
     if (orb) orb.setVolume(0);
+    setVoiceLevel(0);
     currentAudio = null;
   });
   
@@ -309,6 +799,7 @@ function jouerAudioBase64(base64) {
       fakeVolumeInterval = null;
     }
     if (orb) orb.setVolume(0);
+    setVoiceLevel(0);
   });
 }
 
@@ -333,15 +824,13 @@ function parleSynthese(texte) {
   // Annuler toute synthèse en cours
   window.speechSynthesis.cancel();
 
-  // Nettoyer le texte (enlever JSON pour ne lire que la partie conversationnelle)
-  const textePropre = texte
-    .replace(/\{[^}]*\}/gs, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  const textePropre = cleanSpeechText(texte);
 
   if (!textePropre) return;
 
   applyState("speaking");
+  consumeExpressionText(textePropre);
+  setVoiceLevel(0.12);
 
   const utterance = new SpeechSynthesisUtterance(textePropre);
   utterance.lang = SPEECH_LANG;
@@ -355,11 +844,13 @@ function parleSynthese(texte) {
 
   utterance.addEventListener("end", () => {
     applyState("idle");
+    setVoiceLevel(0);
   });
 
   utterance.addEventListener("error", (e) => {
     console.warn("[TTS] Erreur synthèse :", e.error);
     applyState("idle");
+    setVoiceLevel(0);
   });
 
   window.speechSynthesis.speak(utterance);

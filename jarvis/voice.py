@@ -108,17 +108,32 @@ async def parler(texte):
     state.is_speaking = True
     await state.send_web_state("speaking")
     state.speak_volume = 0.0
+    utterance_id = str(int(time.time() * 1000))
     tmp = f"jarvis_tts_{int(time.time()*1000)}.mp3"
     
     try:
         try:
-            await synthesize_to_file(texte_tts, tmp)
+            synth_result = await synthesize_to_file(texte_tts, tmp)
         except TtsUnavailable:
+            await state.send_web_expression(texte_tts, utterance_id=utterance_id)
             recipients = state.get_authenticated_clients()
             if recipients:
-                msg = json.dumps({"action": "jarvis_response", "text": texte_tts})
+                msg = json.dumps(
+                    {"action": "jarvis_response", "id": utterance_id, "text": texte_tts}
+                )
                 await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
             return
+
+        await state.send_web_expression(texte_tts, utterance_id=utterance_id)
+        if isinstance(synth_result, dict):
+            lipsync = synth_result.get("lipsync") or {}
+            frames = lipsync.get("frames") if isinstance(lipsync, dict) else None
+            if frames:
+                await state.send_web_lipsync(
+                    frames,
+                    utterance_id=utterance_id,
+                    backend=synth_result.get("backend"),
+                )
         
         if state._skip_pc_audio:
             recipients = state.get_authenticated_clients()
@@ -126,7 +141,14 @@ async def parler(texte):
                 try:
                     with open(tmp, "rb") as f:
                         audio_b64 = base64.b64encode(f.read()).decode('utf-8')
-                    msg = json.dumps({"action": "jarvis_audio", "text": texte_tts, "audio_b64": audio_b64})
+                    msg = json.dumps(
+                        {
+                            "action": "jarvis_audio",
+                            "id": utterance_id,
+                            "text": texte_tts,
+                            "audio_b64": audio_b64,
+                        }
+                    )
                     await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
                 except Exception as e:
                     print(f"[MOBILE] Erreur envoi audio : {e}")
@@ -134,7 +156,9 @@ async def parler(texte):
             if not init_mixer():
                 recipients = state.get_authenticated_clients()
                 if recipients:
-                    msg = json.dumps({"action": "jarvis_response", "text": texte_tts})
+                    msg = json.dumps(
+                        {"action": "jarvis_response", "id": utterance_id, "text": texte_tts}
+                    )
                     await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
                 return
                 
