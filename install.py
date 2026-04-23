@@ -131,6 +131,52 @@ def create_configuration_files():
     else:
         print_success("Fichier jarvis_devices.json déjà présent.")
 
+def setup_application_folders():
+    print_step("Création des dossiers d'application")
+    folders = ["logs", "jarvis_vector_db", "temp"]
+    for folder in folders:
+        path = ROOT / folder
+        path.mkdir(exist_ok=True)
+    print_success("Dossiers logs/, jarvis_vector_db/ et temp/ prêts.")
+
+def create_desktop_shortcuts():
+    print_step("Création des raccourcis sur le Bureau")
+    sys_name = platform.system()
+    desktop = Path.home() / "Desktop"
+    if not desktop.exists():
+        desktop = Path.home() / "Bureau"
+    
+    if not desktop.exists():
+        print_success("Dossier Bureau introuvable. Raccourcis ignorés.")
+        return
+
+    try:
+        if sys_name == "Windows":
+            # Création d'un petit script .bat sur le bureau
+            shortcut_path = desktop / "JARVIS.bat"
+            with open(shortcut_path, "w") as f:
+                f.write(f'@echo off\ncd /d "{ROOT}"\nstart cmd /k "DÉMARRER_JARVIS.bat"\n')
+            print_success("Raccourci JARVIS.bat créé sur le Bureau Windows.")
+            
+        elif sys_name == "Darwin":
+            # Création d'un script exécutable sur le bureau Mac
+            shortcut_path = desktop / "Démarrer JARVIS.command"
+            with open(shortcut_path, "w") as f:
+                f.write(f'#!/bin/bash\ncd "{ROOT}"\n./demarrer_jarvis.sh\n')
+            os.chmod(shortcut_path, 0o755)
+            print_success("Raccourci 'Démarrer JARVIS.command' créé sur le Bureau Mac.")
+            
+        elif sys_name == "Linux":
+            # Création d'un fichier .desktop pour Linux
+            shortcut_path = desktop / "JARVIS.desktop"
+            with open(shortcut_path, "w") as f:
+                f.write(f"[Desktop Entry]\nName=J.A.R.V.I.S\nExec={ROOT}/demarrer_jarvis.sh\nTerminal=true\nType=Application\nIcon=utilities-terminal\n")
+            os.chmod(shortcut_path, 0o755)
+            print_success("Raccourci JARVIS.desktop créé sur le Bureau Linux.")
+            
+    except Exception as e:
+        print_error(f"Erreur lors de la création du raccourci : {e}")
+
 def main():
     print(f"\n{C.OKBLUE}{C.BOLD}==========================================")
     print(" INSTALLATEUR UNIVERSEL J.A.R.V.I.S")
@@ -142,6 +188,8 @@ def main():
     install_python_packages(python_exe)
     install_frontend_dependencies()
     create_configuration_files()
+    setup_application_folders()
+    create_desktop_shortcuts()
     
     print(f"\n{C.OKGREEN}{C.BOLD}==========================================")
     print(" INSTALLATION TERMINÉE AVEC SUCCÈS !")
