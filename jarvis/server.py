@@ -61,7 +61,8 @@ async def ws_handler(websocket):
         async for message in websocket:
             try:
                 data = json.loads(message)
-                action = data.get("action")
+                # On accepte 'action' ou 'type' pour la compatibilité
+                action = data.get("action") or data.get("type")
                 
                 # --- Authentification ---
                 if action == "auth":
@@ -100,10 +101,10 @@ async def ws_handler(websocket):
                     txt = data.get("text", "")
                     if txt: await parler(txt)
                     
-                elif action == "stop_parler":
+                elif action == "stop_parler" or action == "stop_audio":
                     state.STOP_PARLER = True
                     
-                elif action == "demander_ia":
+                elif action == "demander_ia" or action == "mobile_command":
                     question = data.get("text", "")
                     if question:
                         state.extend_conversation()
