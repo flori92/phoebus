@@ -317,6 +317,7 @@ def listen_and_process(main_loop):
 
                     async def process_ia(q):
                         rep = await demander_ia(q)
+                        print(f"[JARVIS] Réponse IA : {rep}")
                         if not await traiter_reponse_ia(rep):
                             await parler(rep)
                         # Après chaque tour, on reste à l'écoute naturellement.
@@ -354,7 +355,7 @@ async def main():
     # Threads annexes
     threading.Thread(target=run_mobile_server, daemon=True).start()
     threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
-    threading.Thread(target=monitor_claps, daemon=True).start()
+    # threading.Thread(target=monitor_claps, daemon=True).start()
 
     from jarvis.utils import launch_app, get_lan_ip
     lan_ip = get_lan_ip()
