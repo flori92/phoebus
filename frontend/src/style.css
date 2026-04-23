@@ -26,55 +26,196 @@ body {
   pointer-events: none;
 }
 
-/* ── Face Avatar — animated portrait, layered over the orb ────────────── */
+/* ── Face Avatar — animated portrait w/ reactive halo ────────────────── */
+
+/* Couleurs d'aura par état : custom properties surchargées via [data-state]. */
 .face-avatar {
+  /* défaut = idle, teinte bleue Jarvis */
+  --aura-core: 76, 168, 232;        /* rgb */
+  --aura-accent: 129, 212, 250;
+  --aura-warm: 186, 230, 253;
+
+  --vol: 0;        /* piloté par JS — 0..1 */
+  --activity: 0.12; /* piloté par JS — intensité générale */
+
   position: fixed;
   top: 50%;
   left: 50%;
+  /* JS remplace ce transform pour injecter breathing/saccades/bobble.
+     Le fallback ci-dessous ne sert que le temps du chargement. */
   transform: translate(-50%, -50%);
   width: min(62vmin, 620px);
   height: min(62vmin, 620px);
   border-radius: 50%;
-  overflow: hidden;
   pointer-events: none;
   z-index: 5;
-  /* soft vignette + blue glow for a "hologram" feel */
+  will-change: transform, box-shadow;
+
+  /* Halo principal : intensité & diffusion suivent l'activité. */
   box-shadow:
-    0 0 60px rgba(76, 168, 232, 0.12),
-    0 0 160px rgba(76, 168, 232, 0.06),
+    0 0 calc(60px + var(--activity) * 120px) rgba(var(--aura-core), calc(0.18 + var(--activity) * 0.35)),
+    0 0 calc(160px + var(--activity) * 180px) rgba(var(--aura-core), calc(0.06 + var(--activity) * 0.14)),
     inset 0 0 100px rgba(0, 0, 0, 0.45);
-  filter: drop-shadow(0 6px 40px rgba(76, 168, 232, 0.18));
+
+  filter:
+    drop-shadow(0 6px calc(30px + var(--vol) * 40px)
+      rgba(var(--aura-accent), calc(0.22 + var(--vol) * 0.25)));
+
+  transition: box-shadow 600ms ease, filter 600ms ease;
 }
 
+/* État speaking : bascule vers des teintes plus chaudes. */
+.face-avatar[data-state="speaking"] {
+  --aura-core: 251, 191, 36;
+  --aura-accent: 249, 168, 37;
+  --aura-warm: 244, 114, 22;
+  transition: box-shadow 250ms ease, filter 250ms ease;
+}
+
+/* État thinking : violet / indigo, plus "électrique". */
+.face-avatar[data-state="thinking"] {
+  --aura-core: 139, 92, 246;
+  --aura-accent: 168, 85, 247;
+  --aura-warm: 192, 132, 252;
+}
+
+/* État listening : vert doux, attentif. */
+.face-avatar[data-state="listening"] {
+  --aura-core: 34, 197, 94;
+  --aura-accent: 74, 222, 128;
+  --aura-warm: 134, 239, 172;
+}
+
+/* Aura tournante : conic gradient derrière le visage. */
+.face-aura {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    conic-gradient(
+      from 0deg,
+      rgba(var(--aura-core), 0) 0deg,
+      rgba(var(--aura-accent), calc(0.22 + var(--activity) * 0.5)) 70deg,
+      rgba(var(--aura-core), calc(0.14 + var(--activity) * 0.35)) 140deg,
+      rgba(var(--aura-warm), 0) 210deg,
+      rgba(var(--aura-core), calc(0.18 + var(--activity) * 0.4)) 300deg,
+      rgba(var(--aura-core), 0) 360deg
+    );
+  filter: blur(22px);
+  opacity: calc(0.55 + var(--activity) * 0.45);
+  animation: face-aura-rotate 18s linear infinite;
+  transition: opacity 400ms ease;
+}
+
+/* Anneau lumineux fin qui pulse avec le volume (::before sur le wrap). */
+.face-avatar::before {
+  content: "";
+  position: absolute;
+  inset: -2%;
+  border-radius: 50%;
+  z-index: 3; /* au-dessus de la face pour un vrai anneau visible */
+  pointer-events: none;
+  border: 1px solid rgba(var(--aura-accent), calc(0.25 + var(--vol) * 0.55));
+  box-shadow:
+    inset 0 0 calc(16px + var(--vol) * 30px) rgba(var(--aura-accent), calc(0.14 + var(--vol) * 0.35)),
+    0 0 calc(10px + var(--vol) * 40px) rgba(var(--aura-core), calc(0.2 + var(--vol) * 0.4));
+  transition: border-color 250ms ease;
+}
+
+/* Mini grains brillants périphériques : "poussière neurale". */
+.face-avatar::after {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  border-radius: 50%;
+  z-index: 1; /* au-dessus de l'aura tournante, sous la face */
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 30%, rgba(var(--aura-accent), 0.35) 0, transparent 2px),
+    radial-gradient(circle at 82% 22%, rgba(var(--aura-warm), 0.3) 0, transparent 2px),
+    radial-gradient(circle at 74% 78%, rgba(var(--aura-core), 0.35) 0, transparent 2px),
+    radial-gradient(circle at 22% 80%, rgba(var(--aura-accent), 0.28) 0, transparent 2px),
+    radial-gradient(circle at 50% 8%, rgba(var(--aura-warm), 0.3) 0, transparent 1.5px),
+    radial-gradient(circle at 8% 55%, rgba(var(--aura-core), 0.32) 0, transparent 1.5px),
+    radial-gradient(circle at 92% 52%, rgba(var(--aura-accent), 0.3) 0, transparent 1.5px);
+  opacity: calc(0.5 + var(--activity) * 0.5);
+  animation: face-aura-rotate 32s linear reverse infinite;
+  mix-blend-mode: screen;
+}
+
+@keyframes face-aura-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Couches image : clippées au cercle du wrap sans overflow hidden
+   (pour laisser le halo déborder). */
 .face-layer {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 50%;
   -webkit-user-drag: none;
   user-select: none;
-  /* base image never fades; top layer hard-cuts for lip-sync but
-     ramps smoothly for idle↔speaking transitions */
-  transition: opacity 140ms linear;
+  -webkit-mask-image: radial-gradient(circle at center, black 80%, transparent 100%);
+  mask-image: radial-gradient(circle at center, black 80%, transparent 100%);
+  z-index: 2;
 }
 
 .face-layer-bottom {
-  z-index: 1;
-  transition: opacity 420ms ease; /* cross-fade doux des expressions */
+  transition: opacity 420ms ease;
   opacity: 1;
 }
 
 .face-layer-top {
-  z-index: 2;
-  opacity: 0; /* rendu décide quand on la révèle */
+  transition: opacity 70ms linear; /* coupure franche pour le lip-sync */
+  opacity: 0;
 }
 
-/* Orb estompé quand le face avatar est actif pour ne pas rivaliser. */
+/* ── Orbe en mode anneau neural quand le visage est actif ────────────── */
+/* On masque l'intérieur pour créer une couronne de particules/neurones
+   tournant autour du portrait, au lieu d'un nuage plein écran. */
 body.has-face-avatar #orb-canvas {
-  opacity: 0.35;
-  filter: blur(1px);
+  opacity: 0.75;
+  filter: hue-rotate(0deg) saturate(1.05);
+  -webkit-mask-image: radial-gradient(
+    circle at center,
+    transparent 0,
+    transparent 28vmin,
+    rgba(0, 0, 0, 0.35) 32vmin,
+    black 40vmin,
+    black 60vmin,
+    rgba(0, 0, 0, 0.3) 80vmin,
+    transparent 95vmin
+  );
+  mask-image: radial-gradient(
+    circle at center,
+    transparent 0,
+    transparent 28vmin,
+    rgba(0, 0, 0, 0.35) 32vmin,
+    black 40vmin,
+    black 60vmin,
+    rgba(0, 0, 0, 0.3) 80vmin,
+    transparent 95vmin
+  );
   transition: opacity 600ms ease, filter 600ms ease;
+}
+
+/* Quand Jarvis parle, les neurones virent vers les teintes chaudes
+   pour dialoguer avec l'aura du visage. */
+body.has-face-avatar[data-state="speaking"] #orb-canvas {
+  filter: hue-rotate(195deg) saturate(1.15);
+}
+body.has-face-avatar[data-state="thinking"] #orb-canvas {
+  filter: hue-rotate(85deg) saturate(1.1);
+}
+body.has-face-avatar[data-state="listening"] #orb-canvas {
+  filter: hue-rotate(120deg) saturate(1.1);
 }
 
 /* ── Status text — "listening…" / "thinking…" ────────────────────────────── */

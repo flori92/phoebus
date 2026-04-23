@@ -69,6 +69,9 @@ const STATE_LABELS: Record<OrbState, string> = {
 function applyState(state: OrbState): void {
   orb.setState(state);
   if (faceAvatar) faceAvatar.setState(state);
+  // On expose l'état sur body pour que la CSS puisse teinter l'orbe
+  // et l'aura sans JS additionnel.
+  document.body.dataset.state = state;
   statusEl.textContent = STATE_LABELS[state];
 }
 
