@@ -32,6 +32,22 @@ def ensure_venv() -> Path:
     return venv_python()
 
 
+def install_system_deps() -> None:
+    sys_name = platform.system()
+    if sys_name == "Darwin":
+        if shutil.which("brew"):
+            print("[BOOTSTRAP] Verification de portaudio (macOS)...")
+            run(["brew", "install", "portaudio"], check=False)
+        else:
+            print("[BOOTSTRAP] Attention: Homebrew n'est pas installe. L'installation du micro pourrait echouer.")
+    elif sys_name == "Linux":
+        if shutil.which("apt-get"):
+            print("[BOOTSTRAP] Verification de portaudio (Linux)...")
+            try:
+                subprocess.run(["sudo", "apt-get", "install", "-y", "portaudio19-dev"], check=False)
+            except Exception as e:
+                print(f"[BOOTSTRAP] Erreur apt-get: {e}")
+
 def install_python_deps(py: Path) -> None:
     run([str(py), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
     run([str(py), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")])
@@ -94,6 +110,7 @@ def main() -> int:
 
     ensure_env_template()
     ensure_devices_template()
+    install_system_deps()
     py = ensure_venv()
     install_python_deps(py)
     install_frontend()
