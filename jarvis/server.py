@@ -285,11 +285,11 @@ def listen_and_process(main_loop):
 
                     state.mark_user_activity()
                     texte_l = texte.lower()
-                    wake = "jarvis" in texte_l
-                    en_conversation = state.is_in_conversation()
-
                     # On traite si : wake-word entendu, OU on est dans la fenêtre
                     # de conversation naturelle ouverte par un tour précédent.
+                    wake = any(w in texte_l for w in ["jarvis", "jarv", " jar"])
+                    en_conversation = state.is_in_conversation()
+
                     if not (wake or en_conversation):
                         # Trop de bruit ambiant ? On réinitialise l'état et on continue.
                         state.is_listening = False
