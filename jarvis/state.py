@@ -40,6 +40,19 @@ VIDEO_LANCEE  = False
 CONVERSATION_WINDOW_SECONDS = 45
 conversation_deadline_ts = 0.0
 
+# ── Activité utilisateur / silence ─────────────────────────────────────────
+# Suivi du dernier signe de vie de l'utilisateur (parole, requête web, click...).
+last_user_activity_ts = 0.0
+silence_ping_sent = False  # Évite de repinger en boucle après un long silence.
+
+# ── Barge-in (interruption de Jarvis par la voix) ─────────────────────────
+BARGE_IN_THRESHOLD = 2200  # RMS au-dessus duquel on considère que l'utilisateur parle.
+BARGE_IN_CONSECUTIVE_CHUNKS = 3  # Nb de chunks consécutifs au-dessus du seuil.
+
+# ── Tâches de fond (actions longues non bloquantes) ───────────────────────
+background_tasks = {}  # {id: {"task": asyncio.Task, "label": str, "started": ts}}
+_background_seq = 0
+
 dossier_courant    = None
 dernier_doc_id     = None
 dernier_doc_titre  = None
@@ -69,8 +82,47 @@ def is_in_conversation():
 
 
 def end_conversation():
-    global conversation_deadline_ts
+    global conversation_deadline_ts, silence_ping_sent
     conversation_deadline_ts = 0.0
+    silence_ping_sent = False
+
+
+def mark_user_activity():
+    global last_user_activity_ts, silence_ping_sent
+    last_user_activity_ts = _time.time()
+    silence_ping_sent = False
+
+
+def seconds_since_user_activity():
+    if last_user_activity_ts == 0.0:
+        return None
+    return _time.time() - last_user_activity_ts
+
+
+# ── Helpers tâches de fond ─────────────────────────────────────────────────
+
+def register_background_task(task, label):
+    global _background_seq
+    _background_seq += 1
+    tid = _background_seq
+    background_tasks[tid] = {
+        "task": task,
+        "label": label,
+        "started": _time.time(),
+    }
+    return tid
+
+
+def drop_background_task(tid):
+    background_tasks.pop(tid, None)
+
+
+def active_background_tasks():
+    # Nettoyage opportuniste des tâches terminées.
+    finished = [tid for tid, info in background_tasks.items() if info["task"].done()]
+    for tid in finished:
+        background_tasks.pop(tid, None)
+    return dict(background_tasks)
 
 
 # ── Fonctions WebSocket partagées ───────────────────────────────────────────

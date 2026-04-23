@@ -10,13 +10,14 @@ from jarvis.config import (
     OLLAMA_MODELS, OLLAMA_URL, types
 )
 import jarvis.state as state
-from jarvis.memory import construire_contexte_memoire
+from jarvis.memory import construire_contexte_memoire, resumer_profil, noter_registre, detecter_registre
 from jarvis.config import CREATOR_INFO
 from jarvis.rag_memory import rechercher_souvenirs, stocker_souvenir
 
 def construire_system_prompt(texte_utilisateur=""):
     contexte_memoire = construire_contexte_memoire()
-    
+    profil_appris = resumer_profil()
+
     # --- RAG : Mémoire à Long Terme ---
     souvenirs_rag = ""
     if texte_utilisateur:
@@ -119,7 +120,10 @@ def construire_system_prompt(texte_utilisateur=""):
     
     if contexte_memoire:
         base += "\n\n" + contexte_memoire + "\n"
-        
+
+    if profil_appris:
+        base += "\n" + profil_appris + "\n"
+
     if souvenirs_rag:
         base += "\n\nSOUVENIRS DU PASSE (RAG) pertinents pour la requête actuelle :\n"
         base += souvenirs_rag + "\n"
@@ -146,7 +150,13 @@ def construire_system_prompt(texte_utilisateur=""):
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"
         "REGLE DE CONVERSATION CONTINUE : on est probablement au milieu d'un échange. "
         "Tiens compte des derniers tours, ne redemande pas ce qui a déjà été dit, et n'ouvre pas "
-        "chaque réponse par \"Bonjour\" ou \"Monsieur\" à répétition. Enchaîne naturellement."
+        "chaque réponse par \"Bonjour\" ou \"Monsieur\" à répétition. Enchaîne naturellement.\n"
+        "REGLE D'AMBIGUITE : si la demande est floue, incomplète, ou pourrait viser plusieurs "
+        "cibles (ex. \"allume\" sans pièce, \"ouvre\" sans fichier), NE DEVINE PAS : pose une "
+        "question courte et précise pour lever le doute. Tu peux proposer deux options si c'est utile.\n"
+        "REGLE D'AUDITION : si ce que tu reçois ressemble à une transcription bancale "
+        "(mot isolé étrange, syllabes décousues), demande gentiment de répéter plutôt que "
+        "d'inventer une réponse."
     )
     return base
 
@@ -229,6 +239,10 @@ async def demander_groq(texte):
 
 async def demander_ia(texte):
     state.is_thinking = True
+    state.mark_user_activity()
+    reg = detecter_registre(texte)
+    if reg:
+        noter_registre(reg)
     await state.send_web_state("thinking")
     try:
         from jarvis.voice import reponse_locale
