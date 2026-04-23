@@ -44,7 +44,10 @@ const micIcon      = micBtn.querySelector(".mic-icon");
 const stopIcon     = micBtn.querySelector(".stop-icon");
 const micLabelEl   = document.getElementById("mic-label");
 const stopJarvisBtn= document.getElementById("stop-jarvis-btn");
-const avatarEl     = document.getElementById("avatar-face");
+const avatarCoreEl = document.getElementById("avatar-core");
+const avatarFallbackEl = document.getElementById("avatar-face-fallback");
+const avatarReflectiveVideoEl = document.getElementById("avatar-video-reflective");
+const avatarExpressiveVideoEl = document.getElementById("avatar-video-expressive");
 
 // ── ORB 3D ──────────────────────────────────────────────────────────────────
 let orb = null;
@@ -151,7 +154,7 @@ const PHONEME_CLUSTERS = [
   "gn",
   "ph",
 ];
-const FACE_FRAME_URLS = {
+const AVATAR_FALLBACK_URLS = {
   neutral: "avatar/neutral.png",
   "speak-light": "avatar/speak-light.png",
   "speak-oh": "avatar/speak-oh.png",
@@ -162,6 +165,15 @@ const FACE_FRAME_URLS = {
   alert: "avatar/alert.png",
   serious: "avatar/serious.png",
 };
+const AVATAR_CLIP_URLS = {
+  reflective: "avatar/reflective.mp4",
+  expressive: "avatar/expressive.mp4",
+};
+const AVATAR_POSTER_URLS = {
+  reflective: "avatar/neutral.png",
+  expressive: "avatar/smile.png",
+};
+const AVATAR_CLIP_KEYS = ["reflective", "expressive"];
 
 function resolveAvatarPalette(state, mood) {
   let palette = {
@@ -228,215 +240,170 @@ function resolveAvatarPalette(state, mood) {
   }
 }
 
+function resolveAvatarClip(state, mood) {
+  if (state === "thinking") {
+    return "reflective";
+  }
+  if (state === "speaking") {
+    return "expressive";
+  }
+  if (mood === "warm" || mood === "joy" || mood === "alert") {
+    return "expressive";
+  }
+  return "reflective";
+}
+
+function resolveFallbackFrame(state, mood) {
+  if (state === "thinking") {
+    return "thinking";
+  }
+
+  if (state === "speaking") {
+    if (mood === "warm" || mood === "joy") {
+      return "smile";
+    }
+    if (mood === "alert") {
+      return "alert";
+    }
+    if (mood === "serious") {
+      return "serious";
+    }
+    return "speak-open";
+  }
+
+  if (state === "listening") {
+    if (mood === "warm" || mood === "joy") {
+      return "smile";
+    }
+    if (mood === "serious") {
+      return "serious";
+    }
+    return "alert";
+  }
+
+  if (mood === "warm" || mood === "joy") {
+    return "smile";
+  }
+  if (mood === "alert") {
+    return "alert";
+  }
+  if (mood === "serious") {
+    return "serious";
+  }
+  return "neutral";
+}
+
 class FaceAvatar {
-  constructor(imageEl) {
-    this.imageEl = imageEl;
+  constructor(media) {
+    this.media = media;
     this.state = "idle";
     this.mood = "neutral";
-    this.activeFrame = null;
-    this.targetVolume = 0;
-    this.smoothedVolume = 0;
-    this.lastVolumeAt = 0;
-    this.blinking = false;
-    this.blinkTimer = null;
-    this.blinkHoldTimer = null;
-    this.mouthTimer = null;
+    this.activeClip = "reflective";
+    this.readyClips = new Set();
+    this.failedClips = new Set();
 
-    this.preloadFrames();
-    this.applyFrame("neutral");
-    this.scheduleBlink();
+    this.configureVideo("reflective", media.reflectiveVideoEl);
+    this.configureVideo("expressive", media.expressiveVideoEl);
+    this.updateMedia();
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        this.ensurePlayback();
+      }
+    });
+    window.addEventListener("pointerdown", () => {
+      this.ensurePlayback();
+    }, { once: true, passive: true });
   }
 
   setState(state) {
     this.state = state;
-
-    if (state === "speaking") {
-      this.stopBlink();
-      this.startMouthLoop();
-    } else {
-      this.stopMouthLoop();
-      this.targetVolume = 0;
-      this.smoothedVolume = 0;
-      this.scheduleBlink();
-    }
-
-    this.updateFrame();
+    this.updateMedia();
   }
 
   setMood(mood) {
     this.mood = mood;
-    this.updateFrame();
+    this.updateMedia();
   }
 
-  setVolume(volume) {
-    this.targetVolume = clamp(volume || 0, 0, 1);
-    this.lastVolumeAt = Date.now();
+  setVolume(_volume) {
+    this.ensurePlayback();
+  }
 
-    if (this.state === "speaking" && !this.mouthTimer) {
-      this.startMouthLoop();
+  configureVideo(clip, videoEl) {
+    videoEl.muted = true;
+    videoEl.defaultMuted = true;
+    videoEl.autoplay = true;
+    videoEl.loop = true;
+    videoEl.playsInline = true;
+    videoEl.preload = "auto";
+    videoEl.tabIndex = -1;
+    videoEl.poster = AVATAR_POSTER_URLS[clip];
+    videoEl.setAttribute("playsinline", "");
+    videoEl.setAttribute("webkit-playsinline", "");
+    videoEl.setAttribute("muted", "");
+    videoEl.setAttribute("loop", "");
+    videoEl.setAttribute("autoplay", "");
+    if (!videoEl.getAttribute("src")) {
+      videoEl.src = AVATAR_CLIP_URLS[clip];
     }
+
+    const markReady = () => {
+      this.readyClips.add(clip);
+      this.failedClips.delete(clip);
+      if (this.activeClip === clip) {
+        this.updateMedia();
+      }
+      this.ensurePlayback();
+    };
+
+    videoEl.addEventListener("loadeddata", markReady);
+    videoEl.addEventListener("canplay", markReady);
+    videoEl.addEventListener("playing", markReady);
+    videoEl.addEventListener("error", () => {
+      this.failedClips.add(clip);
+      this.readyClips.delete(clip);
+      if (this.activeClip === clip) {
+        this.updateMedia();
+      }
+    });
+
+    videoEl.load();
   }
 
-  preloadFrames() {
-    Object.values(FACE_FRAME_URLS).forEach((url) => {
-      const image = new Image();
-      image.decoding = "async";
-      image.src = url;
+  getVideoEl(clip) {
+    return clip === "reflective"
+      ? this.media.reflectiveVideoEl
+      : this.media.expressiveVideoEl;
+  }
+
+  ensurePlayback() {
+    AVATAR_CLIP_KEYS.forEach((clip) => {
+      const playPromise = this.getVideoEl(clip).play();
+      if (playPromise) {
+        playPromise.catch(() => {});
+      }
     });
   }
 
-  applyFrame(frame) {
-    if (!this.imageEl) {
-      return;
-    }
-    if (this.activeFrame !== frame) {
-      this.imageEl.src = FACE_FRAME_URLS[frame];
-    }
-    this.activeFrame = frame;
-    this.imageEl.dataset.frame = frame;
-    document.body.dataset.jarvisFrame = frame;
-  }
+  updateMedia() {
+    const nextClip = resolveAvatarClip(this.state, this.mood);
+    const fallbackFrame = resolveFallbackFrame(this.state, this.mood);
+    const showFallback =
+      this.failedClips.has(nextClip) || !this.readyClips.has(nextClip);
 
-  resolveIdleFrame() {
-    if (this.state === "thinking") {
-      return "thinking";
-    }
+    this.activeClip = nextClip;
+    this.media.coreEl.dataset.jarvisClip = nextClip;
+    this.media.coreEl.dataset.videoFallback = showFallback ? "true" : "false";
+    document.body.dataset.jarvisClip = nextClip;
 
-    if (this.state === "listening") {
-      switch (this.mood) {
-        case "warm":
-        case "joy":
-          return "smile";
-        case "serious":
-          return "serious";
-        case "alert":
-          return "alert";
-        default:
-          return "neutral";
-      }
-    }
+    this.media.fallbackEl.src = AVATAR_FALLBACK_URLS[fallbackFrame];
+    this.media.fallbackEl.dataset.fallbackFrame = fallbackFrame;
+    this.media.reflectiveVideoEl.dataset.active = String(nextClip === "reflective");
+    this.media.expressiveVideoEl.dataset.active = String(nextClip === "expressive");
 
-    switch (this.mood) {
-      case "warm":
-      case "joy":
-        return "smile";
-      case "alert":
-        return "alert";
-      case "serious":
-        return "serious";
-      default:
-        return "neutral";
-    }
-  }
-
-  resolveSpeakingFrame() {
-    if (this.smoothedVolume >= 0.58) {
-      return "speak-open";
-    }
-    if (this.smoothedVolume >= 0.34) {
-      return "speak-oh";
-    }
-    if (this.smoothedVolume >= 0.14) {
-      return "speak-light";
-    }
-    return this.resolveIdleFrame();
-  }
-
-  updateFrame() {
-    if (this.blinking && this.state !== "speaking") {
-      this.applyFrame("blink");
-      return;
-    }
-
-    if (this.state === "speaking") {
-      this.applyFrame(this.resolveSpeakingFrame());
-      return;
-    }
-
-    this.applyFrame(this.resolveIdleFrame());
-  }
-
-  startMouthLoop() {
-    if (this.mouthTimer) {
-      return;
-    }
-
-    const cadenceMs = Math.round(1000 / 12);
-    this.mouthTimer = window.setInterval(() => {
-      if (Date.now() - this.lastVolumeAt > cadenceMs * 1.5) {
-        this.targetVolume *= 0.72;
-        if (this.targetVolume < 0.01) {
-          this.targetVolume = 0;
-        }
-      }
-
-      this.smoothedVolume += (this.targetVolume - this.smoothedVolume) * 0.38;
-      if (this.smoothedVolume < 0.01) {
-        this.smoothedVolume = 0;
-      }
-
-      this.updateFrame();
-    }, cadenceMs);
-  }
-
-  stopMouthLoop() {
-    if (this.mouthTimer) {
-      clearInterval(this.mouthTimer);
-      this.mouthTimer = null;
-    }
-  }
-
-  scheduleBlink() {
-    this.clearBlinkTimers();
-
-    if (this.state === "speaking") {
-      return;
-    }
-
-    this.blinkTimer = setTimeout(
-      () => this.playBlinkSequence(),
-      this.state === "thinking" ? rand(2200, 4200) : rand(2800, 5200)
-    );
-  }
-
-  stopBlink() {
-    this.clearBlinkTimers();
-    this.blinking = false;
-  }
-
-  playBlinkSequence() {
-    this.blinking = true;
-    this.updateFrame();
-
-    this.blinkHoldTimer = setTimeout(() => {
-      this.blinking = false;
-      this.updateFrame();
-
-      if (Math.random() < 0.22) {
-        this.blinkTimer = setTimeout(() => {
-          this.blinking = true;
-          this.updateFrame();
-          this.blinkHoldTimer = setTimeout(() => {
-            this.blinking = false;
-            this.updateFrame();
-            this.scheduleBlink();
-          }, rand(70, 105));
-        }, rand(70, 135));
-        return;
-      }
-
-      this.scheduleBlink();
-    }, rand(92, 132));
-  }
-
-  clearBlinkTimers() {
-    if (this.blinkTimer) {
-      clearTimeout(this.blinkTimer);
-      this.blinkTimer = null;
-    }
-    if (this.blinkHoldTimer) {
-      clearTimeout(this.blinkHoldTimer);
-      this.blinkHoldTimer = null;
+    if (!showFallback) {
+      this.ensurePlayback();
     }
   }
 }
@@ -455,7 +422,12 @@ let activeSpeechId = "";
 let lastExpressionText = "";
 let lastExpressionAt = 0;
 let lastExpressionId = "";
-const faceAvatar = new FaceAvatar(avatarEl);
+const faceAvatar = new FaceAvatar({
+  coreEl: avatarCoreEl,
+  fallbackEl: avatarFallbackEl,
+  reflectiveVideoEl: avatarReflectiveVideoEl,
+  expressiveVideoEl: avatarExpressiveVideoEl,
+});
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));

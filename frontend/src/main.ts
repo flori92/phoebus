@@ -43,7 +43,7 @@ type TimedLipsyncFrame = VisemeState & {
   duration_ms: number;
 };
 
-type AvatarFrameKey =
+type AvatarFallbackFrameKey =
   | "neutral"
   | "speak-light"
   | "speak-oh"
@@ -54,10 +54,19 @@ type AvatarFrameKey =
   | "alert"
   | "serious";
 
+type AvatarClipKey = "reflective" | "expressive";
+
 type AvatarVisualPalette = {
   accentRgb: string;
   softRgb: string;
   hotRgb: string;
+};
+
+type AvatarMediaElements = {
+  coreEl: HTMLDivElement;
+  fallbackEl: HTMLImageElement;
+  reflectiveVideoEl: HTMLVideoElement;
+  expressiveVideoEl: HTMLVideoElement;
 };
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -142,7 +151,7 @@ const PHONEME_CLUSTERS = [
   "gn",
   "ph",
 ];
-const FACE_FRAME_URLS: Record<AvatarFrameKey, string> = {
+const AVATAR_FALLBACK_URLS: Record<AvatarFallbackFrameKey, string> = {
   neutral: "/avatar/neutral.png",
   "speak-light": "/avatar/speak-light.png",
   "speak-oh": "/avatar/speak-oh.png",
@@ -153,6 +162,15 @@ const FACE_FRAME_URLS: Record<AvatarFrameKey, string> = {
   alert: "/avatar/alert.png",
   serious: "/avatar/serious.png",
 };
+const AVATAR_CLIP_URLS: Record<AvatarClipKey, string> = {
+  reflective: "/avatar/reflective.mp4",
+  expressive: "/avatar/expressive.mp4",
+};
+const AVATAR_POSTER_URLS: Record<AvatarClipKey, string> = {
+  reflective: "/avatar/neutral.png",
+  expressive: "/avatar/smile.png",
+};
+const AVATAR_CLIP_KEYS: AvatarClipKey[] = ["reflective", "expressive"];
 
 function resolveAvatarPalette(state: OrbState, mood: JarvisMood): AvatarVisualPalette {
   let palette: AvatarVisualPalette = {
@@ -219,6 +237,59 @@ function resolveAvatarPalette(state: OrbState, mood: JarvisMood): AvatarVisualPa
   }
 }
 
+function resolveAvatarClip(state: OrbState, mood: JarvisMood): AvatarClipKey {
+  if (state === "thinking") {
+    return "reflective";
+  }
+  if (state === "speaking") {
+    return "expressive";
+  }
+  if (mood === "warm" || mood === "joy" || mood === "alert") {
+    return "expressive";
+  }
+  return "reflective";
+}
+
+function resolveFallbackFrame(state: OrbState, mood: JarvisMood): AvatarFallbackFrameKey {
+  if (state === "thinking") {
+    return "thinking";
+  }
+
+  if (state === "speaking") {
+    if (mood === "warm" || mood === "joy") {
+      return "smile";
+    }
+    if (mood === "alert") {
+      return "alert";
+    }
+    if (mood === "serious") {
+      return "serious";
+    }
+    return "speak-open";
+  }
+
+  if (state === "listening") {
+    if (mood === "warm" || mood === "joy") {
+      return "smile";
+    }
+    if (mood === "serious") {
+      return "serious";
+    }
+    return "alert";
+  }
+
+  if (mood === "warm" || mood === "joy") {
+    return "smile";
+  }
+  if (mood === "alert") {
+    return "alert";
+  }
+  if (mood === "serious") {
+    return "serious";
+  }
+  return "neutral";
+}
+
 function getStoredToken(): string {
   const params = new URLSearchParams(window.location.search);
   const tokenFromUrl = params.get("token")?.trim() ?? "";
@@ -249,209 +320,117 @@ function rand(min: number, max: number): number {
 class FaceAvatar {
   private state: OrbState = "idle";
   private mood: JarvisMood = "neutral";
-  private activeFrame: AvatarFrameKey | null = null;
-  private targetVolume = 0;
-  private smoothedVolume = 0;
-  private lastVolumeAt = 0;
-  private blinking = false;
-  private blinkTimer: ReturnType<typeof setTimeout> | null = null;
-  private blinkHoldTimer: ReturnType<typeof setTimeout> | null = null;
-  private mouthTimer: ReturnType<typeof setInterval> | null = null;
+  private activeClip: AvatarClipKey = "reflective";
+  private readyClips = new Set<AvatarClipKey>();
+  private failedClips = new Set<AvatarClipKey>();
 
-  constructor(private readonly imageEl: HTMLImageElement) {
-    this.preloadFrames();
-    this.applyFrame("neutral");
-    this.scheduleBlink();
+  constructor(private readonly media: AvatarMediaElements) {
+    this.configureVideo("reflective", media.reflectiveVideoEl);
+    this.configureVideo("expressive", media.expressiveVideoEl);
+    this.updateMedia();
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        this.ensurePlayback();
+      }
+    });
+    window.addEventListener(
+      "pointerdown",
+      () => {
+        this.ensurePlayback();
+      },
+      { once: true, passive: true }
+    );
   }
 
   setState(state: OrbState): void {
     this.state = state;
-
-    if (state === "speaking") {
-      this.stopBlink();
-      this.startMouthLoop();
-    } else {
-      this.stopMouthLoop();
-      this.targetVolume = 0;
-      this.smoothedVolume = 0;
-      this.scheduleBlink();
-    }
-
-    this.updateFrame();
+    this.updateMedia();
   }
 
   setMood(mood: JarvisMood): void {
     this.mood = mood;
-    this.updateFrame();
+    this.updateMedia();
   }
 
-  setVolume(volume: number): void {
-    this.targetVolume = clamp(volume || 0, 0, 1);
-    this.lastVolumeAt = Date.now();
-
-    if (this.state === "speaking" && !this.mouthTimer) {
-      this.startMouthLoop();
-    }
+  setVolume(_volume: number): void {
+    this.ensurePlayback();
   }
 
-  private preloadFrames(): void {
-    for (const url of Object.values(FACE_FRAME_URLS)) {
-      const image = new Image();
-      image.decoding = "async";
-      image.src = url;
+  private configureVideo(clip: AvatarClipKey, videoEl: HTMLVideoElement): void {
+    videoEl.muted = true;
+    videoEl.defaultMuted = true;
+    videoEl.autoplay = true;
+    videoEl.loop = true;
+    videoEl.playsInline = true;
+    videoEl.preload = "auto";
+    videoEl.tabIndex = -1;
+    videoEl.poster = AVATAR_POSTER_URLS[clip];
+    videoEl.setAttribute("playsinline", "");
+    videoEl.setAttribute("webkit-playsinline", "");
+    videoEl.setAttribute("muted", "");
+    videoEl.setAttribute("loop", "");
+    videoEl.setAttribute("autoplay", "");
+    if (!videoEl.getAttribute("src")) {
+      videoEl.src = AVATAR_CLIP_URLS[clip];
     }
+
+    const markReady = (): void => {
+      this.readyClips.add(clip);
+      this.failedClips.delete(clip);
+      if (this.activeClip === clip) {
+        this.updateMedia();
+      }
+      this.ensurePlayback();
+    };
+
+    videoEl.addEventListener("loadeddata", markReady);
+    videoEl.addEventListener("canplay", markReady);
+    videoEl.addEventListener("playing", markReady);
+    videoEl.addEventListener("error", () => {
+      this.failedClips.add(clip);
+      this.readyClips.delete(clip);
+      if (this.activeClip === clip) {
+        this.updateMedia();
+      }
+    });
+
+    videoEl.load();
   }
 
-  private applyFrame(frame: AvatarFrameKey): void {
-    if (this.activeFrame !== frame) {
-      this.imageEl.src = FACE_FRAME_URLS[frame];
-    }
-
-    this.activeFrame = frame;
-    this.imageEl.dataset.frame = frame;
-    document.body.dataset.jarvisFrame = frame;
+  private getVideoEl(clip: AvatarClipKey): HTMLVideoElement {
+    return clip === "reflective"
+      ? this.media.reflectiveVideoEl
+      : this.media.expressiveVideoEl;
   }
 
-  private resolveIdleFrame(): AvatarFrameKey {
-    if (this.state === "thinking") {
-      return "thinking";
-    }
-
-    if (this.state === "listening") {
-      switch (this.mood) {
-        case "warm":
-        case "joy":
-          return "smile";
-        case "serious":
-          return "serious";
-        case "alert":
-          return "alert";
-        default:
-          return "neutral";
+  private ensurePlayback(): void {
+    for (const clip of AVATAR_CLIP_KEYS) {
+      const playPromise = this.getVideoEl(clip).play();
+      if (playPromise) {
+        playPromise.catch(() => {});
       }
     }
-
-    switch (this.mood) {
-      case "warm":
-      case "joy":
-        return "smile";
-      case "alert":
-        return "alert";
-      case "serious":
-        return "serious";
-      default:
-        return "neutral";
-    }
   }
 
-  private resolveSpeakingFrame(): AvatarFrameKey {
-    if (this.smoothedVolume >= 0.58) {
-      return "speak-open";
-    }
-    if (this.smoothedVolume >= 0.34) {
-      return "speak-oh";
-    }
-    if (this.smoothedVolume >= 0.14) {
-      return "speak-light";
-    }
-    return this.resolveIdleFrame();
-  }
+  private updateMedia(): void {
+    const nextClip = resolveAvatarClip(this.state, this.mood);
+    const fallbackFrame = resolveFallbackFrame(this.state, this.mood);
+    const showFallback =
+      this.failedClips.has(nextClip) || !this.readyClips.has(nextClip);
 
-  private updateFrame(): void {
-    if (this.blinking && this.state !== "speaking") {
-      this.applyFrame("blink");
-      return;
-    }
+    this.activeClip = nextClip;
+    this.media.coreEl.dataset.jarvisClip = nextClip;
+    this.media.coreEl.dataset.videoFallback = showFallback ? "true" : "false";
+    document.body.dataset.jarvisClip = nextClip;
 
-    if (this.state === "speaking") {
-      this.applyFrame(this.resolveSpeakingFrame());
-      return;
-    }
+    this.media.fallbackEl.src = AVATAR_FALLBACK_URLS[fallbackFrame];
+    this.media.fallbackEl.dataset.fallbackFrame = fallbackFrame;
+    this.media.reflectiveVideoEl.dataset.active = String(nextClip === "reflective");
+    this.media.expressiveVideoEl.dataset.active = String(nextClip === "expressive");
 
-    this.applyFrame(this.resolveIdleFrame());
-  }
-
-  private startMouthLoop(): void {
-    if (this.mouthTimer) {
-      return;
-    }
-
-    const cadenceMs = Math.round(1000 / 12);
-    this.mouthTimer = window.setInterval(() => {
-      if (Date.now() - this.lastVolumeAt > cadenceMs * 1.5) {
-        this.targetVolume *= 0.72;
-        if (this.targetVolume < 0.01) {
-          this.targetVolume = 0;
-        }
-      }
-
-      this.smoothedVolume += (this.targetVolume - this.smoothedVolume) * 0.38;
-      if (this.smoothedVolume < 0.01) {
-        this.smoothedVolume = 0;
-      }
-
-      this.updateFrame();
-    }, cadenceMs);
-  }
-
-  private stopMouthLoop(): void {
-    if (this.mouthTimer) {
-      clearInterval(this.mouthTimer);
-      this.mouthTimer = null;
-    }
-  }
-
-  private scheduleBlink(): void {
-    this.clearBlinkTimers();
-
-    if (this.state === "speaking") {
-      return;
-    }
-
-    this.blinkTimer = setTimeout(
-      () => this.playBlinkSequence(),
-      this.state === "thinking" ? rand(2_200, 4_200) : rand(2_800, 5_200)
-    );
-  }
-
-  private stopBlink(): void {
-    this.clearBlinkTimers();
-    this.blinking = false;
-  }
-
-  private playBlinkSequence(): void {
-    this.blinking = true;
-    this.updateFrame();
-
-    this.blinkHoldTimer = setTimeout(() => {
-      this.blinking = false;
-      this.updateFrame();
-
-      if (Math.random() < 0.22) {
-        this.blinkTimer = setTimeout(() => {
-          this.blinking = true;
-          this.updateFrame();
-          this.blinkHoldTimer = setTimeout(() => {
-            this.blinking = false;
-            this.updateFrame();
-            this.scheduleBlink();
-          }, rand(70, 105));
-        }, rand(70, 135));
-        return;
-      }
-
-      this.scheduleBlink();
-    }, rand(92, 132));
-  }
-
-  private clearBlinkTimers(): void {
-    if (this.blinkTimer) {
-      clearTimeout(this.blinkTimer);
-      this.blinkTimer = null;
-    }
-    if (this.blinkHoldTimer) {
-      clearTimeout(this.blinkHoldTimer);
-      this.blinkHoldTimer = null;
+    if (!showFallback) {
+      this.ensurePlayback();
     }
   }
 }
@@ -858,14 +837,28 @@ function scheduleGazeLoop(): void {
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
-const avatarEl = document.getElementById("avatar-face") as HTMLImageElement;
+const avatarCoreEl = document.getElementById("avatar-core") as HTMLDivElement;
+const avatarFallbackEl = document.getElementById(
+  "avatar-face-fallback"
+) as HTMLImageElement;
+const avatarReflectiveVideoEl = document.getElementById(
+  "avatar-video-reflective"
+) as HTMLVideoElement;
+const avatarExpressiveVideoEl = document.getElementById(
+  "avatar-video-expressive"
+) as HTMLVideoElement;
 const statusEl = document.getElementById("status-text") as HTMLDivElement;
 const errorEl = document.getElementById("error-text") as HTMLDivElement;
 const badgeEl = document.getElementById("connection-badge") as HTMLDivElement;
 const badgeLabelEl = document.getElementById(
   "connection-label"
 ) as HTMLSpanElement;
-const faceAvatar = new FaceAvatar(avatarEl);
+const faceAvatar = new FaceAvatar({
+  coreEl: avatarCoreEl,
+  fallbackEl: avatarFallbackEl,
+  reflectiveVideoEl: avatarReflectiveVideoEl,
+  expressiveVideoEl: avatarExpressiveVideoEl,
+});
 
 // ── Orb ───────────────────────────────────────────────────────────────────────
 const orb = createOrb(canvas);
