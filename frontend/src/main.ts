@@ -8,7 +8,6 @@
  */
 
 import { createOrb, type OrbState } from "./orb";
-import { injectVisionButton, captureFrame } from "./screen_capture";
 import "./style.css";
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -45,7 +44,6 @@ const badgeEl = document.getElementById("connection-badge") as HTMLDivElement;
 const badgeLabelEl = document.getElementById(
   "connection-label"
 ) as HTMLSpanElement;
-const muteButtonEl = document.getElementById("mute-button") as HTMLButtonElement;
 
 // ── Orb ───────────────────────────────────────────────────────────────────────
 const orb = createOrb(canvas);
@@ -61,12 +59,6 @@ const STATE_LABELS: Record<OrbState, string> = {
 function applyState(state: OrbState): void {
   orb.setState(state);
   statusEl.textContent = STATE_LABELS[state];
-}
-
-function setMuted(muted: boolean): void {
-  muteButtonEl.classList.toggle("is-muted", muted);
-  muteButtonEl.setAttribute("aria-pressed", String(muted));
-  muteButtonEl.textContent = muted ? "unmute" : "mute";
 }
 
 // ── Error toast ───────────────────────────────────────────────────────────────
@@ -86,7 +78,6 @@ function setConnected(ok: boolean): void {
   badgeEl.classList.toggle("connected", ok);
   badgeEl.classList.toggle("disconnected", !ok);
   badgeLabelEl.textContent = ok ? "connecte" : "reconnexion";
-  muteButtonEl.disabled = !ok;
 }
 
 // ── WebSocket with auto-reconnect ─────────────────────────────────────────────
@@ -130,20 +121,7 @@ function connect(): void {
       };
 
       if (data.action === "request_screen_capture") {
-        const frame = await captureFrame();
-        if (frame && ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: "screen_frame",
-            id: data.id,
-            data: frame,
-          }));
-        } else if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: "screen_frame",
-            id: data.id,
-            error: "no_stream",
-          }));
-        }
+        // Obsolete: Jarvis utilise la vision native (pyautogui)
         return;
       }
       if (data.action === "auth_ok") {
@@ -182,9 +160,6 @@ function connect(): void {
       if (typeof data.volume === "number") {
         orb.setVolume(data.volume);
       }
-      if (typeof data.muted === "boolean") {
-        setMuted(data.muted);
-      }
     } catch {
       // ignore malformed messages
     }
@@ -210,21 +185,10 @@ function scheduleReconnect(): void {
 }
 
 // ── Events ──────────────────────────────────────────────────────────────────
-muteButtonEl.addEventListener("click", () => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-  // Envoi du signal stop au backend
-  ws.send(JSON.stringify({ type: "stop_audio" }));
-
-  // Feedback immédiat sur l'orbe
-  applyState("idle");
-});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 setConnected(false);
 applyState("idle");
-setMuted(false);
-injectVisionButton();
 connect();
 
 // Silence unused-import warning for showError
