@@ -152,12 +152,15 @@ RÈGLES VITALES:
     for etape in range(10):  # Limite de sécurité anti-boucle infinie
         try:
             print(f"[AGENT NATIF] Étape {etape+1}/10. L'agent réfléchit...")
-            response = client.models.generate_content(
-                model=CHOSEN_MODEL,
+            # On utilise FLASH spécifiquement pour l'agent car c'est ULTRA réactif
+            model_name = "gemini-2.0-flash" 
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model_name,
                 contents=historique_agent,
                 config=types.GenerateContentConfig(
                     system_instruction=agent_prompt,
-                    temperature=0.2, # Température basse pour garantir le respect du JSON
+                    temperature=0.1,
                 ),
             )
             

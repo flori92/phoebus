@@ -65,11 +65,11 @@ async def executer_une_action(d):
     # ── AGENT NATIF ── (tourne en tâche de fond : la conversation continue) ──
     if action == "agent_natif":
         instruction = d.get("instruction", "")
-        await parler(f"Je m'en occupe en parallèle : {instruction}")
+        await parler(f"J'initie l'agent autonome pour : {instruction}")
 
         async def _run_agent():
             res = await orchestrer_agent_autonome(instruction)
-            await parler(f"Agent natif terminé. {res}")
+            await parler(f"Tâche autonome terminée : {res}")
 
         task = asyncio.create_task(_run_agent())
         state.register_background_task(task, label=f"agent_natif: {instruction[:60]}")

@@ -116,11 +116,13 @@ def construire_system_prompt(texte_utilisateur=""):
     
     # ── AJOUT IMPORTANT : CONTRÔLE NATIF DE LA MACHINE VIA AGENT AUTONOME ──
     base += (
-        "\n\nAGENT NATIF / CONTROLE COMPLET DE LA MACHINE :\n"
-        "Si l'utilisateur te demande de prendre le contrôle, de faire des actions complexes "
-        "sur son ordinateur (modifier des paramètres, copier coller, écrire, automatiser des "
-        "clics, gérer le système, utiliser le terminal nativement), tu dois déléguer la tâche "
-        "à l'Agent Natif.\n"
+        "\n\nAUTONOMIE TOTALE (AGENT NATIF) :\n"
+        "Tu es capable de TOUT faire sur cette machine. Si Floriace te demande une action "
+        "qui n'est pas couverte par tes commandes API (Home Assistant, Google, etc.), "
+        "ne dis JAMAIS que tu ne peux pas le faire. Utilise IMMÉDIATEMENT l'Agent Natif.\n"
+        "L'Agent Natif peut : installer des logiciels, modifier des fichiers système, "
+        "chercher sur le web (via le navigateur), rédiger des mails via l'app locale, "
+        "gérer les paramètres du Mac, automatiser n'importe quel logiciel.\n"
         '{"action": "agent_natif", "instruction": "instruction complète et détaillée de ce qu il doit accomplir"}\n\n'
     )
     # ───────────────────────────────────────────────────────────────────────
