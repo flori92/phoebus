@@ -8,6 +8,7 @@
  */
 
 import { createOrb, type OrbState } from "./orb";
+import { createFaceAvatar } from "./face-avatar";
 import "./style.css";
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -48,6 +49,15 @@ const badgeLabelEl = document.getElementById(
 // ── Orb ───────────────────────────────────────────────────────────────────────
 const orb = createOrb(canvas);
 
+// ── Face avatar — activé par défaut, désactivable via ?avatar=orb ────────
+const urlParams = new URLSearchParams(window.location.search);
+const avatarMode = (urlParams.get("avatar") ?? "face").toLowerCase();
+const faceAvatar =
+  avatarMode === "orb" ? null : createFaceAvatar(document.body);
+if (faceAvatar) {
+  document.body.classList.add("has-face-avatar");
+}
+
 // ── State labels (French) ────────────────────────────────────────────────────
 const STATE_LABELS: Record<OrbState, string> = {
   idle: "",
@@ -58,6 +68,7 @@ const STATE_LABELS: Record<OrbState, string> = {
 
 function applyState(state: OrbState): void {
   orb.setState(state);
+  if (faceAvatar) faceAvatar.setState(state);
   statusEl.textContent = STATE_LABELS[state];
 }
 
@@ -152,6 +163,7 @@ function connect(): void {
       }
       if (data.action === "set_volume" && typeof data.volume === "number") {
         orb.setVolume(data.volume);
+        if (faceAvatar) faceAvatar.setVolume(data.volume);
         return;
       }
       if (data.state) {
@@ -159,6 +171,7 @@ function connect(): void {
       }
       if (typeof data.volume === "number") {
         orb.setVolume(data.volume);
+        if (faceAvatar) faceAvatar.setVolume(data.volume);
       }
     } catch {
       // ignore malformed messages

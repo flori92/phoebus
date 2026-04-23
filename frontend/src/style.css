@@ -26,6 +26,57 @@ body {
   pointer-events: none;
 }
 
+/* ── Face Avatar — animated portrait, layered over the orb ────────────── */
+.face-avatar {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(62vmin, 620px);
+  height: min(62vmin, 620px);
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+  /* soft vignette + blue glow for a "hologram" feel */
+  box-shadow:
+    0 0 60px rgba(76, 168, 232, 0.12),
+    0 0 160px rgba(76, 168, 232, 0.06),
+    inset 0 0 100px rgba(0, 0, 0, 0.45);
+  filter: drop-shadow(0 6px 40px rgba(76, 168, 232, 0.18));
+}
+
+.face-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+  user-select: none;
+  /* base image never fades; top layer hard-cuts for lip-sync but
+     ramps smoothly for idle↔speaking transitions */
+  transition: opacity 140ms linear;
+}
+
+.face-layer-bottom {
+  z-index: 1;
+  transition: opacity 420ms ease; /* cross-fade doux des expressions */
+  opacity: 1;
+}
+
+.face-layer-top {
+  z-index: 2;
+  opacity: 0; /* rendu décide quand on la révèle */
+}
+
+/* Orb estompé quand le face avatar est actif pour ne pas rivaliser. */
+body.has-face-avatar #orb-canvas {
+  opacity: 0.35;
+  filter: blur(1px);
+  transition: opacity 600ms ease, filter 600ms ease;
+}
+
 /* ── Status text — "listening…" / "thinking…" ────────────────────────────── */
 #status-text {
   position: fixed;
