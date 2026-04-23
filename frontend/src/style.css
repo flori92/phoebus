@@ -17,6 +17,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Perspective sur body pour que le tilt 3D du visage (rotateX/rotateY)
+   donne un vrai effet de profondeur quand le curseur bouge. */
+body {
+  perspective: 1400px;
+  perspective-origin: 50% 45%;
+}
+
 /* ── Canvas — fills the viewport behind everything ───────────────────────── */
 #orb-canvas {
   position: fixed;
@@ -177,6 +184,41 @@ body {
   opacity: 0;
 }
 
+/* Reflet lumineux animé : radial gradient qui orbite le visage en phase
+   avec l'aura. Position pilotée par --hl-x / --hl-y (JS), intensité par
+   --hl-intensity. mix-blend-mode screen ne modifie que les zones claires
+   du visage (joues, front, arête du nez), pas les ombres : effet de
+   lumière rasante réaliste. */
+.face-highlight {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--hl-x, 50%) var(--hl-y, 50%),
+    rgba(var(--aura-accent), calc(var(--hl-intensity, 0.2) * 1.2)) 0%,
+    rgba(var(--aura-warm), calc(var(--hl-intensity, 0.2) * 0.6)) 15%,
+    transparent 38%
+  );
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle at center, black 82%, transparent 100%);
+  mask-image: radial-gradient(circle at center, black 82%, transparent 100%);
+  transition: background 200ms linear;
+}
+
+/* Canvas de particules neurones → bouche. Placé au-dessus du portrait
+   pour que les particules semblent venir "de dehors" et s'infiltrer
+   dans la bouche. Z-index au-dessus du reflet mais sous l'anneau ring. */
+.face-particles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+}
+
 /* ── Orbe en mode anneau neural quand le visage est actif ────────────── */
 /* On masque l'intérieur pour créer une couronne de particules/neurones
    tournant autour du portrait, au lieu d'un nuage plein écran. */
@@ -216,6 +258,19 @@ body.has-face-avatar[data-state="thinking"] #orb-canvas {
 }
 body.has-face-avatar[data-state="listening"] #orb-canvas {
   filter: hue-rotate(120deg) saturate(1.1);
+}
+
+/* Accessibilité : si l'utilisateur a demandé "moins d'animations", on
+   coupe l'aura tournante, la poussière neurale et on fige le reflet. */
+@media (prefers-reduced-motion: reduce) {
+  .face-aura,
+  .face-avatar::after {
+    animation: none !important;
+  }
+  .face-avatar,
+  body.has-face-avatar #orb-canvas {
+    transition: none !important;
+  }
 }
 
 /* ── Status text — "listening…" / "thinking…" ────────────────────────────── */
