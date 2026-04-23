@@ -3,6 +3,8 @@
 import os
 import pickle
 import webbrowser
+import base64
+from email.mime.text import MIMEText
 from datetime import datetime, timezone
 
 from jarvis.config import (
@@ -111,6 +113,21 @@ def lire_emails(max_results=3):
         return reponse.strip()
     except Exception as e:
         return f"Erreur Gmail : {e}"
+
+
+def envoyer_email(destinataire, sujet, corps):
+    try:
+        service = get_gmail_service()
+        if not service:
+            return "Gmail non disponible."
+        message = MIMEText(corps)
+        message['to'] = destinataire
+        message['subject'] = sujet
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        service.users().messages().send(userId='me', body={'raw': raw}).execute()
+        return f"Email envoyé à {destinataire}, Floriace."
+    except Exception as e:
+        return f"Erreur envoi email : {e}"
 
 
 def lister_evenements_calendar():

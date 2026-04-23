@@ -140,6 +140,7 @@ def construire_system_prompt(texte_utilisateur=""):
         '{"action": "write_doc", "content": "TEXTE"}\n'
         '{"action": "create_sheet", "title": "TITRE"}\n'
         '{"action": "read_emails"}\n'
+        '{"action": "write_email", "recipient": "email@dest.com", "subject": "sujet", "body": "corps du message"}\n'
         '{"action": "read_calendar"}\n\n'
         "WHATSAPP :\n"
         '{"action": "whatsapp_appel", "contact": "NOM_DU_CONTACT"}\n\n'

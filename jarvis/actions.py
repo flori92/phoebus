@@ -24,7 +24,7 @@ from jarvis.desktop import (
 )
 from jarvis.google_services import (
     creer_google_doc, modifier_google_doc, lire_emails, lister_evenements_calendar,
-    creer_google_sheet
+    creer_google_sheet, envoyer_email
 )
 from jarvis.vision import jarvis_vision_cliquer, jarvis_vision_ecrire
 from jarvis.agent import orchestrer_agent_autonome
@@ -344,6 +344,16 @@ async def executer_une_action(d):
         
     elif action == "read_emails":
         await parler(lire_emails())
+        return
+
+    elif action == "write_email":
+        dest = d.get("recipient")
+        subj = d.get("subject", "Message de Jarvis")
+        body = d.get("body", "")
+        if dest and body:
+            await parler(envoyer_email(dest, subj, body))
+        else:
+            await parler("Il me manque le destinataire ou le corps du message pour envoyer l'email.")
         return
         
     elif action == "read_calendar":
