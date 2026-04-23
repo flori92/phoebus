@@ -7,13 +7,36 @@ from jarvis.config import AUDIT_FILE, DEVICE_CONFIG_FILE
 from jarvis.utils import normalize_text
 
 # ── Actions sensibles ──────────────────────────────────────────────────────
-DEFAULT_SENSITIVE_ACTIONS = {
-    "ha_alarme", "ha_thermostat", "ha_scene",
-    "voir_ecran", "vision_ecrire", "whatsapp_appel",
-    "trier_par_type", "trier_par_date", "trier_complet",
-    "renommer_fichier", "deplacer_fichier",
-    "create_doc", "write_doc", "create_sheet",
+# Trois niveaux de risque :
+#  - "low"    : on exécute silencieusement.
+#  - "medium" : on exécute, mais Jarvis annonce "J'applique X" avant de le faire
+#               pour laisser 2 s à l'utilisateur pour couper à la voix (barge-in).
+#  - "high"   : confirmation vocale explicite requise (dire "je confirme"
+#               ou "annule").
+DEFAULT_RISK_BY_ACTION = {
+    # High : irréversible, destructif, appels sortants, écriture écran.
+    "ha_alarme": "high",
+    "whatsapp_appel": "high",
+    "vision_ecrire": "high",
+    "voir_ecran": "high",
+    "agent_natif": "high",
+    "renommer_fichier": "high",
+    "deplacer_fichier": "high",
+    # Medium : ça remue, c'est rattrapable.
+    "ha_thermostat": "medium",
+    "ha_scene": "medium",
+    "trier_par_type": "medium",
+    "trier_par_date": "medium",
+    "trier_complet": "medium",
+    "create_doc": "medium",
+    "write_doc": "medium",
+    "create_sheet": "medium",
+    "creer_dossier": "medium",
+    "oublier": "medium",
 }
+
+# Conservé pour compat descendante — dérivé du dict ci-dessus.
+DEFAULT_SENSITIVE_ACTIONS = {a for a, lvl in DEFAULT_RISK_BY_ACTION.items() if lvl == "high"}
 
 CONFIRM_WORDS = {
     "confirme", "je confirme", "ok confirme", "oui confirme",
@@ -100,6 +123,33 @@ def is_sensitive_action(action):
     if action in configured:
         return bool(configured[action])
     return action in DEFAULT_SENSITIVE_ACTIONS
+
+
+def risk_level_for(action):
+    """Renvoie "low" | "medium" | "high" — résout aussi via le registre de skills."""
+    # 1. device_config (override utilisateur)
+    configured = DEVICE_CONFIG.get("risk_levels", {}) or {}
+    if action in configured:
+        lvl = str(configured[action]).lower()
+        if lvl in ("low", "medium", "high"):
+            return lvl
+
+    # 2. override booléen historique "sensitive_actions"
+    configured_bool = DEVICE_CONFIG.get("sensitive_actions", {})
+    if action in configured_bool:
+        return "high" if configured_bool[action] else "low"
+
+    # 3. skill registry (chargé à la volée pour éviter l'import circulaire)
+    try:
+        from jarvis.skills import risk_of
+        risk = risk_of(action, fallback=None)
+        if risk in ("low", "medium", "high"):
+            return risk
+    except Exception:
+        pass
+
+    # 4. défauts internes
+    return DEFAULT_RISK_BY_ACTION.get(action, "low")
 
 
 def is_confirmation_text(text):

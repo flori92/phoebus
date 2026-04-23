@@ -65,6 +65,42 @@ def stocker_souvenir(texte: str, source: str = "conversation", importance: int =
         print(f"[RAG] Erreur d'écriture : {e}")
         return False
 
+def consolider_souvenirs(max_age_days: int = 30, importance_min: int = 1):
+    """Consolidation légère : supprime les souvenirs anciens et peu importants.
+
+    Ce n'est pas encore une vraie consolidation LLM (résumé thématique),
+    juste un nettoyage pour éviter que le RAG se dilue. La structure est
+    prête à accueillir une version enrichie plus tard.
+    """
+    if not init_chroma():
+        return 0
+    try:
+        now = datetime.now()
+        cutoff = now.timestamp() - max_age_days * 86400
+        supprimes = 0
+        # ChromaDB n'a pas de filtre par date natif sur tous les backends,
+        # on paginera manuellement.
+        data = _collection.get(include=["metadatas"])
+        ids = data.get("ids", []) or []
+        metas = data.get("metadatas", []) or []
+        ids_a_virer = []
+        for i, meta in enumerate(metas):
+            try:
+                ts = datetime.fromisoformat(meta.get("timestamp", "")).timestamp()
+            except Exception:
+                continue
+            imp = int(meta.get("importance", 1) or 1)
+            if ts < cutoff and imp <= importance_min:
+                ids_a_virer.append(ids[i])
+        if ids_a_virer:
+            _collection.delete(ids=ids_a_virer)
+            supprimes = len(ids_a_virer)
+        return supprimes
+    except Exception as e:
+        print(f"[RAG] Erreur consolidation : {e}")
+        return 0
+
+
 def rechercher_souvenirs(requete: str, n_results: int = 3):
     """
     Recherche les souvenirs les plus pertinents par rapport à la requête.
