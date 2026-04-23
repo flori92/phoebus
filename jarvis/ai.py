@@ -108,6 +108,12 @@ def construire_system_prompt(texte_utilisateur=""):
         '{"action": "mode_iron_man", "etat": "on/off"}\n\n'
     )
     
+    # ── AJOUT : CONTROLE DU VOLUME ──
+    base += (
+        "\n\nCONTROLE DU VOLUME :\n"
+        '{"action": "volume_control", "value": "up/down/mute"}\n\n'
+    )
+    
     # ── AJOUT IMPORTANT : CONTRÔLE NATIF DE LA MACHINE VIA AGENT AUTONOME ──
     base += (
         "\n\nAGENT NATIF / CONTROLE COMPLET DE LA MACHINE :\n"

@@ -283,6 +283,23 @@ async def executer_une_action(d):
                 await parler("Je n'ai pas trouvé de vidéo correspondante sur YouTube.")
         return
 
+    elif action == "volume_control":
+        val = d.get("value", "up").lower()
+        from jarvis.config import pyautogui
+        if not pyautogui:
+            await parler("Le contrôle du volume n'est pas disponible sur cette machine.")
+            return
+        if val == "up":
+            for _ in range(5): pyautogui.press('volumeup')
+            await parler("Volume augmenté.")
+        elif val == "down":
+            for _ in range(5): pyautogui.press('volumedown')
+            await parler("Volume baissé.")
+        elif val == "mute":
+            pyautogui.press('volumemute')
+            await parler("Son coupé.")
+        return
+
     # ── SPORT ────────────────────────────────────────────────────────────────
     elif action == "sport_resultats":
         eq = d.get("equipe")
