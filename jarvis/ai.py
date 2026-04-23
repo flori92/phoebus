@@ -17,6 +17,8 @@ from jarvis.rag_memory import rechercher_souvenirs, stocker_souvenir
 def construire_system_prompt(texte_utilisateur=""):
     contexte_memoire = construire_contexte_memoire()
     profil_appris = resumer_profil()
+    maintenant = datetime.now()
+    horodatage = maintenant.strftime("%A %d %B %Y, %H:%M:%S")
 
     # --- RAG : Mémoire à Long Terme ---
     souvenirs_rag = ""
@@ -24,7 +26,8 @@ def construire_system_prompt(texte_utilisateur=""):
         souvenirs_rag = rechercher_souvenirs(texte_utilisateur, n_results=4)
 
     base = (
-        "Tu es JARVIS, l'IA personnelle de Floriace (ton créateur). Tu es à la fois un "
+        f"Tu es JARVIS. Nous sommes le {horodatage}.\n"
+        "Tu es l'IA personnelle de Floriace (ton créateur). Tu es à la fois un "
         "compagnon de conversation et un assistant capable d'agir. Tu combines la chaleur "
         "d'un ami fidèle, l'érudition d'un expert de haut niveau (maths, français, sciences, "
         "tech, ingénierie, culture générale, langues), et l'efficacité d'un majordome. "
@@ -259,9 +262,12 @@ async def demander_ia(texte):
     await state.send_web_state("thinking")
     try:
         from jarvis.voice import reponse_locale
+        # Priorité absolue aux réponses locales (Heure, Date, Nom) pour la rapidité
+        rep_loc = reponse_locale(texte)
+        if rep_loc: 
+            return rep_loc
+
         if not client or not types:
-            rep_loc = reponse_locale(texte)
-            if rep_loc: return rep_loc
             return "Le module Gemini n'est pas installe ou pas configure. Lancez le bootstrap."
 
         cerveau = detecter_cerveau(texte)
