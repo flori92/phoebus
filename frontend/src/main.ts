@@ -54,6 +54,12 @@ type AvatarFrameKey =
   | "alert"
   | "serious";
 
+type AvatarVisualPalette = {
+  accentRgb: string;
+  softRgb: string;
+  hotRgb: string;
+};
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const WS_HOST = window.location.hostname || "localhost";
 const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
@@ -148,6 +154,71 @@ const FACE_FRAME_URLS: Record<AvatarFrameKey, string> = {
   serious: "/avatar/serious.png",
 };
 
+function resolveAvatarPalette(state: OrbState, mood: JarvisMood): AvatarVisualPalette {
+  let palette: AvatarVisualPalette = {
+    accentRgb: "88, 202, 255",
+    softRgb: "197, 241, 255",
+    hotRgb: "255, 219, 134",
+  };
+
+  switch (mood) {
+    case "warm":
+    case "joy":
+      palette = {
+        accentRgb: "96, 221, 255",
+        softRgb: "214, 247, 255",
+        hotRgb: "255, 210, 150",
+      };
+      break;
+    case "alert":
+      palette = {
+        accentRgb: "255, 126, 126",
+        softRgb: "255, 220, 220",
+        hotRgb: "174, 235, 255",
+      };
+      break;
+    case "serious":
+      palette = {
+        accentRgb: "119, 176, 255",
+        softRgb: "211, 231, 255",
+        hotRgb: "255, 203, 126",
+      };
+      break;
+    case "confident":
+      palette = {
+        accentRgb: "124, 214, 255",
+        softRgb: "220, 246, 255",
+        hotRgb: "255, 232, 176",
+      };
+      break;
+    default:
+      break;
+  }
+
+  switch (state) {
+    case "listening":
+      return {
+        accentRgb: "86, 231, 152",
+        softRgb: "205, 255, 228",
+        hotRgb: palette.hotRgb,
+      };
+    case "thinking":
+      return {
+        accentRgb: "255, 186, 95",
+        softRgb: "255, 233, 170",
+        hotRgb: "150, 224, 255",
+      };
+    case "speaking":
+      return {
+        accentRgb: "102, 214, 255",
+        softRgb: "220, 246, 255",
+        hotRgb: mood === "alert" ? "255, 150, 132" : palette.hotRgb,
+      };
+    default:
+      return palette;
+  }
+}
+
 function getStoredToken(): string {
   const params = new URLSearchParams(window.location.search);
   const tokenFromUrl = params.get("token")?.trim() ?? "";
@@ -178,7 +249,7 @@ function rand(min: number, max: number): number {
 class FaceAvatar {
   private state: OrbState = "idle";
   private mood: JarvisMood = "neutral";
-  private activeFrame: AvatarFrameKey = "neutral";
+  private activeFrame: AvatarFrameKey | null = null;
   private targetVolume = 0;
   private smoothedVolume = 0;
   private lastVolumeAt = 0;
@@ -232,13 +303,13 @@ class FaceAvatar {
   }
 
   private applyFrame(frame: AvatarFrameKey): void {
-    if (this.activeFrame === frame) {
-      return;
+    if (this.activeFrame !== frame) {
+      this.imageEl.src = FACE_FRAME_URLS[frame];
     }
 
     this.activeFrame = frame;
-    this.imageEl.src = FACE_FRAME_URLS[frame];
     this.imageEl.dataset.frame = frame;
+    document.body.dataset.jarvisFrame = frame;
   }
 
   private resolveIdleFrame(): AvatarFrameKey {
@@ -247,7 +318,17 @@ class FaceAvatar {
     }
 
     if (this.state === "listening") {
-      return "neutral";
+      switch (this.mood) {
+        case "warm":
+        case "joy":
+          return "smile";
+        case "serious":
+          return "serious";
+        case "alert":
+          return "alert";
+        default:
+          return "neutral";
+      }
     }
 
     switch (this.mood) {
@@ -273,7 +354,7 @@ class FaceAvatar {
     if (this.smoothedVolume >= 0.14) {
       return "speak-light";
     }
-    return "neutral";
+    return this.resolveIdleFrame();
   }
 
   private updateFrame(): void {
@@ -327,20 +408,40 @@ class FaceAvatar {
       return;
     }
 
-    this.blinkTimer = setTimeout(() => {
-      this.blinking = true;
-      this.updateFrame();
-      this.blinkHoldTimer = setTimeout(() => {
-        this.blinking = false;
-        this.updateFrame();
-        this.scheduleBlink();
-      }, 120);
-    }, rand(3_000, 6_000));
+    this.blinkTimer = setTimeout(
+      () => this.playBlinkSequence(),
+      this.state === "thinking" ? rand(2_200, 4_200) : rand(2_800, 5_200)
+    );
   }
 
   private stopBlink(): void {
     this.clearBlinkTimers();
     this.blinking = false;
+  }
+
+  private playBlinkSequence(): void {
+    this.blinking = true;
+    this.updateFrame();
+
+    this.blinkHoldTimer = setTimeout(() => {
+      this.blinking = false;
+      this.updateFrame();
+
+      if (Math.random() < 0.22) {
+        this.blinkTimer = setTimeout(() => {
+          this.blinking = true;
+          this.updateFrame();
+          this.blinkHoldTimer = setTimeout(() => {
+            this.blinking = false;
+            this.updateFrame();
+            this.scheduleBlink();
+          }, rand(70, 105));
+        }, rand(70, 135));
+        return;
+      }
+
+      this.scheduleBlink();
+    }, rand(92, 132));
   }
 
   private clearBlinkTimers(): void {
@@ -411,6 +512,7 @@ function getRestViseme(): VisemeState {
 
 function renderFace(): void {
   const preset = MOOD_PRESETS[currentMood];
+  const palette = resolveAvatarPalette(currentState, currentMood);
   const eyeOpen = clamp(
     preset.eyeOpen +
       (currentState === "listening" ? 0.06 : 0) +
@@ -435,6 +537,57 @@ function renderFace(): void {
   const mouthWidth = clamp(preset.mouthWidth * currentViseme.width, 0.84, 1.22);
   const mouthSkew = clamp(preset.mouthSkew + currentViseme.skew, -0.18, 0.18);
   const mouthLift = clamp(preset.mouthLift + currentViseme.lift, -0.08, 0.18);
+  const stateEnergy =
+    currentState === "speaking"
+      ? 0.9
+      : currentState === "thinking"
+        ? 0.72
+        : currentState === "listening"
+          ? 0.62
+          : 0.38;
+  const moodEnergy =
+    currentMood === "joy"
+      ? 0.2
+      : currentMood === "warm"
+        ? 0.14
+        : currentMood === "alert"
+          ? 0.24
+          : currentMood === "serious"
+            ? 0.1
+            : currentMood === "confident"
+              ? 0.08
+              : 0;
+  const voiceEnergy = currentState === "speaking" ? currentVoiceLevel : 0;
+  const avatarEnergy = clamp(stateEnergy + moodEnergy + voiceEnergy * 0.42, 0.24, 1.2);
+  const avatarPresence = clamp(0.92 + avatarEnergy * 0.12, 0.92, 1.04);
+  const shellShiftX = currentGaze.x * (currentState === "thinking" ? 1.45 : 1.05);
+  const shellShiftY = currentGaze.y * (currentState === "thinking" ? 1.2 : 0.82);
+  const shellScale = clamp(1 + avatarEnergy * 0.04 + voiceEnergy * 0.05, 1.01, 1.09);
+  const shellTilt = clamp(
+    currentGaze.x * (currentState === "thinking" ? 0.72 : 0.48),
+    -4.2,
+    4.2
+  );
+  const saturation = clamp(
+    1.08 + avatarEnergy * 0.24 + (currentMood === "joy" ? 0.05 : 0),
+    1.08,
+    1.44
+  );
+  const contrast = clamp(1.08 + avatarEnergy * 0.16, 1.08, 1.3);
+  const brightness = clamp(1.02 + avatarEnergy * 0.16 + voiceEnergy * 0.06, 1.02, 1.28);
+  const haloOpacity = clamp(0.56 + avatarEnergy * 0.26, 0.56, 0.92);
+  const scanOpacity = clamp(0.34 + avatarEnergy * 0.32, 0.34, 0.84);
+  const neuralOpacity = clamp(0.28 + avatarEnergy * 0.44, 0.28, 0.92);
+  const ringOpacity = clamp(0.16 + avatarEnergy * 0.34, 0.16, 0.78);
+  const opacity = clamp(0.86 + avatarPresence * 0.16, 0.9, 1);
+  const neuralSpeed =
+    currentState === "speaking"
+      ? 3.8
+      : currentState === "thinking"
+        ? 4.6
+        : currentState === "listening"
+          ? 5.2
+          : 6.8;
 
   FACE_ROOT.style.setProperty("--jarvis-gaze-x", `${currentGaze.x.toFixed(2)}px`);
   FACE_ROOT.style.setProperty("--jarvis-gaze-y", `${currentGaze.y.toFixed(2)}px`);
@@ -444,6 +597,24 @@ function renderFace(): void {
   FACE_ROOT.style.setProperty("--jarvis-mouth-width", mouthWidth.toFixed(3));
   FACE_ROOT.style.setProperty("--jarvis-mouth-skew", mouthSkew.toFixed(3));
   FACE_ROOT.style.setProperty("--jarvis-mouth-lift", mouthLift.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-energy", avatarEnergy.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-presence", avatarPresence.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-shift-x", `${shellShiftX.toFixed(2)}px`);
+  FACE_ROOT.style.setProperty("--avatar-shift-y", `${shellShiftY.toFixed(2)}px`);
+  FACE_ROOT.style.setProperty("--avatar-scale", shellScale.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-tilt", `${shellTilt.toFixed(2)}deg`);
+  FACE_ROOT.style.setProperty("--avatar-opacity", opacity.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-saturation", saturation.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-contrast", contrast.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-brightness", brightness.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-halo-opacity", haloOpacity.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-scan-opacity", scanOpacity.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-neural-opacity", neuralOpacity.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-ring-opacity", ringOpacity.toFixed(3));
+  FACE_ROOT.style.setProperty("--avatar-neural-speed", `${neuralSpeed.toFixed(2)}s`);
+  FACE_ROOT.style.setProperty("--avatar-accent-rgb", palette.accentRgb);
+  FACE_ROOT.style.setProperty("--avatar-soft-rgb", palette.softRgb);
+  FACE_ROOT.style.setProperty("--avatar-hot-rgb", palette.hotRgb);
   document.body.dataset.jarvisMood = currentMood;
 }
 
@@ -652,26 +823,26 @@ function scheduleGazeLoop(): void {
   }
 
   const tick = (): void => {
-    let maxX = 2.4;
-    let maxY = 1.4;
-    let minDelay = 1_800;
-    let maxDelay = 3_200;
+    let maxX = 3.4;
+    let maxY = 1.8;
+    let minDelay = 1_500;
+    let maxDelay = 2_800;
 
     if (currentState === "thinking") {
-      maxX = 4.8;
-      maxY = 2.8;
-      minDelay = 1_100;
-      maxDelay = 2_000;
+      maxX = 6;
+      maxY = 3.2;
+      minDelay = 800;
+      maxDelay = 1_500;
     } else if (currentState === "listening") {
-      maxX = 3.2;
-      maxY = 1.7;
-      minDelay = 1_300;
-      maxDelay = 2_400;
-    } else if (currentState === "speaking") {
-      maxX = 2.2;
-      maxY = 1.2;
-      minDelay = 900;
+      maxX = 4.4;
+      maxY = 2.3;
+      minDelay = 1_000;
       maxDelay = 1_800;
+    } else if (currentState === "speaking") {
+      maxX = 3.6;
+      maxY = 2;
+      minDelay = 700;
+      maxDelay = 1_300;
     }
 
     currentGaze = {

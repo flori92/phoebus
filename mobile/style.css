@@ -28,6 +28,24 @@
   --jarvis-mouth-width: 1;
   --jarvis-mouth-skew: 0;
   --jarvis-mouth-lift: 0;
+  --avatar-energy: 0.32;
+  --avatar-presence: 0.96;
+  --avatar-shift-x: 0px;
+  --avatar-shift-y: 0px;
+  --avatar-scale: 1.02;
+  --avatar-tilt: 0deg;
+  --avatar-opacity: 0.94;
+  --avatar-saturation: 1.12;
+  --avatar-contrast: 1.1;
+  --avatar-brightness: 1.04;
+  --avatar-halo-opacity: 0.66;
+  --avatar-scan-opacity: 0.4;
+  --avatar-neural-opacity: 0.42;
+  --avatar-ring-opacity: 0.26;
+  --avatar-neural-speed: 6.8s;
+  --avatar-accent-rgb: 88, 202, 255;
+  --avatar-soft-rgb: 197, 241, 255;
+  --avatar-hot-rgb: 255, 219, 134;
 }
 
 /* ── Reset ────────────────────────────────────────────────────────────────── */
@@ -168,34 +186,130 @@ html, body {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(72vw, 310px);
+  width: min(82vw, 360px);
   aspect-ratio: 1;
-  transform: translate(-50%, -48%);
+  transform:
+    translate(
+      calc(-50% + var(--avatar-shift-x)),
+      calc(-49% + var(--avatar-shift-y))
+    )
+    scale(var(--avatar-scale))
+    rotate(var(--avatar-tilt));
   pointer-events: none;
+  opacity: calc(0.92 + var(--avatar-energy) * 0.08);
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease,
+    filter 180ms ease;
 }
 
 #avatar-core {
   position: relative;
   width: 100%;
   height: 100%;
-  animation: avatar-float 7s ease-in-out infinite;
+  isolation: isolate;
+  overflow: visible;
+  animation: avatar-float 6.3s ease-in-out infinite;
+}
+
+#avatar-core::before,
+#avatar-core::after {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+#avatar-core::before {
+  z-index: 0;
+  background:
+    radial-gradient(circle at 28% 32%, rgba(var(--avatar-soft-rgb), 0.58) 0%, rgba(var(--avatar-soft-rgb), 0.58) 1.1%, transparent 2%),
+    radial-gradient(circle at 68% 30%, rgba(var(--avatar-hot-rgb), 0.52) 0%, rgba(var(--avatar-hot-rgb), 0.52) 1.05%, transparent 1.9%),
+    radial-gradient(circle at 72% 61%, rgba(var(--avatar-accent-rgb), 0.48) 0%, rgba(var(--avatar-accent-rgb), 0.48) 1.2%, transparent 2%),
+    radial-gradient(circle at 34% 69%, rgba(var(--avatar-soft-rgb), 0.46) 0%, rgba(var(--avatar-soft-rgb), 0.46) 0.95%, transparent 1.8%),
+    linear-gradient(122deg, transparent 24%, rgba(var(--avatar-accent-rgb), 0.24) 31%, transparent 36%),
+    linear-gradient(51deg, transparent 22%, rgba(var(--avatar-soft-rgb), 0.18) 30%, transparent 38%),
+    linear-gradient(154deg, transparent 42%, rgba(var(--avatar-hot-rgb), 0.18) 47%, transparent 53%);
+  mask-image: radial-gradient(circle at center, transparent 0 27%, black 35% 81%, transparent 92%);
+  -webkit-mask-image: radial-gradient(circle at center, transparent 0 27%, black 35% 81%, transparent 92%);
+  mix-blend-mode: screen;
+  opacity: var(--avatar-neural-opacity);
+  filter: blur(0.4px) drop-shadow(0 0 18px rgba(var(--avatar-accent-rgb), 0.28));
+  animation: avatar-neural-rotate var(--avatar-neural-speed) linear infinite;
+}
+
+#avatar-core::after {
+  z-index: 5;
+  background:
+    repeating-conic-gradient(
+      from 0deg,
+      rgba(var(--avatar-accent-rgb), 0) 0deg 14deg,
+      rgba(var(--avatar-soft-rgb), 0.18) 18deg 24deg,
+      rgba(var(--avatar-accent-rgb), 0) 28deg 42deg
+    ),
+    radial-gradient(
+      circle at center,
+      transparent 53%,
+      rgba(var(--avatar-accent-rgb), 0.24) 63%,
+      rgba(var(--avatar-hot-rgb), 0.12) 68%,
+      transparent 77%
+    );
+  mask-image: radial-gradient(circle at center, transparent 0 42%, black 50% 75%, transparent 84%);
+  -webkit-mask-image: radial-gradient(circle at center, transparent 0 42%, black 50% 75%, transparent 84%);
+  mix-blend-mode: screen;
+  opacity: calc(0.16 + var(--avatar-ring-opacity));
+  animation: avatar-ring-pulse 2.8s ease-in-out infinite;
 }
 
 #avatar-face {
   position: absolute;
   inset: 0;
+  z-index: 2;
   width: 100%;
   height: 100%;
   object-fit: contain;
   filter:
-    grayscale(1)
-    contrast(1.08)
-    brightness(0.92)
-    drop-shadow(0 0 20px rgba(78, 188, 255, 0.14))
-    drop-shadow(0 0 40px rgba(78, 188, 255, 0.12));
-  mask-image: radial-gradient(circle at center, black 0 58%, transparent 82%);
-  -webkit-mask-image: radial-gradient(circle at center, black 0 58%, transparent 82%);
-  transition: filter 180ms ease, opacity 180ms ease;
+    saturate(var(--avatar-saturation))
+    contrast(var(--avatar-contrast))
+    brightness(var(--avatar-brightness))
+    drop-shadow(0 0 24px rgba(var(--avatar-soft-rgb), 0.2))
+    drop-shadow(0 0 54px rgba(var(--avatar-accent-rgb), 0.18));
+  mask-image: radial-gradient(circle at center, black 0 68%, transparent 92%);
+  -webkit-mask-image: radial-gradient(circle at center, black 0 68%, transparent 92%);
+  opacity: var(--avatar-opacity);
+  transform:
+    translateY(var(--avatar-frame-shift-y, 0px))
+    scale(calc(var(--avatar-frame-scale, 1) + (var(--avatar-energy) * 0.028)));
+  transition:
+    filter 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+#avatar-face[data-frame="thinking"] {
+  --avatar-frame-scale: 1.035;
+  --avatar-frame-shift-y: -4px;
+}
+
+#avatar-face[data-frame="smile"] {
+  --avatar-frame-scale: 1.03;
+  --avatar-frame-shift-y: 1px;
+}
+
+#avatar-face[data-frame="alert"] {
+  --avatar-frame-scale: 1.04;
+  --avatar-frame-shift-y: -2px;
+}
+
+#avatar-face[data-frame="serious"] {
+  --avatar-frame-scale: 1.02;
+  --avatar-frame-shift-y: -1px;
+}
+
+#avatar-face[data-frame="speak-open"],
+#avatar-face[data-frame="speak-oh"] {
+  --avatar-frame-scale: 1.05;
 }
 
 #avatar-halo,
@@ -217,32 +331,72 @@ html, body {
 }
 
 #avatar-halo {
+  z-index: 1;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 50% 45%, rgba(63, 175, 255, 0.18), transparent 30%),
-    radial-gradient(circle at 50% 50%, rgba(7, 20, 34, 0), rgba(7, 20, 34, 0.86) 72%);
+    radial-gradient(circle at 50% 44%, rgba(var(--avatar-soft-rgb), 0.22), transparent 31%),
+    radial-gradient(circle at 50% 52%, rgba(var(--avatar-accent-rgb), 0.18), transparent 57%),
+    radial-gradient(circle at 50% 50%, rgba(7, 20, 34, 0), rgba(7, 20, 34, 0.76) 72%);
   mix-blend-mode: screen;
-  opacity: 0.72;
+  opacity: var(--avatar-halo-opacity);
+  filter: blur(2px);
+}
+
+#avatar-halo::before {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--avatar-hot-rgb), 0.26) 0%, transparent 72%);
+  mix-blend-mode: screen;
+  opacity: calc(0.22 + var(--avatar-energy) * 0.4);
+  animation: avatar-ring-pulse 2.4s ease-in-out infinite;
+}
+
+#avatar-scan {
+  z-index: 4;
 }
 
 #avatar-scan::before {
   content: "";
   position: absolute;
-  left: 13%;
-  right: 13%;
-  top: 18%;
-  height: 32%;
+  left: 10%;
+  right: 10%;
+  top: 14%;
+  height: 46%;
   background: linear-gradient(
     180deg,
     transparent 0%,
-    rgba(111, 209, 255, 0.08) 40%,
-    rgba(111, 209, 255, 0.42) 50%,
-    rgba(111, 209, 255, 0.08) 60%,
+    rgba(var(--avatar-soft-rgb), 0.06) 28%,
+    rgba(var(--avatar-soft-rgb), 0.26) 44%,
+    rgba(var(--avatar-soft-rgb), 0.54) 50%,
+    rgba(var(--avatar-soft-rgb), 0.22) 56%,
     transparent 100%
   );
-  filter: blur(10px);
-  opacity: 0.58;
-  animation: avatar-scan 5.8s linear infinite;
+  filter: blur(14px);
+  opacity: var(--avatar-scan-opacity);
+  animation: avatar-scan var(--avatar-neural-speed) linear infinite;
+}
+
+#avatar-scan::after {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from 120deg,
+      transparent 0deg 18deg,
+      rgba(var(--avatar-soft-rgb), 0.22) 28deg 46deg,
+      transparent 62deg 156deg,
+      rgba(var(--avatar-hot-rgb), 0.16) 176deg 198deg,
+      transparent 212deg 360deg
+    );
+  mask-image: radial-gradient(circle at center, transparent 0 47%, black 56% 72%, transparent 80%);
+  -webkit-mask-image: radial-gradient(circle at center, transparent 0 47%, black 56% 72%, transparent 80%);
+  mix-blend-mode: screen;
+  opacity: calc(0.12 + var(--avatar-energy) * 0.24);
+  animation: avatar-neural-rotate var(--avatar-neural-speed) linear infinite reverse;
 }
 
 .avatar-eye {
@@ -351,20 +505,44 @@ body[data-jarvis-mood="serious"] #avatar-halo {
 
 @keyframes avatar-float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  50% { transform: translateY(-10px); }
 }
 
 @keyframes avatar-scan {
   0% {
-    transform: translateY(-16%);
+    transform: translateY(-14%) scaleY(0.92);
     opacity: 0;
   }
   10%, 85% {
-    opacity: 0.66;
+    opacity: 0.84;
   }
   100% {
-    transform: translateY(115%);
+    transform: translateY(112%) scaleY(1.05);
     opacity: 0;
+  }
+}
+
+@keyframes avatar-neural-rotate {
+  from {
+    transform: rotate(0deg) scale(0.985);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.015);
+  }
+  to {
+    transform: rotate(360deg) scale(0.985);
+  }
+}
+
+@keyframes avatar-ring-pulse {
+  0%,
+  100% {
+    transform: scale(0.98);
+    opacity: calc(0.12 + var(--avatar-ring-opacity));
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: calc(0.26 + var(--avatar-ring-opacity));
   }
 }
 
