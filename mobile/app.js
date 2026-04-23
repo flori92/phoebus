@@ -965,19 +965,20 @@ class StreamingAudioPlayer {
     this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     this.nextStartTime = 0;
     this.activeId = null;
+    this.sources = new Set();
   }
 
   async playChunk(base64Data, utteranceId) {
     if (this.activeId !== utteranceId) {
+      this.stop(); // On arrête le flux précédent
       this.activeId = utteranceId;
-      this.nextStartTime = this.audioCtx.currentTime + 0.1;
+      this.nextStartTime = this.audioCtx.currentTime + 0.05;
       applyState("speaking");
     }
 
     const binary = atob(base64Data);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
     try {
       const audioBuffer = await this.audioCtx.decodeAudioData(bytes.buffer);
@@ -989,14 +990,16 @@ class StreamingAudioPlayer {
       source.start(startTime);
       this.nextStartTime = startTime + audioBuffer.duration;
 
+      this.sources.add(source);
       source.onended = () => {
-        if (this.audioCtx.currentTime >= this.nextStartTime - 0.1) {
+        this.sources.delete(source);
+        if (this.audioCtx.currentTime >= this.nextStartTime - 0.1 && this.sources.size === 0) {
           applyState("idle");
           setVoiceLevel(0);
         }
       };
 
-      // Animation bouche simplifiée pendant le streaming
+      // Animation bouche simplifiée
       const vol = 0.4 + 0.3 * Math.sin(Date.now() / 50);
       setVoiceLevel(vol);
 
@@ -1006,6 +1009,10 @@ class StreamingAudioPlayer {
   }
 
   stop() {
+    this.sources.forEach(s => {
+      try { s.stop(); } catch(e) {}
+    });
+    this.sources.clear();
     this.activeId = null;
     this.nextStartTime = 0;
   }
@@ -1270,6 +1277,10 @@ if (SpeechRecognition) {
 
   recognition.addEventListener("start", () => {
     isListening = true;
+    // Interruption : si on commence à parler, Jarvis se tait
+    streamingPlayer.stop();
+    cancelTimedLipsync();
+    
     applyState("listening");
     userTextEl.textContent  = "";
     jarvisTextEl.textContent = "";

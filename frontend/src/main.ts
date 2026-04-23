@@ -961,6 +961,7 @@ class StreamingAudioPlayer {
   private audioCtx: AudioContext;
   private nextStartTime: number = 0;
   private activeId: string | null = null;
+  private sources: Set<AudioBufferSourceNode> = new Set();
 
   constructor() {
     this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -968,8 +969,9 @@ class StreamingAudioPlayer {
 
   async playChunk(base64Data: string, utteranceId: string): Promise<void> {
     if (this.activeId !== utteranceId) {
+      this.stop();
       this.activeId = utteranceId;
-      this.nextStartTime = this.audioCtx.currentTime + 0.1;
+      this.nextStartTime = this.audioCtx.currentTime + 0.05;
       applyState("speaking");
     }
 
@@ -987,8 +989,10 @@ class StreamingAudioPlayer {
       source.start(startTime);
       this.nextStartTime = startTime + audioBuffer.duration;
 
+      this.sources.add(source);
       source.onended = () => {
-        if (this.audioCtx.currentTime >= this.nextStartTime - 0.1) {
+        this.sources.delete(source);
+        if (this.audioCtx.currentTime >= this.nextStartTime - 0.1 && this.sources.size === 0) {
           applyState("idle");
           setVoiceLevel(0);
         }
@@ -999,6 +1003,15 @@ class StreamingAudioPlayer {
     } catch (e) {
       console.error("[STREAM] Error decoding chunk", e);
     }
+  }
+
+  stop(): void {
+    this.sources.forEach(s => {
+      try { s.stop(); } catch(e) {}
+    });
+    this.sources.clear();
+    this.activeId = null;
+    this.nextStartTime = 0;
   }
 }
 

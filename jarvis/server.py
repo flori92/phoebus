@@ -247,22 +247,22 @@ def listen_and_process(main_loop):
             r.adjust_for_ambient_noise(source, duration=1)
             print("[MIC] Prêt à écouter localement...")
             while True:
-                if state.is_speaking or state.is_thinking:
-                    time.sleep(0.5)
-                    continue
+                # Suppression du bloc 'if state.is_speaking or state.is_thinking: continue'
+                # pour permettre l'interruption (Barge-in).
                 try:
                     state.is_listening = True
                     asyncio.run_coroutine_threadsafe(state.send_web_state("listening"), main_loop)
-                    audio = r.listen(source, timeout=5, phrase_time_limit=10)
-                    
-                    if state.is_speaking or state.is_thinking:
-                        state.is_listening = False
-                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
-                        continue
+                    # On écoute. Le Recognizer de SpeechRecognition gère l'énergie de manière dynamique par défaut.
+                    audio = r.listen(source, timeout=10, phrase_time_limit=10)
+
+                    # Si on est en train de parler et qu'une parole est détectée,
+                    # on signale au moteur TTS de s'arrêter.
+                    if state.is_speaking:
+                        print("[MIC] Parole détectée pendant que Jarvis parle. Interruption...")
+                        state.STOP_PARLER = True
 
                     state.is_listening = False
                     asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
-                    
                     try:
                         texte = stt_recognize(audio)
                     except sr.UnknownValueError:
@@ -285,9 +285,9 @@ def listen_and_process(main_loop):
 
                     state.mark_user_activity()
                     texte_l = texte.lower()
-                    # On traite si : wake-word entendu, OU on est dans la fenêtre
-                    # de conversation naturelle ouverte par un tour précédent.
-                    wake = any(w in texte_l for w in ["jarvis", "jarv", " jar"])
+                    # Liste élargie pour pallier les erreurs de transcription (phonétique proche)
+                    WAKE_WORDS = ["jarvis", "jarv", " jar", "service", "j'arrive", "charvis", "darvis"]
+                    wake = any(w in texte_l for w in WAKE_WORDS)
                     en_conversation = state.is_in_conversation()
 
                     if not (wake or en_conversation):
@@ -296,6 +296,14 @@ def listen_and_process(main_loop):
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
+                    # On nettoie le texte pour l'IA (enlever le mot d'appel s'il est au début)
+                    cleaned_texte = texte
+                    if wake and not en_conversation:
+                        for w in WAKE_WORDS:
+                            if texte_l.startswith(w):
+                                cleaned_texte = texte[len(w):].strip(", ").strip()
+                                break
+                    
                     # "Mode iron man active" : raccourci direct.
                     if "mode iron man" in texte_l and "active" in texte_l:
                         state.MODE_IRON_MAN = True
@@ -324,7 +332,7 @@ def listen_and_process(main_loop):
                         state.extend_conversation()
 
                     state.extend_conversation()
-                    asyncio.run_coroutine_threadsafe(process_ia(texte), main_loop)
+                    asyncio.run_coroutine_threadsafe(process_ia(cleaned_texte), main_loop)
                             
                 except sr.WaitTimeoutError:
                     if state.is_in_conversation():
