@@ -94,7 +94,8 @@ def construire_system_prompt(texte_utilisateur=""):
         "\n\nMETEO & RECHERCHE :\n"
         '{"action": "meteo", "ville": "NOM"}\n'
         '{"action": "alerte_meteo", "ville": "NOM"}\n'
-        '{"action": "recherche_web", "query": "recherche"}\n\n'
+        '{"action": "recherche_web", "query": "recherche"}\n'
+        '{"action": "youtube", "query": "titre ou sujet de la vidéo"}\n\n'
     )
     base += (
         "\n\nSPORT :\n"
@@ -274,10 +275,14 @@ async def demander_ia(texte):
             raise last_err or Exception("Tous les modeles Gemini ont echoue")
 
         if cerveau == "GROK" and grok_client:
-            try: return await demander_grok(texte)
+            try: 
+                res = await demander_grok(texte)
+                if res: return res
             except Exception: pass
         
-        try: return await _call_gemini()
+        try: 
+            res = await _call_gemini()
+            if res: return res
         except Exception: pass
 
         from jarvis.home import recherche_web_serpapi
@@ -290,7 +295,9 @@ async def demander_ia(texte):
         if rep_groq: return rep_groq
         
         if grok_client:
-            try: return await demander_grok(texte)
+            try: 
+                res = await demander_grok(texte)
+                if res: return res
             except Exception: pass
 
         rep_ollama = await demander_ollama(texte)
@@ -300,6 +307,9 @@ async def demander_ia(texte):
         if rep_loc: return rep_loc
         
         return "Desole Floriace, mes serveurs sont surchargés. Je reste disponible pour vos commandes domestiques locales."
+    except Exception as e:
+        print(f"[IA] Erreur fatale demander_ia : {e}")
+        return "J'ai rencontré une erreur interne en essayant de vous répondre."
     finally:
         state.is_thinking = False
         await state.send_web_state("idle")

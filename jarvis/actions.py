@@ -270,6 +270,19 @@ async def executer_une_action(d):
             await parler(recherche_web_serpapi(q))
         return
 
+    elif action == "youtube":
+        q = d.get("query", "")
+        if q:
+            from jarvis.home import chercher_youtube
+            from jarvis.utils import open_uri
+            url = chercher_youtube(q)
+            if url:
+                await parler(f"Je lance la vidéo sur YouTube pour : {q}.")
+                open_uri(url)
+            else:
+                await parler("Je n'ai pas trouvé de vidéo correspondante sur YouTube.")
+        return
+
     # ── SPORT ────────────────────────────────────────────────────────────────
     elif action == "sport_resultats":
         eq = d.get("equipe")
@@ -367,6 +380,10 @@ async def executer_une_action(d):
 
 
 async def traiter_reponse_ia(reponse):
+    if reponse is None:
+        print("[JARVIS] Réponse IA vide (None).")
+        return False
+
     try:
         if state.PENDING_CONFIRMATION:
             from jarvis.security import is_confirmation_text, is_cancellation_text

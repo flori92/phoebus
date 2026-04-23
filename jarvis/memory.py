@@ -46,8 +46,10 @@ def construire_contexte_memoire():
         return ""
     lignes = ["MEMOIRE PERSISTANTE :"]
     for cle, data in memoire.items():
+        if cle == _PROFILE_KEY or not isinstance(data, dict) or "valeur" not in data:
+            continue
         lignes.append(f"  - {cle} : {data['valeur']} (note le {data['timestamp']})")
-    return "\n".join(lignes)
+    return "\n".join(lignes) if len(lignes) > 1 else ""
 
 
 # ── Profil apprenant ────────────────────────────────────────────────────────
