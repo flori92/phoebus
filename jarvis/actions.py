@@ -1,9 +1,10 @@
 # jarvis/actions.py
 """Dispatcher central de JARVIS. Traite les réponses JSON de l'IA."""
+import asyncio
 import json
 
 import jarvis.state as state
-from jarvis.security import audit_log, is_sensitive_action, describe_action
+from jarvis.security import audit_log, is_sensitive_action, describe_action, risk_level_for
 from jarvis.home import (
     resolve_ha_entity, ha_lumiere, ha_interrupteur, ha_thermostat, ha_scene,
     resolve_temperature_sensor, resolve_humidity_sensor, resolve_battery_sensor,
@@ -13,7 +14,7 @@ from jarvis.home import (
     recherche_web_serpapi, PIECES_LUMIERES, PIECES_PRISES,
     HA_TARIFS
 )
-from jarvis.memory import ajouter_memoire, supprimer_memoire, charger_memoire
+from jarvis.memory import ajouter_memoire, supprimer_memoire, charger_memoire, apprendre_signal
 from jarvis.rag_memory import stocker_souvenir
 from jarvis.utils import normalize_text
 from jarvis.desktop import (
@@ -28,6 +29,18 @@ from jarvis.google_services import (
 from jarvis.vision import jarvis_vision_cliquer, jarvis_vision_ecrire
 from jarvis.agent import orchestrer_agent_autonome
 from jarvis.voice import parler
+from jarvis.skills import get_skill, describe_skill
+
+
+async def _executer_en_fond(handler, data, label):
+    """Exécute un handler en tâche asyncio séparée pour ne pas bloquer la conversation."""
+    async def _run():
+        try:
+            await handler(data)
+        except Exception as e:
+            print(f"[BG:{label}] erreur : {e}")
+    task = asyncio.create_task(_run())
+    state.register_background_task(task, label=label)
 
 
 async def executer_une_action(d):
@@ -36,12 +49,30 @@ async def executer_une_action(d):
     if not action:
         return
 
-    # ── AGENT NATIF ───────────────────────────────────────────────────────────
+    # ── Dispatch via le registre de skills (prioritaire) ──────────────────────
+    sk = get_skill(action)
+    if sk:
+        try:
+            if sk.background:
+                await _executer_en_fond(sk.handler, d, label=sk.name)
+            else:
+                await sk.handler(d)
+        except Exception as e:
+            print(f"[SKILL:{action}] erreur : {e}")
+            await parler(f"J'ai eu un pépin en exécutant {action}.")
+        return
+
+    # ── AGENT NATIF ── (tourne en tâche de fond : la conversation continue) ──
     if action == "agent_natif":
         instruction = d.get("instruction", "")
-        await parler(f"Je passe la main à mon agent natif pour : {instruction}")
-        res = await orchestrer_agent_autonome(instruction)
-        await parler(f"L'agent natif a terminé. Résultat : {res}")
+        await parler(f"Je m'en occupe en parallèle : {instruction}")
+
+        async def _run_agent():
+            res = await orchestrer_agent_autonome(instruction)
+            await parler(f"Agent natif terminé. {res}")
+
+        task = asyncio.create_task(_run_agent())
+        state.register_background_task(task, label=f"agent_natif: {instruction[:60]}")
         return
 
     # ── DOSSIERS & FICHIERS ──────────────────────────────────────────────────
@@ -113,9 +144,10 @@ async def executer_une_action(d):
         e = d.get("etat", "on")
         c = d.get("couleur")
         l = d.get("luminosite")
-        
+
         ent = resolve_ha_entity("light", p, PIECES_LUMIERES, default_prefix="light")
         if ha_lumiere(ent, e, luminosite=l):
+            apprendre_signal(f"piece:{p}")
             await parler(f"Lumière {e} dans {p}.")
         else:
             await parler("Impossible de contrôler la lumière.")
@@ -375,12 +407,27 @@ async def traiter_reponse_ia(reponse):
 
             if parties:
                 for d in parties:
-                    if is_sensitive_action(d.get("action")):
-                        desc = describe_action(d)
-                        await parler(f"Floriace, vous me demandez de {desc}. Cette action est sensible. Dois-je confirmer ?")
+                    action = d.get("action", "")
+                    risk = risk_level_for(action)
+                    desc = describe_skill(d) or describe_action(d)
+
+                    if risk == "high":
+                        await parler(f"Vous me demandez de {desc}. C'est une action sensible, vous confirmez ?")
                         state.PENDING_CONFIRMATION = d
-                        audit_log("sensitive_action_pending", action=d.get("action"), description=desc)
+                        audit_log("sensitive_action_pending", action=action, description=desc, risk=risk)
                         return True
+
+                    if risk == "medium":
+                        # Annonce + courte fenêtre pour barge-in avant l'exécution.
+                        await parler(f"J'applique : {desc}.")
+                        await asyncio.sleep(1.2)
+                        if state.STOP_PARLER:
+                            state.STOP_PARLER = False
+                            await parler("D'accord, j'annule.")
+                            audit_log("medium_action_aborted", action=action, description=desc)
+                            continue
+                        audit_log("medium_action_executed", action=action, description=desc)
+                        await executer_une_action(d)
                     else:
                         await executer_une_action(d)
                 return True

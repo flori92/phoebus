@@ -12,6 +12,7 @@ import webbrowser
 from jarvis.config import edge_tts, pygame, pyaudio, sr, CLAP_THRESHOLD, pyautogui
 import jarvis.state as state
 from jarvis.home import resolve_ha_entity, PIECES_LUMIERES, ha_get_etat, ha_lumiere
+from jarvis.tts_backends import synthesize_to_file, TtsUnavailable
 
 # ── Résolution locale (Math, Fr, Conversions, Trad) ──────────────────────
 
@@ -107,15 +108,14 @@ async def parler(texte):
     tmp = f"jarvis_tts_{int(time.time()*1000)}.mp3"
     
     try:
-        if not edge_tts:
+        try:
+            await synthesize_to_file(texte_tts, tmp)
+        except TtsUnavailable:
             recipients = state.get_authenticated_clients()
             if recipients:
                 msg = json.dumps({"action": "jarvis_response", "text": texte_tts})
                 await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
             return
-            
-        communicate = edge_tts.Communicate(texte_tts, voice="fr-FR-HenriNeural")
-        await communicate.save(tmp)
         
         if state._skip_pc_audio:
             recipients = state.get_authenticated_clients()
@@ -175,13 +175,31 @@ def monitor_claps():
         p = pyaudio.PyAudio()
         stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
         last_clap_time = 0
-        
+        barge_in_streak = 0
+
         while True:
             try:
                 data = stream.read(1024, exception_on_overflow=False)
                 rms  = audioop.rms(data, 2)
-                
-                if not state.MODE_IRON_MAN or state.is_speaking or state.is_thinking:
+
+                # ── Barge-in : si Jarvis parle et on détecte de la voix forte,
+                # on coupe proprement pour écouter la suite.
+                if state.is_speaking:
+                    if rms > state.BARGE_IN_THRESHOLD:
+                        barge_in_streak += 1
+                        if barge_in_streak >= state.BARGE_IN_CONSECUTIVE_CHUNKS:
+                            print("[BARGE-IN] Interruption vocale détectée, Jarvis se tait.")
+                            state.STOP_PARLER = True
+                            barge_in_streak = 0
+                    else:
+                        barge_in_streak = 0
+                    # On ne fait pas de clap-detection pendant que Jarvis parle.
+                    last_clap_time = 0
+                    continue
+                else:
+                    barge_in_streak = 0
+
+                if not state.MODE_IRON_MAN or state.is_thinking:
                     last_clap_time = 0
                     continue
 

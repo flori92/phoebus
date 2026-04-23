@@ -19,6 +19,9 @@ from jarvis.desktop import executer_action_pc
 from jarvis.ai import demander_ia, demander_ia_vision
 from jarvis.actions import traiter_reponse_ia
 from jarvis.voice import parler, monitor_claps
+from jarvis.stt_backends import get_backend as get_stt_backend
+from jarvis.clarify import transcription_incertaine
+from jarvis import proactive
 
 
 # ── Sécurité WebSocket ─────────────────────────────────────────────────────
@@ -107,6 +110,7 @@ async def ws_handler(websocket):
                     question = data.get("text", "")
                     if question:
                         state.extend_conversation()
+                        state.mark_user_activity()
                         rep = await demander_ia(question)
                         if not await traiter_reponse_ia(rep):
                             await parler(rep)
@@ -117,6 +121,7 @@ async def ws_handler(websocket):
                     img_b64 = data.get("image", "")
                     if question and img_b64:
                         state.extend_conversation()
+                        state.mark_user_activity()
                         rep = await demander_ia_vision(question, img_b64)
                         if not await traiter_reponse_ia(rep):
                             await parler(rep)
@@ -228,6 +233,13 @@ def listen_and_process(main_loop):
     if not sr:
         print("[MIC] speech_recognition non installe.")
         return
+
+    stt_name, stt_recognize = get_stt_backend()
+    if stt_recognize is None:
+        print("[MIC] Aucun back-end STT disponible.")
+        return
+    print(f"[MIC] Back-end STT actif : {stt_name}")
+
     r = sr.Recognizer()
     try:
         with sr.Microphone() as source:
@@ -250,9 +262,27 @@ def listen_and_process(main_loop):
                     state.is_listening = False
                     asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
                     
-                    texte = r.recognize_google(audio, language="fr-FR")
+                    try:
+                        texte = stt_recognize(audio)
+                    except sr.UnknownValueError:
+                        raise
+                    except Exception as e:
+                        print(f"[MIC] STT {stt_name} a échoué : {e}")
+                        raise sr.UnknownValueError()
+
                     print(f"\n[VOUS] {texte}")
 
+                    # Transcription trop courte / charabia → on redemande
+                    # plutôt que d'halluciner une réponse.
+                    if state.is_in_conversation() and transcription_incertaine(texte):
+                        asyncio.run_coroutine_threadsafe(
+                            parler("Pardon, je n'ai pas bien compris. Vous pouvez répéter ?"),
+                            main_loop,
+                        )
+                        state.mark_user_activity()
+                        continue
+
+                    state.mark_user_activity()
                     texte_l = texte.lower()
                     wake = "jarvis" in texte_l
                     en_conversation = state.is_in_conversation()
@@ -330,6 +360,9 @@ async def main():
 
     from jarvis.automation import demarrer_moteur_automatisation
     demarrer_moteur_automatisation()
+
+    # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
+    asyncio.create_task(proactive.loop(parler))
 
     print("\n[INIT] Démarrage du serveur WebSocket...")
     await asyncio.gather(
