@@ -1,6 +1,7 @@
 # jarvis/server.py
 """Serveur WebSocket, HTTP mobile et boucle principale de JARVIS."""
 import json
+import time
 import asyncio
 import threading
 import http.server
@@ -105,17 +106,21 @@ async def ws_handler(websocket):
                 elif action == "demander_ia":
                     question = data.get("text", "")
                     if question:
+                        state.extend_conversation()
                         rep = await demander_ia(question)
                         if not await traiter_reponse_ia(rep):
                             await parler(rep)
-                            
+                        state.extend_conversation()
+
                 elif action == "demander_ia_vision":
                     question = data.get("text", "")
                     img_b64 = data.get("image", "")
                     if question and img_b64:
+                        state.extend_conversation()
                         rep = await demander_ia_vision(question, img_b64)
                         if not await traiter_reponse_ia(rep):
                             await parler(rep)
+                        state.extend_conversation()
                             
                 elif action == "action_pc":
                     cmd = data.get("commande", "")
@@ -247,21 +252,47 @@ def listen_and_process(main_loop):
                     
                     texte = r.recognize_google(audio, language="fr-FR")
                     print(f"\n[VOUS] {texte}")
-                    
-                    if "jarvis" in texte.lower():
-                        if "mode iron man" in texte.lower() and "active" in texte.lower():
-                            state.MODE_IRON_MAN = True
-                            asyncio.run_coroutine_threadsafe(parler("Mode Iron Man activé."), main_loop)
-                            continue
-                            
-                        # Pour demander_ia, comme c'est async et renvoie une valeur, on l'exécute dans notre event loop local 
-                        # ou on fait tout dans une fonction wrap async
-                        async def process_ia(q):
-                            rep = await demander_ia(q)
-                            if not await traiter_reponse_ia(rep):
-                                await parler(rep)
-                        
-                        asyncio.run_coroutine_threadsafe(process_ia(texte), main_loop)
+
+                    texte_l = texte.lower()
+                    wake = "jarvis" in texte_l
+                    en_conversation = state.is_in_conversation()
+
+                    # On traite si : wake-word entendu, OU on est dans la fenêtre
+                    # de conversation naturelle ouverte par un tour précédent.
+                    if not (wake or en_conversation):
+                        # Trop de bruit ambiant ? On réinitialise l'état et on continue.
+                        state.is_listening = False
+                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                        continue
+
+                    # "Mode iron man active" : raccourci direct.
+                    if "mode iron man" in texte_l and "active" in texte_l:
+                        state.MODE_IRON_MAN = True
+                        asyncio.run_coroutine_threadsafe(parler("Mode Iron Man activé."), main_loop)
+                        state.extend_conversation()
+                        continue
+
+                    # "stop / tais-toi / laisse tomber" pendant une conversation :
+                    # on ferme la fenêtre pour redevenir discret.
+                    if en_conversation and not wake and any(
+                        m in texte_l for m in (
+                            "laisse tomber", "laisse-moi", "tais-toi", "chut",
+                            "stop jarvis", "merci jarvis", "c'est bon jarvis",
+                        )
+                    ):
+                        state.end_conversation()
+                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                        continue
+
+                    async def process_ia(q):
+                        rep = await demander_ia(q)
+                        if not await traiter_reponse_ia(rep):
+                            await parler(rep)
+                        # Après chaque tour, on reste à l'écoute naturellement.
+                        state.extend_conversation()
+
+                    state.extend_conversation()
+                    asyncio.run_coroutine_threadsafe(process_ia(texte), main_loop)
                             
                 except sr.WaitTimeoutError:
                     state.is_listening = False
