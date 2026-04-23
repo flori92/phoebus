@@ -92,10 +92,14 @@ def init_mixer():
 
 async def parler(texte):
     texte_tts = texte.replace("**", "").replace("*", "").replace("#", "").replace("`", "").strip()
-    
+
     if state.historique and len(state.historique) > 0:
         if state.historique[-1].parts[0].text != texte:
             state.ajouter_historique("model", f"[Info retournée par l'action et énoncée à voix haute]: {texte}")
+
+    # Tant que Jarvis parle, on reste en mode conversation : le prochain tour
+    # n'exigera pas le mot-clé "jarvis".
+    state.extend_conversation()
 
     state.is_speaking = True
     await state.send_web_state("speaking")

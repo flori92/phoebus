@@ -6,6 +6,7 @@ Tous les modules qui doivent lire/écrire de l'état partagé importent depuis i
 """
 import asyncio
 import json
+import time as _time
 from datetime import datetime
 
 from jarvis.config import types, WS_AUTH_REQUIRED
@@ -33,6 +34,12 @@ STOP_PARLER     = False
 MODE_IRON_MAN = False
 VIDEO_LANCEE  = False
 
+# ── Mode Conversation Naturelle ────────────────────────────────────────────
+# Pendant cette fenêtre, le mot-clé "jarvis" n'est plus requis : on enchaîne
+# naturellement avec des échanges suivis, comme avec un humain.
+CONVERSATION_WINDOW_SECONDS = 45
+conversation_deadline_ts = 0.0
+
 dossier_courant    = None
 dernier_doc_id     = None
 dernier_doc_titre  = None
@@ -45,6 +52,25 @@ def ajouter_historique(role, texte):
     if not types:
         return
     historique.append(types.Content(role=role, parts=[types.Part(text=texte)]))
+
+
+# ── Helpers Conversation Naturelle ─────────────────────────────────────────
+
+def extend_conversation(seconds=None):
+    """Ouvre ou prolonge la fenêtre "on est en train de discuter".
+    Tant qu'elle est active, le STT traite la parole sans exiger "jarvis"."""
+    global conversation_deadline_ts
+    dur = seconds if seconds is not None else CONVERSATION_WINDOW_SECONDS
+    conversation_deadline_ts = _time.time() + dur
+
+
+def is_in_conversation():
+    return _time.time() < conversation_deadline_ts
+
+
+def end_conversation():
+    global conversation_deadline_ts
+    conversation_deadline_ts = 0.0
 
 
 # ── Fonctions WebSocket partagées ───────────────────────────────────────────
