@@ -176,6 +176,7 @@ body {
 
 .avatar-face-video[data-active="true"] {
   opacity: var(--avatar-opacity);
+  z-index: 4; /* Passe au dessus des autres pendant la transition */
 }
 
 /* Mode 'none' ou fallback forcé : on n'affiche que l'image fixe (bouche fermée) */

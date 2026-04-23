@@ -371,10 +371,12 @@ async def demander_ia(texte):
         return "Desole Floriace, mes serveurs sont surchargés. Je reste disponible pour vos commandes domestiques locales."
     except Exception as e:
         print(f"[IA] Erreur fatale demander_ia : {e}")
+        await state.send_web_state("idle") # On ne repasse en idle qu'en cas d'erreur réelle
         return "J'ai rencontré une erreur interne en essayant de vous répondre."
     finally:
         state.is_thinking = False
-        await state.send_web_state("idle")
+        # On ne force PAS l'état 'idle' ici car parler() va prendre le relais 
+        # ou le timeout naturel de l'UI s'en chargera.
 
 
 async def demander_ia_vision(texte, img_b64):
@@ -418,7 +420,7 @@ async def demander_ia_vision(texte, img_b64):
         return rep
     except Exception as e:
         err_msg = str(e).replace("{", "[").replace("}", "]")
+        await state.send_web_state("idle")
         return f"Désolé Floriace, je n'ai pas pu analyser votre écran. Erreur : {err_msg}"
     finally:
         state.is_thinking = False
-        await state.send_web_state("idle")
