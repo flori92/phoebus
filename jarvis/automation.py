@@ -155,7 +155,7 @@ async def boucle_automatisation():
             if not state.is_speaking and not state.is_listening and not state.is_thinking:
                 await verifier_presence_floriace()
                 await verifier_rappels_proactifs()
-                await verifier_vision_passive()
+                # await verifier_vision_passive()
                 
             await asyncio.sleep(10) # Vérification toutes les 10 secondes
         except Exception as e:
