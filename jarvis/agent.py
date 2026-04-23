@@ -7,7 +7,7 @@ import json
 import base64
 from pathlib import Path
 
-from jarvis.config import client, CHOSEN_MODEL, IS_WINDOWS, IS_MACOS, pyautogui, Image
+from jarvis.config import client, CHOSEN_MODEL, IS_WINDOWS, IS_MACOS, pyautogui, Image, types
 from jarvis.security import audit_log
 from jarvis.utils import normalize_text
 import jarvis.state as state
