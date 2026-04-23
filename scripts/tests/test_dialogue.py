@@ -84,6 +84,42 @@ def test_skill_registry():
     assert "__test_demo" in list_skills()
 
 
+def test_naturaliser_markdown():
+    from jarvis.text_shaping import naturaliser
+    assert "**" not in naturaliser("c'est **très** bien")
+    assert "`" not in naturaliser("voici `code` ici")
+    # Le contenu reste.
+    assert "très" in naturaliser("c'est **très** bien")
+
+
+def test_naturaliser_abreviations():
+    from jarvis.text_shaping import naturaliser
+    assert "Monsieur Favi" in naturaliser("M. Favi est là")
+    assert "par exemple" in naturaliser("p. ex. ceci").lower()
+    assert "c'est-à-dire" in naturaliser("c.-à-d. ceci")
+
+
+def test_naturaliser_unites():
+    from jarvis.text_shaping import naturaliser
+    assert "degrés" in naturaliser("Il fait 25°C")
+    assert "pour cent" in naturaliser("à 80%")
+    assert "euros" in naturaliser("ça fait 12€")
+    assert "kilomètres" in naturaliser("100 km à faire")
+
+
+def test_naturaliser_respiration():
+    from jarvis.text_shaping import naturaliser
+    # Ajoute une virgule après "donc" suivi d'un espace+minuscule.
+    out = naturaliser("donc voici la réponse")
+    assert "donc," in out.lower()
+
+
+def test_naturaliser_idempotent():
+    from jarvis.text_shaping import naturaliser
+    t = "M. Favi, donc il fait 20°C **aujourd'hui**."
+    assert naturaliser(naturaliser(t)) == naturaliser(t)
+
+
 # ── Exécution directe ─────────────────────────────────────────────────────
 
 def _run_all():
@@ -94,6 +130,11 @@ def _run_all():
         test_conversation_window,
         test_registre_detection,
         test_skill_registry,
+        test_naturaliser_markdown,
+        test_naturaliser_abreviations,
+        test_naturaliser_unites,
+        test_naturaliser_respiration,
+        test_naturaliser_idempotent,
     ]
     failed = 0
     for fn in tests:

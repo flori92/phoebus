@@ -13,6 +13,7 @@ from jarvis.config import edge_tts, pygame, pyaudio, sr, CLAP_THRESHOLD, pyautog
 import jarvis.state as state
 from jarvis.home import resolve_ha_entity, PIECES_LUMIERES, ha_get_etat, ha_lumiere
 from jarvis.tts_backends import synthesize_to_file, TtsUnavailable
+from jarvis.text_shaping import naturaliser
 
 # ── Résolution locale (Math, Fr, Conversions, Trad) ──────────────────────
 
@@ -92,7 +93,9 @@ def init_mixer():
     return True
 
 async def parler(texte):
-    texte_tts = texte.replace("**", "").replace("*", "").replace("#", "").replace("`", "").strip()
+    # Naturalisation : abréviations, unités, respirations, ponctuation orale.
+    # Le texte en mémoire reste tel quel (pour le LLM), seul le flux TTS est retravaillé.
+    texte_tts = naturaliser(texte)
 
     if state.historique and len(state.historique) > 0:
         if state.historique[-1].parts[0].text != texte:

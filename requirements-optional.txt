@@ -2,3 +2,23 @@
 # Bootstrap installs this best-effort because PyAudio often needs PortAudio
 # headers on macOS/Linux. The mobile interface works without it.
 PyAudio>=0.2.14
+
+# ── Voix locale naturelle (Piper TTS) ───────────────────────────────────
+# Synthèse vocale neuronale hors ligne, gratuite, rapide sur CPU.
+# Installation :
+#     pip install piper-tts
+# Modèle français (bonne qualité, ~60 Mo) :
+#     curl -L -o fr_FR-siwis-medium.onnx \
+#       https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx
+#     curl -L -o fr_FR-siwis-medium.onnx.json \
+#       https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json
+# Puis dans .env :
+#     JARVIS_PIPER_MODEL=/chemin/absolu/vers/fr_FR-siwis-medium.onnx
+# Jarvis l'utilise automatiquement s'il est configuré.
+# piper-tts  (décommenter pour installer via pip)
+
+# ── STT local (Whisper) ────────────────────────────────────────────────
+# Pour une reconnaissance vocale hors ligne plus robuste.
+# openai-whisper
+# ou, plus rapide :
+# faster-whisper
