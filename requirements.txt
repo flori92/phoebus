@@ -1,0 +1,17 @@
+edge-tts>=7.0
+google-api-python-client>=2.0
+google-auth-httplib2>=0.2
+google-auth-oauthlib>=1.0
+google-genai>=1.0
+openai>=1.0
+Pillow>=10.0
+pygame>=2.5
+PyAutoGUI>=0.9
+python-dotenv>=1.0
+requests>=2.31
+SpeechRecognition>=3.10
+websockets>=12.0
+
+# Windows-only helpers used by PyAutoGUI / native automation.
+comtypes>=1.2; platform_system == "Windows"
+pywin32>=306; platform_system == "Windows"

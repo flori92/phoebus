@@ -1,0 +1,25 @@
+# Secrets and local OAuth state
+.env
+credentials.json
+token.pickle
+
+# Local memory / generated runtime data
+jarvis_memoire.json
+jarvis_tts_*.mp3
+jarvis_vision_temp.png
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

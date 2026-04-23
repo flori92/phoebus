@@ -1,0 +1,4 @@
+# Optional dependency for local PC microphone input and clap detection.
+# Bootstrap installs this best-effort because PyAudio often needs PortAudio
+# headers on macOS/Linux. The mobile interface works without it.
+PyAudio>=0.2.14
