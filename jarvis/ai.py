@@ -172,7 +172,7 @@ async def demander_grok(texte):
     if not grok_client:
         return None
     try:
-        messages = [{"role": "system", "content": "Tu es JARVIS, l'IA de Floriace. Tu utilises actuellement ton module Grok pour les infos en temps reel. Tu conserves ton ton naturel, chaleureux et conversationnel."}]
+        messages = [{"role": "system", "content": construire_system_prompt(texte)}]
         for h in state.historique[-16:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
@@ -222,7 +222,7 @@ async def demander_groq(texte):
     if not groq_client:
         return None
     try:
-        messages = [{"role": "system", "content": "Tu es JARVIS, l'IA de Floriace. Tu utilises actuellement Llama 3.3 de Groq. Conserve un ton naturel, chaleureux, et enchaîne la conversation sans te présenter à chaque tour."}]
+        messages = [{"role": "system", "content": construire_system_prompt(texte)}]
         for h in state.historique[-16:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})

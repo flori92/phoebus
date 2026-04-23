@@ -37,7 +37,7 @@ VIDEO_LANCEE  = False
 # ── Mode Conversation Naturelle ────────────────────────────────────────────
 # Pendant cette fenêtre, le mot-clé "jarvis" n'est plus requis : on enchaîne
 # naturellement avec des échanges suivis, comme avec un humain.
-CONVERSATION_WINDOW_SECONDS = 45
+CONVERSATION_WINDOW_SECONDS = 20
 conversation_deadline_ts = 0.0
 
 # ── Activité utilisateur / silence ─────────────────────────────────────────

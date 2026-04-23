@@ -326,6 +326,9 @@ def listen_and_process(main_loop):
                     asyncio.run_coroutine_threadsafe(process_ia(texte), main_loop)
                             
                 except sr.WaitTimeoutError:
+                    if state.is_in_conversation():
+                        print("[MIC] Silence détecté, Jarvis se remet en veille.")
+                        state.end_conversation()
                     state.is_listening = False
                     asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                 except sr.UnknownValueError:
@@ -364,6 +367,9 @@ async def main():
 
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
     asyncio.create_task(proactive.loop(parler))
+
+    # Salutation initiale
+    await parler("Bonjour Floriace. Tous les systèmes sont opérationnels.")
 
     print("\n[INIT] Démarrage du serveur WebSocket...")
     await asyncio.gather(
