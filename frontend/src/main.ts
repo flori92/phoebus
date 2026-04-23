@@ -54,7 +54,7 @@ type AvatarFallbackFrameKey =
   | "alert"
   | "serious";
 
-type AvatarClipKey = "reflective" | "expressive";
+type AvatarClipKey = "reflective" | "expressive" | "none";
 
 type AvatarVisualPalette = {
   accentRgb: string;
@@ -165,12 +165,14 @@ const AVATAR_FALLBACK_URLS: Record<AvatarFallbackFrameKey, string> = {
 const AVATAR_CLIP_URLS: Record<AvatarClipKey, string> = {
   reflective: "/avatar/reflective.mp4",
   expressive: "/avatar/expressive.mp4",
+  none: "",
 };
 const AVATAR_POSTER_URLS: Record<AvatarClipKey, string> = {
   reflective: "/avatar/neutral.png",
   expressive: "/avatar/smile.png",
+  none: "/avatar/neutral.png",
 };
-const AVATAR_CLIP_KEYS: AvatarClipKey[] = ["reflective", "expressive"];
+const AVATAR_CLIP_KEYS: AvatarClipKey[] = ["reflective", "expressive", "none"];
 
 function resolveAvatarPalette(state: OrbState, mood: JarvisMood): AvatarVisualPalette {
   let palette: AvatarVisualPalette = {
@@ -237,17 +239,15 @@ function resolveAvatarPalette(state: OrbState, mood: JarvisMood): AvatarVisualPa
   }
 }
 
-function resolveAvatarClip(state: OrbState, mood: JarvisMood): AvatarClipKey {
+function resolveAvatarClip(state: OrbState, _mood: JarvisMood): AvatarClipKey {
   if (state === "thinking") {
     return "reflective";
   }
   if (state === "speaking") {
     return "expressive";
   }
-  if (mood === "warm" || mood === "joy" || mood === "alert") {
-    return "expressive";
-  }
-  return "reflective";
+  // En écoute ou au repos, on ne veut aucune vidéo (bouche fermée statique)
+  return "none";
 }
 
 function resolveFallbackFrame(state: OrbState, mood: JarvisMood): AvatarFallbackFrameKey {
@@ -325,6 +325,7 @@ class FaceAvatar {
   private failedClips = new Set<AvatarClipKey>();
 
   constructor(private readonly media: AvatarMediaElements) {
+    this.readyClips.add("none"); // Le mode sans vidéo est toujours prêt
     this.configureVideo("reflective", media.reflectiveVideoEl);
     this.configureVideo("expressive", media.expressiveVideoEl);
     this.updateMedia();
@@ -399,13 +400,13 @@ class FaceAvatar {
   }
 
   private getVideoEl(clip: AvatarClipKey): HTMLVideoElement {
-    return clip === "reflective"
-      ? this.media.reflectiveVideoEl
-      : this.media.expressiveVideoEl;
+    if (clip === "expressive") return this.media.expressiveVideoEl;
+    return this.media.reflectiveVideoEl; // Fallback pour none/reflective
   }
 
   private ensurePlayback(): void {
     for (const clip of AVATAR_CLIP_KEYS) {
+      if (clip === "none") continue;
       const playPromise = this.getVideoEl(clip).play();
       if (playPromise) {
         playPromise.catch(() => {});
@@ -429,7 +430,7 @@ class FaceAvatar {
     this.media.reflectiveVideoEl.dataset.active = String(nextClip === "reflective");
     this.media.expressiveVideoEl.dataset.active = String(nextClip === "expressive");
 
-    if (!showFallback) {
+    if (!showFallback && nextClip !== "none") {
       this.ensurePlayback();
     }
   }

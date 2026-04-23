@@ -168,12 +168,14 @@ const AVATAR_FALLBACK_URLS = {
 const AVATAR_CLIP_URLS = {
   reflective: "avatar/reflective.mp4",
   expressive: "avatar/expressive.mp4",
+  none: "",
 };
 const AVATAR_POSTER_URLS = {
   reflective: "avatar/neutral.png",
   expressive: "avatar/smile.png",
+  none: "avatar/neutral.png",
 };
-const AVATAR_CLIP_KEYS = ["reflective", "expressive"];
+const AVATAR_CLIP_KEYS = ["reflective", "expressive", "none"];
 
 function resolveAvatarPalette(state, mood) {
   let palette = {
@@ -240,17 +242,15 @@ function resolveAvatarPalette(state, mood) {
   }
 }
 
-function resolveAvatarClip(state, mood) {
+function resolveAvatarClip(state, _mood) {
   if (state === "thinking") {
     return "reflective";
   }
   if (state === "speaking") {
     return "expressive";
   }
-  if (mood === "warm" || mood === "joy" || mood === "alert") {
-    return "expressive";
-  }
-  return "reflective";
+  // En écoute ou au repos, on ne veut aucune vidéo (bouche fermée statique)
+  return "none";
 }
 
 function resolveFallbackFrame(state, mood) {
@@ -299,7 +299,7 @@ class FaceAvatar {
     this.state = "idle";
     this.mood = "neutral";
     this.activeClip = "reflective";
-    this.readyClips = new Set();
+    this.readyClips = new Set(["none"]);
     this.failedClips = new Set();
 
     this.configureVideo("reflective", media.reflectiveVideoEl);
@@ -372,13 +372,13 @@ class FaceAvatar {
   }
 
   getVideoEl(clip) {
-    return clip === "reflective"
-      ? this.media.reflectiveVideoEl
-      : this.media.expressiveVideoEl;
+    if (clip === "expressive") return this.media.expressiveVideoEl;
+    return this.media.reflectiveVideoEl; // Fallback pour none/reflective
   }
 
   ensurePlayback() {
     AVATAR_CLIP_KEYS.forEach((clip) => {
+      if (clip === "none") return;
       const playPromise = this.getVideoEl(clip).play();
       if (playPromise) {
         playPromise.catch(() => {});
@@ -402,7 +402,7 @@ class FaceAvatar {
     this.media.reflectiveVideoEl.dataset.active = String(nextClip === "reflective");
     this.media.expressiveVideoEl.dataset.active = String(nextClip === "expressive");
 
-    if (!showFallback) {
+    if (!showFallback && nextClip !== "none") {
       this.ensurePlayback();
     }
   }

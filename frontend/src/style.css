@@ -178,12 +178,13 @@ body {
   opacity: var(--avatar-opacity);
 }
 
+/* Mode 'none' ou fallback forcé : on n'affiche que l'image fixe (bouche fermée) */
+#avatar-core[data-jarvis-clip="none"] .avatar-face-video {
+  opacity: 0 !important;
+}
+#avatar-core[data-jarvis-clip="none"] .avatar-face-fallback,
 #avatar-core[data-video-fallback="true"] .avatar-face-fallback {
   opacity: calc(var(--avatar-opacity) * 0.96);
-}
-
-#avatar-core[data-video-fallback="true"] .avatar-face-video {
-  opacity: 0;
 }
 
 #avatar-core[data-jarvis-clip="reflective"] .avatar-face-media {
@@ -242,7 +243,18 @@ body[data-jarvis-state="speaking"] #avatar-core[data-jarvis-clip="expressive"] .
 
 #avatar-eyes,
 #avatar-mouth {
-  display: none;
+  display: block; /* Toujours présents par défaut pour l'état listening/idle */
+  transition: opacity 180ms ease;
+}
+
+/* On cache les yeux/bouche synthétiques quand la vidéo tourne (thinking/speaking)
+   car la vidéo contient déjà son propre visage animé. */
+body[data-jarvis-state="thinking"] #avatar-eyes,
+body[data-jarvis-state="thinking"] #avatar-mouth,
+body[data-jarvis-state="speaking"] #avatar-eyes,
+body[data-jarvis-state="speaking"] #avatar-mouth {
+  opacity: 0;
+  pointer-events: none;
 }
 
 #avatar-eyes {
