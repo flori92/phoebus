@@ -16,6 +16,26 @@ const WS_HOST = window.location.hostname || "localhost";
 const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_URL = `${WS_SCHEME}://${WS_HOST}:8765`;
 const RECONNECT_INTERVAL_MS = 2_000;
+const WS_TOKEN_STORAGE_KEY = "jarvis_ws_token";
+
+function getStoredToken(): string {
+  const params = new URLSearchParams(window.location.search);
+  const tokenFromUrl = params.get("token")?.trim() ?? "";
+  if (tokenFromUrl) {
+    localStorage.setItem(WS_TOKEN_STORAGE_KEY, tokenFromUrl);
+    return tokenFromUrl;
+  }
+  return localStorage.getItem(WS_TOKEN_STORAGE_KEY)?.trim() ?? "";
+}
+
+function requestToken(): string {
+  const current = getStoredToken();
+  const provided = window.prompt("Token JARVIS", current)?.trim() ?? "";
+  if (provided) {
+    localStorage.setItem(WS_TOKEN_STORAGE_KEY, provided);
+  }
+  return provided;
+}
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
@@ -72,6 +92,19 @@ function setConnected(ok: boolean): void {
 // ── WebSocket with auto-reconnect ─────────────────────────────────────────────
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let authToken = getStoredToken();
+
+function sendAuth(): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(
+    JSON.stringify({
+      type: "auth",
+      token: authToken,
+      client_type: "web",
+      client_name: window.navigator.userAgent.slice(0, 80),
+    })
+  );
+}
 
 function connect(): void {
   if (reconnectTimer) {
@@ -83,6 +116,7 @@ function connect(): void {
 
   ws.addEventListener("open", () => {
     setConnected(true);
+    sendAuth();
   });
 
   ws.addEventListener("message", async (event: MessageEvent) => {
@@ -110,6 +144,27 @@ function connect(): void {
             error: "no_stream",
           }));
         }
+        return;
+      }
+      if (data.action === "auth_ok") {
+        return;
+      }
+      if (data.action === "auth_required") {
+        authToken = requestToken();
+        if (!authToken) {
+          showError("Token requis");
+          return;
+        }
+        sendAuth();
+        return;
+      }
+      if (data.action === "auth_failed") {
+        localStorage.removeItem(WS_TOKEN_STORAGE_KEY);
+        authToken = "";
+        showError("Token invalide");
+        setConnected(false);
+        authToken = requestToken();
+        if (authToken) sendAuth();
         return;
       }
 

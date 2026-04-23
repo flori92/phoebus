@@ -5,8 +5,10 @@ token.pickle
 
 # Local memory / generated runtime data
 jarvis_memoire.json
+jarvis_devices.json
 jarvis_tts_*.mp3
 jarvis_vision_temp.png
+logs/
 
 # Python
 __pycache__/

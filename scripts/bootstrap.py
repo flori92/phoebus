@@ -75,6 +75,14 @@ def ensure_env_template() -> None:
         print("[BOOTSTRAP] .env cree depuis .env.example. Renseignez vos cles avant d'utiliser les fonctions cloud.")
 
 
+def ensure_devices_template() -> None:
+    target = ROOT / "jarvis_devices.json"
+    example = ROOT / "jarvis_devices.example.json"
+    if not target.exists() and example.exists():
+        shutil.copyfile(example, target)
+        print("[BOOTSTRAP] jarvis_devices.json cree depuis jarvis_devices.example.json. Adaptez les alias Home Assistant a votre installation.")
+
+
 def main() -> int:
     print("[BOOTSTRAP] J.A.R.V.I.S")
     print(f"[BOOTSTRAP] OS: {platform.system()} {platform.release()} ({platform.machine()})")
@@ -85,6 +93,7 @@ def main() -> int:
         return 1
 
     ensure_env_template()
+    ensure_devices_template()
     py = ensure_venv()
     install_python_deps(py)
     install_frontend()

@@ -1,0 +1,398 @@
+# jarvis/actions.py
+"""Dispatcher central de JARVIS. Traite les réponses JSON de l'IA."""
+import json
+
+import jarvis.state as state
+from jarvis.security import audit_log, is_sensitive_action, describe_action
+from jarvis.home import (
+    resolve_ha_entity, ha_lumiere, ha_interrupteur, ha_thermostat, ha_scene,
+    resolve_temperature_sensor, resolve_humidity_sensor, resolve_battery_sensor,
+    resolve_energy_sensor, resolve_alarm_entity, resolve_vacuum_entity,
+    ha_get_etat, ha_appeler_service, ha_get_calendrier, get_meteo_actuelle,
+    get_alertes_meteo, get_resultats_football, get_classement_football, get_resultats_sport_gemini,
+    recherche_web_serpapi, PIECES_LUMIERES, PIECES_PRISES,
+    HA_TARIFS
+)
+from jarvis.memory import ajouter_memoire, supprimer_memoire, charger_memoire
+from jarvis.rag_memory import stocker_souvenir
+from jarvis.utils import normalize_text
+from jarvis.desktop import (
+    ouvrir_dossier, lister_dossier, trier_par_type, trier_par_date,
+    trier_par_type_puis_date, creer_sous_dossier, renommer_fichier,
+    deplacer_fichier, chercher_fichier, action_whatsapp_appel
+)
+from jarvis.google_services import (
+    creer_google_doc, modifier_google_doc, lire_emails, lister_evenements_calendar,
+    creer_google_sheet
+)
+from jarvis.vision import jarvis_vision_cliquer, jarvis_vision_ecrire
+from jarvis.agent import orchestrer_agent_autonome
+from jarvis.voice import parler
+
+
+async def executer_une_action(d):
+    """Exécute un bloc JSON unique."""
+    action = d.get("action")
+    if not action:
+        return
+
+    # ── AGENT NATIF ───────────────────────────────────────────────────────────
+    if action == "agent_natif":
+        instruction = d.get("instruction", "")
+        await parler(f"Je passe la main à mon agent natif pour : {instruction}")
+        res = await orchestrer_agent_autonome(instruction)
+        await parler(f"L'agent natif a terminé. Résultat : {res}")
+        return
+
+    # ── DOSSIERS & FICHIERS ──────────────────────────────────────────────────
+    if action == "ouvrir_dossier":
+        chemin = d.get("chemin", "bureau")
+        ok, msg = ouvrir_dossier(chemin)
+        await parler(f"C'est fait Floriace. Dossier {chemin} ouvert." if ok else msg)
+        return
+        
+    elif action == "lister_dossier":
+        res, msg = lister_dossier()
+        if msg: await parler(msg)
+        else:
+            f = len(res['fichiers'])
+            dd = len(res['dossiers'])
+            await parler(f"Ce dossier contient {f} fichiers et {dd} sous-dossiers.")
+        return
+        
+    elif action == "trier_par_type":
+        ok, msg = trier_par_type()
+        await parler(msg)
+        return
+        
+    elif action == "trier_par_date":
+        ok, msg = trier_par_date()
+        await parler(msg)
+        return
+        
+    elif action == "trier_complet":
+        ok, msg = trier_par_type_puis_date()
+        await parler(msg)
+        return
+        
+    elif action == "creer_dossier":
+        nom = d.get("nom")
+        if nom:
+            ok, msg = creer_sous_dossier(nom)
+            await parler(msg)
+        return
+        
+    elif action == "renommer_fichier":
+        a = d.get("ancien")
+        n = d.get("nouveau")
+        if a and n:
+            ok, msg = renommer_fichier(a, n)
+            await parler(msg)
+        return
+        
+    elif action == "deplacer_fichier":
+        f = d.get("fichier")
+        dest = d.get("destination")
+        if f and dest:
+            ok, msg = deplacer_fichier(f, dest)
+            await parler(msg)
+        return
+        
+    elif action == "chercher_fichier":
+        n = d.get("nom")
+        if n:
+            res, msg = chercher_fichier(n)
+            if msg: await parler(msg)
+            elif res: await parler(f"J'ai trouvé {len(res)} fichiers correspondants.")
+            else: await parler("Aucun fichier trouvé.")
+        return
+
+    # ── HOME ASSISTANT ────────────────────────────────────────────────────────
+    elif action == "ha_lumiere":
+        p = d.get("piece", "salon")
+        e = d.get("etat", "on")
+        c = d.get("couleur")
+        l = d.get("luminosite")
+        
+        ent = resolve_ha_entity("light", p, PIECES_LUMIERES, default_prefix="light")
+        if ha_lumiere(ent, e, luminosite=l):
+            await parler(f"Lumière {e} dans {p}.")
+        else:
+            await parler("Impossible de contrôler la lumière.")
+        return
+        
+    elif action == "ha_prise":
+        p = d.get("piece", "salon")
+        e = d.get("etat", "on")
+        ent = resolve_ha_entity("switch", p, PIECES_PRISES, default_prefix="switch")
+        if ha_interrupteur(ent, e):
+            await parler(f"Prise {e} pour {p}.")
+        else:
+            await parler("Impossible de contrôler la prise.")
+        return
+        
+    elif action == "ha_temperature":
+        p = d.get("piece", "salon")
+        ent = resolve_temperature_sensor(p)
+        val = ha_get_etat(ent)
+        if val != "inconnu":
+            await parler(f"Il fait {val} degrés dans {p}.")
+        else:
+            await parler("Capteur de température introuvable.")
+        return
+        
+    elif action == "ha_humidite":
+        p = d.get("piece", "salon")
+        ent = resolve_humidity_sensor(p)
+        val = ha_get_etat(ent)
+        if val != "inconnu":
+            await parler(f"Le taux d'humidité dans {p} est de {val}%.")
+        else:
+            await parler("Capteur d'humidité introuvable.")
+        return
+        
+    elif action == "ha_batterie":
+        a = d.get("appareil", "mon téléphone")
+        ent = resolve_battery_sensor(a)
+        val = ha_get_etat(ent)
+        if val != "inconnu":
+            await parler(f"La batterie de {a} est à {val}%.")
+        else:
+            await parler("Impossible de trouver la batterie.")
+        return
+        
+    elif action == "ha_energie":
+        a = d.get("appareil", "tv")
+        p = d.get("periode", "mois")
+        ent = resolve_energy_sensor(a)
+        val = ha_get_etat(ent)
+        if val != "inconnu":
+            try:
+                kwh = float(val)
+                cout = round(kwh * HA_TARIFS["p1"], 2)
+                await parler(f"La consommation est de {kwh} kWh, soit environ {cout} euros.")
+            except ValueError:
+                await parler(f"La consommation est de {val} kWh.")
+        else:
+            await parler("Capteur d'énergie introuvable.")
+        return
+        
+    elif action == "ha_alarme":
+        e = d.get("etat", "on")
+        ent = resolve_alarm_entity()
+        srv = "alarm_arm_away" if e == "on" else "alarm_disarm"
+        if ha_appeler_service("alarm_control_panel", srv, ent):
+            await parler(f"Alarme {e}.")
+        else:
+            await parler("Erreur avec l'alarme.")
+        return
+        
+    elif action == "ha_thermostat":
+        t = d.get("temperature", 20)
+        ent = resolve_ha_entity("climate", "salon")
+        if ha_thermostat(ent, t):
+            await parler(f"Thermostat réglé sur {t} degrés.")
+        else:
+            await parler("Impossible de régler le thermostat.")
+        return
+        
+    elif action == "ha_scene":
+        n = d.get("nom", "")
+        ent = resolve_scene_entity(n)
+        if ha_scene(ent):
+            await parler(f"Scène {n} activée.")
+        else:
+            await parler(f"Impossible de lancer la scène {n}.")
+        return
+
+    elif action == "ha_aspirateur":
+        cmd = d.get("commande", "start").lower()
+        ent = resolve_vacuum_entity()
+        srv_map = {
+            "start": "start", "demarre": "start", "nettoie": "start",
+            "stop": "stop", "arrete": "stop",
+            "pause": "pause",
+            "base": "return_to_base", "rentre": "return_to_base"
+        }
+        srv = srv_map.get(cmd, "start")
+        if ha_appeler_service("vacuum", srv, ent):
+            await parler(f"Ordre {cmd} envoyé à l'aspirateur.")
+        else:
+            await parler("Impossible de contrôler l'aspirateur.")
+        return
+
+    # ── WEB & METEO ──────────────────────────────────────────────────────────
+    elif action == "meteo":
+        v = d.get("ville", None)
+        await parler(get_meteo_actuelle(v))
+        return
+        
+    elif action == "alerte_meteo":
+        v = d.get("ville", None)
+        await parler(get_alertes_meteo(v))
+        return
+        
+    elif action == "recherche_web":
+        q = d.get("query", "")
+        if q:
+            await parler(recherche_web_serpapi(q))
+        return
+
+    # ── SPORT ────────────────────────────────────────────────────────────────
+    elif action == "sport_resultats":
+        eq = d.get("equipe")
+        lig = d.get("ligue")
+        await parler(get_resultats_football(equipe=eq, ligue=lig))
+        return
+        
+    elif action == "sport_classement":
+        lig = d.get("ligue")
+        await parler(get_classement_football(ligue=lig))
+        return
+        
+    elif action == "sport_live":
+        q = d.get("question", "")
+        await parler(get_resultats_sport_gemini(q))
+        return
+
+    # ── MEMOIRE ──────────────────────────────────────────────────────────────
+    elif action == "memoriser":
+        cle = d.get("cle")
+        val = d.get("valeur")
+        if cle and val:
+            ajouter_memoire(cle, val)
+            await parler(f"C'est noté, {cle} : {val}.")
+        return
+        
+    elif action == "oublier":
+        cle = d.get("cle")
+        if cle:
+            if supprimer_memoire(cle): await parler(f"J'ai effacé la note concernant {cle}.")
+            else: await parler("Je ne trouve pas cette information en mémoire.")
+        return
+        
+    elif action == "lister_memoire":
+        m = charger_memoire()
+        if m:
+            txt = "Voici ce dont je me souviens : " + ", ".join([f"{k} est {v['valeur']}" for k,v in m.items()])
+            await parler(txt)
+        else:
+            await parler("Ma mémoire est vide pour l'instant.")
+        return
+
+    # ── GOOGLE SERVICES ──────────────────────────────────────────────────────
+    elif action == "create_doc":
+        titre = d.get("title", "Nouveau Document")
+        contenu = d.get("content", "")
+        await parler(creer_google_doc(titre, contenu))
+        return
+        
+    elif action == "write_doc":
+        contenu = d.get("content", "")
+        await parler(modifier_google_doc(contenu))
+        return
+        
+    elif action == "create_sheet":
+        titre = d.get("title", "Nouvelle Feuille")
+        await parler(creer_google_sheet(titre))
+        return
+        
+    elif action == "read_emails":
+        await parler(lire_emails())
+        return
+        
+    elif action == "read_calendar":
+        await parler(lister_evenements_calendar())
+        return
+
+    # ── SYSTEME ──────────────────────────────────────────────────────────────
+    elif action == "mode_iron_man":
+        e = d.get("etat", "on")
+        state.MODE_IRON_MAN = (e == "on")
+        await parler("Mode Iron Man activé." if state.MODE_IRON_MAN else "Mode Iron Man désactivé.")
+        return
+
+    # ── WHATSAPP ─────────────────────────────────────────────────────────────
+    elif action == "whatsapp_appel":
+        c = d.get("contact", "")
+        if c:
+            await action_whatsapp_appel(c, parler)
+        return
+
+    # ── VISION WEBSOCKET ─────────────────────────────────────────────────────
+    elif action == "voir_ecran":
+        ins = d.get("instruction", "")
+        if ins:
+            await parler(await jarvis_vision_cliquer(ins))
+        return
+        
+    elif action == "vision_ecrire":
+        ins = d.get("instruction", "")
+        txt = d.get("texte", "")
+        if ins and txt:
+            await parler(await jarvis_vision_ecrire(ins, txt))
+        return
+
+
+async def traiter_reponse_ia(reponse):
+    try:
+        if state.PENDING_CONFIRMATION:
+            from jarvis.security import is_confirmation_text, is_cancellation_text
+            
+            if is_confirmation_text(reponse):
+                await parler("Action confirmée, Floriace. J'exécute.")
+                d = state.PENDING_CONFIRMATION
+                state.PENDING_CONFIRMATION = None
+                audit_log("sensitive_action_confirmed", action=d.get("action"))
+                await executer_une_action(d)
+                return True
+                
+            elif is_cancellation_text(reponse):
+                await parler("Action annulée, Monsieur.")
+                audit_log("sensitive_action_cancelled", action=state.PENDING_CONFIRMATION.get("action"))
+                state.PENDING_CONFIRMATION = None
+                return True
+                
+            else:
+                await parler("En attente de votre confirmation. Dites 'Jarvis je confirme' ou 'Annule'.")
+                return True
+
+        if "{" in reponse and "}" in reponse:
+            # Sauvegarder dans RAG (mémoire long terme) que Jarvis a fait une action structurée
+            stocker_souvenir(f"Action JSON demandée : {reponse}", source="system", importance=2)
+            
+            parties = []
+            texte_restant = reponse
+            while "{" in texte_restant and "}" in texte_restant:
+                debut = texte_restant.find("{")
+                fin = texte_restant.find("}") + 1
+                try:
+                    d = json.loads(texte_restant[debut:fin])
+                    parties.append(d)
+                except json.JSONDecodeError:
+                    pass
+                texte_restant = texte_restant[fin:]
+
+            if parties:
+                for d in parties:
+                    if is_sensitive_action(d.get("action")):
+                        desc = describe_action(d)
+                        await parler(f"Floriace, vous me demandez de {desc}. Cette action est sensible. Dois-je confirmer ?")
+                        state.PENDING_CONFIRMATION = d
+                        audit_log("sensitive_action_pending", action=d.get("action"), description=desc)
+                        return True
+                    else:
+                        await executer_une_action(d)
+                return True
+
+        if len(reponse) > 2:
+            # Sauvegarde de la réponse naturelle
+            stocker_souvenir(f"Jarvis a dit : {reponse}", source="conversation", importance=1)
+            await parler(reponse)
+            return True
+
+    except Exception as e:
+        print(f"Erreur traitement IA : {e}")
+        await parler("Il y a eu un petit raté dans mon interprétation, Monsieur.")
+
+    return False

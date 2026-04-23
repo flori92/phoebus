@@ -35,15 +35,18 @@ OPTIONAL_IMPORTS = {
     "pyaudio": "PyAudio, requis pour micro PC et detection des applaudissements",
 }
 
-ENV_KEYS = [
-    "GEMINI_API_KEY",
-    "YOUTUBE_API_KEY",
-    "HA_URL",
-    "HA_TOKEN",
-    "XAI_API_KEY",
-    "SERPAPI_API_KEY",
-    "GROQ_API_KEY",
-]
+ENV_RULES = {
+    "GEMINI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
+    "YOUTUBE_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
+    "HA_URL": lambda value: bool(value and value != "http://homeassistant.local:8123"),
+    "HA_TOKEN": lambda value: bool(value and value != "VOTRE_TOKEN_ICI"),
+    "XAI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
+    "SERPAPI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
+    "GROQ_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
+    "JARVIS_WS_TOKEN": lambda value: bool(value and value not in {"CHANGE_ME", "VOTRE_TOKEN_ICI"}),
+    "JARVIS_DEVICES_FILE": lambda value: True,
+    "JARVIS_AUDIT_FILE": lambda value: True,
+}
 
 
 def has_module(name: str) -> bool:
@@ -79,10 +82,16 @@ def main() -> int:
         print_check(has_module(module), module, detail)
 
     print()
-    for key in ENV_KEYS:
+    for key, rule in ENV_RULES.items():
         value = os.getenv(key)
-        configured = bool(value and value != "VOTRE_CLE_ICI" and value != "VOTRE_TOKEN_ICI")
+        configured = rule(value)
         print_check(configured, f"env {key}", "optionnel selon les fonctions utilisees")
+
+    print()
+    print_check((ROOT / "jarvis_devices.example.json").exists(), "jarvis_devices.example.json", "modele d'alias Home Assistant")
+    local_devices = ROOT / "jarvis_devices.json"
+    print_check(local_devices.exists(), "jarvis_devices.json", "copie locale recommandee pour les alias HA")
+    print_check((ROOT / ".env.example").exists(), ".env.example", "modele de configuration")
 
     print()
     npm = shutil.which("npm.cmd" if platform.system() == "Windows" else "npm") or shutil.which("npm")

@@ -8,9 +8,30 @@
  */
 
 // ── Config ─────────────────────────────────────────────────────────────────
-const WS_URL = `ws://${window.location.hostname}:8765`;
+const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
+const WS_URL = `${WS_SCHEME}://${window.location.hostname}:8765`;
 const RECONNECT_DELAY_MS = 2500;
 const SPEECH_LANG = "fr-FR";
+const WS_TOKEN_STORAGE_KEY = "jarvis_ws_token";
+
+function getStoredToken() {
+  const params = new URLSearchParams(window.location.search);
+  const tokenFromUrl = (params.get("token") || "").trim();
+  if (tokenFromUrl) {
+    localStorage.setItem(WS_TOKEN_STORAGE_KEY, tokenFromUrl);
+    return tokenFromUrl;
+  }
+  return (localStorage.getItem(WS_TOKEN_STORAGE_KEY) || "").trim();
+}
+
+function requestToken() {
+  const token = window.prompt("Token JARVIS", getStoredToken()) || "";
+  const trimmed = token.trim();
+  if (trimmed) {
+    localStorage.setItem(WS_TOKEN_STORAGE_KEY, trimmed);
+  }
+  return trimmed;
+}
 
 // ── DOM Refs ────────────────────────────────────────────────────────────────
 const badgeEl      = document.getElementById("connection-badge");
@@ -52,6 +73,7 @@ let currentState = "idle";
 let ws           = null;
 let isListening  = false;
 let reconnectTimer = null;
+let authToken = getStoredToken();
 
 // ── Gestion des états ───────────────────────────────────────────────────────
 const STATE_LABELS = {
@@ -129,11 +151,50 @@ function connectWS() {
   ws.addEventListener("open", () => {
     console.log("[WS] Connecté à", WS_URL);
     setConnected(true);
+    ws.send(JSON.stringify({
+      type: "auth",
+      token: authToken,
+      client_type: "mobile",
+      client_name: navigator.userAgent.slice(0, 80),
+    }));
   });
 
   ws.addEventListener("message", (event) => {
     try {
       const data = JSON.parse(event.data);
+
+      if (data.action === "auth_ok") {
+        return;
+      }
+      if (data.action === "auth_required") {
+        authToken = requestToken();
+        if (!authToken) {
+          setConnected(false);
+          return;
+        }
+        ws.send(JSON.stringify({
+          type: "auth",
+          token: authToken,
+          client_type: "mobile",
+          client_name: navigator.userAgent.slice(0, 80),
+        }));
+        return;
+      }
+      if (data.action === "auth_failed") {
+        localStorage.removeItem(WS_TOKEN_STORAGE_KEY);
+        authToken = requestToken();
+        if (!authToken) {
+          setConnected(false);
+          return;
+        }
+        ws.send(JSON.stringify({
+          type: "auth",
+          token: authToken,
+          client_type: "mobile",
+          client_name: navigator.userAgent.slice(0, 80),
+        }));
+        return;
+      }
 
       // État de l'orbe (envoyé par le backend lors de ses propres actions)
       if (data.action === "set_state" && data.state) {

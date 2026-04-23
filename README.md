@@ -16,13 +16,15 @@ py scripts\bootstrap.py
 ```
 
 Le bootstrap cree `.venv`, installe les dependances Python, installe le frontend
-avec npm, puis conserve les secrets dans `.env`.
+avec npm, cree `.env` si besoin et prepare `jarvis_devices.json` a partir du modele.
 
 ## Configuration
 
 1. Copiez `.env.example` vers `.env` si le bootstrap ne l'a pas deja fait.
 2. Renseignez les cles utiles: Gemini, Home Assistant, YouTube, SerpAPI, Groq/xAI.
-3. Pour Google Docs/Gmail/Calendar, placez `credentials.json` a la racine.
+3. Definissez `JARVIS_WS_TOKEN` avec une valeur forte pour securiser les clients web/mobile.
+4. Adaptez `jarvis_devices.json` aux entites de votre Home Assistant.
+5. Pour Google Docs/Gmail/Calendar, placez `credentials.json` a la racine.
 
 ## Lancement
 
@@ -46,3 +48,40 @@ Sur Windows, utilisez `DÉMARRER_JARVIS.bat`.
 
 PyAudio est optionnel. S'il ne s'installe pas, le micro PC et les applaudissements
 sont desactives, mais le backend et l'interface mobile restent utilisables.
+
+## Home Assistant portable
+
+Le backend garde des alias historiques dans `main2.py`, mais la couche portable
+se configure via `jarvis_devices.json`:
+
+- `aliases` mappe les noms prononces vers les vraies entites Home Assistant
+- `sensitive_actions` active ou desactive les confirmations
+- les entites peuvent aussi etre decouvertes dynamiquement via l'API `/api/states`
+
+Le fichier versionne est `jarvis_devices.example.json`. La copie locale
+`jarvis_devices.json` est ignoree par Git.
+
+## Securite
+
+- websocket protege par token via `JARVIS_WS_TOKEN`
+- journal d'audit JSONL dans `logs/audit.jsonl`
+- confirmation vocale obligatoire pour les actions sensibles
+- secrets locaux ignores par Git (`.env`, `credentials.json`, `jarvis_devices.json`)
+
+En mode local simple, laissez `JARVIS_WS_TOKEN=CHANGE_ME` pour des tests rapides.
+Pour une installation reseau ou domotique reelle, remplacez-le par un token fort.
+
+## Satellites
+
+L'interface mobile peut servir de satellite vocal sur le reseau local:
+
+- ouvrez `http://IP_DU_SERVEUR:8080`
+- ajoutez `?token=VOTRE_TOKEN` a l'URL pour un appairage direct
+- le client memorise ensuite le token dans le navigateur
+
+L'architecture recommandee est:
+
+- `main2.py` pour l'orchestration locale
+- Home Assistant OS pour la domotique
+- clients web/mobile comme satellites
+- alias et politique de securite dans `jarvis_devices.json`
