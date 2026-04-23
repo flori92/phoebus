@@ -37,7 +37,7 @@ VIDEO_LANCEE  = False
 # ── Mode Conversation Naturelle ────────────────────────────────────────────
 # Pendant cette fenêtre, le mot-clé "jarvis" n'est plus requis : on enchaîne
 # naturellement avec des échanges suivis, comme avec un humain.
-CONVERSATION_WINDOW_SECONDS = 20
+CONVERSATION_WINDOW_SECONDS = 10
 conversation_deadline_ts = 0.0
 
 # ── Activité utilisateur / silence ─────────────────────────────────────────
@@ -168,5 +168,13 @@ async def send_web_volume(volume):
     recipients = get_authenticated_clients()
     if recipients:
         message = json.dumps({"action": "set_volume", "volume": round(volume, 3)})
+        await asyncio.gather(*[ws.send(message) for ws in recipients],
+                             return_exceptions=True)
+
+
+async def send_web_expression(text):
+    recipients = get_authenticated_clients()
+    if recipients and text:
+        message = json.dumps({"action": "jarvis_expression", "text": text}, ensure_ascii=False)
         await asyncio.gather(*[ws.send(message) for ws in recipients],
                              return_exceptions=True)
