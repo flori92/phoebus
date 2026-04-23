@@ -619,6 +619,60 @@ function setConnected(ok) {
 setConnected(false);
 
 // ── WebSocket ───────────────────────────────────────────────────────────────
+// ── Streaming Audio Player ────────────────────────────────────────────────
+class StreamingAudioPlayer {
+  constructor() {
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    this.nextStartTime = 0;
+    this.activeId = null;
+  }
+
+  async playChunk(base64Data, utteranceId) {
+    if (this.activeId !== utteranceId) {
+      this.activeId = utteranceId;
+      this.nextStartTime = this.audioCtx.currentTime + 0.1;
+      applyState("speaking");
+    }
+
+    const binary = atob(base64Data);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+
+    try {
+      const audioBuffer = await this.audioCtx.decodeAudioData(bytes.buffer);
+      const source = this.audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(this.audioCtx.destination);
+
+      const startTime = Math.max(this.audioCtx.currentTime, this.nextStartTime);
+      source.start(startTime);
+      this.nextStartTime = startTime + audioBuffer.duration;
+
+      source.onended = () => {
+        if (this.audioCtx.currentTime >= this.nextStartTime - 0.1) {
+          applyState("idle");
+          setVoiceLevel(0);
+        }
+      };
+
+      // Animation bouche simplifiée pendant le streaming
+      const vol = 0.4 + 0.3 * Math.sin(Date.now() / 50);
+      setVoiceLevel(vol);
+
+    } catch (e) {
+      console.error("[STREAM] Erreur décodage chunk :", e);
+    }
+  }
+
+  stop() {
+    this.activeId = null;
+    this.nextStartTime = 0;
+  }
+}
+
+const streamingPlayer = new StreamingAudioPlayer();
+
 function connectWS() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
@@ -700,6 +754,11 @@ function connectWS() {
         if (data.state !== "speaking") {
           applyState(data.state);
         }
+      }
+
+      if (data.action === "jarvis_audio_chunk" && data.audio_b64) {
+        streamingPlayer.playChunk(data.audio_b64, data.id);
+        return;
       }
 
       // Réponse textuelle de JARVIS destinée au mobile avec audio distant (même voix que web)

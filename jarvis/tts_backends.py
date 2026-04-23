@@ -258,4 +258,38 @@ async def synthesize_to_file(texte: str, out_path: str) -> dict:
     if backend == "edge":
         return await _synth_edge(texte, out_path)
 
-    raise TtsUnavailable("Aucun back-end TTS opérationnel.")
+
+async def stream_to_queue(texte: str, queue: asyncio.Queue) -> dict:
+    """Version 'streaming' de la synthèse pour réduire la latence perçue.
+    Pousse les chunks audio dans `queue` dès qu'ils arrivent.
+    """
+    if _backend_actif() != "edge" or edge_tts is None:
+        raise TtsUnavailable("Le streaming n'est supporté que par Edge-TTS pour le moment.")
+
+    communicate = edge_tts.Communicate(
+        texte,
+        voice=EDGE_VOICE,
+        rate=EDGE_RATE,
+        pitch=EDGE_PITCH,
+        volume=EDGE_VOLUME,
+        boundary="WordBoundary",
+    )
+    
+    boundaries = []
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            await queue.put(chunk["data"])
+        elif chunk["type"] == "WordBoundary":
+            boundaries.append({
+                "offset_ms": round(float(chunk["offset"]) / 10000.0, 1),
+                "duration_ms": round(float(chunk["duration"]) / 10000.0, 1),
+                "text": chunk.get("text", ""),
+            })
+            
+    await queue.put(None) # Fin du flux
+    
+    result = {"backend": "edge"}
+    frames = build_lipsync_frames_from_word_boundaries(boundaries)
+    if frames:
+        result["lipsync"] = {"source": "edge_word_boundaries", "frames": frames}
+    return result

@@ -581,6 +581,54 @@ function sendAuth(): void {
   );
 }
 
+// ── Streaming Audio Player ────────────────────────────────────────────────────
+class StreamingAudioPlayer {
+  private audioCtx: AudioContext;
+  private nextStartTime: number = 0;
+  private activeId: string | null = null;
+
+  constructor() {
+    this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+
+  async playChunk(base64Data: string, utteranceId: string): Promise<void> {
+    if (this.activeId !== utteranceId) {
+      this.activeId = utteranceId;
+      this.nextStartTime = this.audioCtx.currentTime + 0.1;
+      applyState("speaking");
+    }
+
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    try {
+      const audioBuffer = await this.audioCtx.decodeAudioData(bytes.buffer);
+      const source = this.audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(this.audioCtx.destination);
+
+      const startTime = Math.max(this.audioCtx.currentTime, this.nextStartTime);
+      source.start(startTime);
+      this.nextStartTime = startTime + audioBuffer.duration;
+
+      source.onended = () => {
+        if (this.audioCtx.currentTime >= this.nextStartTime - 0.1) {
+          applyState("idle");
+          setVoiceLevel(0);
+        }
+      };
+      
+      const vol = 0.4 + 0.3 * Math.sin(Date.now() / 50);
+      setVoiceLevel(vol);
+    } catch (e) {
+      console.error("[STREAM] Error decoding chunk", e);
+    }
+  }
+}
+
+const streamingPlayer = new StreamingAudioPlayer();
+
 // ── WebSocket with auto-reconnect ─────────────────────────────────────────────
 function connect(): void {
   if (reconnectTimer) {
@@ -643,6 +691,10 @@ function connect(): void {
       }
       if (data.action === "jarvis_lipsync" && Array.isArray(data.frames)) {
         startTimedLipsync(data.frames, data.id);
+        return;
+      }
+      if (data.action === "jarvis_audio_chunk" && data.id && data.text) {
+        streamingPlayer.playChunk(data.text, data.id);
         return;
       }
       if (data.action === "set_volume" && typeof data.volume === "number") {

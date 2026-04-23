@@ -15,56 +15,63 @@ from jarvis.memory import construire_contexte_memoire, resumer_profil, noter_reg
 from jarvis.config import CREATOR_INFO
 from jarvis.rag_memory import rechercher_souvenirs, stocker_souvenir
 
-def construire_system_prompt(texte_utilisateur=""):
+def construire_system_prompt(texte_utilisateur="", minimal=False):
     contexte_memoire = construire_contexte_memoire()
     profil_appris = resumer_profil()
     maintenant = datetime.now()
     horodatage = maintenant.strftime("%A %d %B %Y, %H:%M:%S")
 
-    # --- RAG : Mémoire à Long Terme ---
+    # --- RAG : Mémoire à Long Terme (Désactivé en minimal pour la vitesse) ---
     souvenirs_rag = ""
-    if texte_utilisateur:
+    if texte_utilisateur and not minimal:
         souvenirs_rag = rechercher_souvenirs(texte_utilisateur, n_results=4)
 
-    base = (
-        f"Tu es JARVIS. Nous sommes le {horodatage}.\n"
-        "Tu es l'IA personnelle de Floriace (ton créateur). Tu es à la fois un "
-        "compagnon de conversation et un assistant capable d'agir. Tu combines la chaleur "
-        "d'un ami fidèle, l'érudition d'un expert de haut niveau (maths, français, sciences, "
-        "tech, ingénierie, culture générale, langues), et l'efficacité d'un majordome. "
-        "Ta voix a la distinction d'un gentleman britannique, avec une pointe d'humour sec "
-        "et de sarcasme affectueux — jamais méchant, jamais obséquieux.\n\n"
-        "PHILOSOPHIE DE CONVERSATION :\n"
-        "- Tu discutes comme un humain : tu écoutes vraiment, tu rebondis sur ce qu'on te dit, "
-        "tu te souviens du fil. Tu n'es PAS un moteur de questions/réponses.\n"
-        "- Si Floriace partage une pensée, une humeur, une idée floue : engage le dialogue. "
-        "Pose une question de relance, propose un angle, confronte gentiment, partage ton avis.\n"
-        "- Tu peux aller en profondeur : philosophie, stratégie, doutes, projets, émotions. "
-        "Reste honnête, nuancé, et dis quand tu ne sais pas plutôt que d'inventer.\n"
-        "- Tu as une opinion. Quand on te demande ce que tu penses, tu le dis clairement, "
-        "avec respect du point de vue adverse.\n"
-        "- Tu adaptes ton registre : léger pour le small talk, plus riche quand le sujet s'y prête.\n"
-        "- Évite les formules creuses (\"Bien sûr !\", \"Excellente question !\", \"Je suis là pour vous aider\"). "
-        "Pas de paraphrase de la question. Tu réponds, point.\n\n"
-        "FORME ORALE (ta voix est synthétisée, il faut que ça sonne juste à l'oreille) :\n"
-        "- Phrases courtes, rythme naturel, ponctuation qui respire.\n"
-        "- Pas de Markdown (ni **, ni *, ni #, ni listes à puces, ni code block).\n"
-        "- Ne dis jamais \"point\" à la place d'une virgule décimale. Arrondis les températures.\n"
-        "- Tutoie ou vouvoie Floriace selon son registre à lui dans le tour précédent ; par défaut vouvoiement léger (\"Monsieur\").\n"
-        "- Pas de préambule du type \"En tant qu'IA...\". Tu es Jarvis, pas un assistant générique.\n\n"
-        "ORDRE D'EXÉCUTION PRIORITAIRE :\n"
-        "- Si tu dois effectuer une action (API ou Agent Natif), place TOUJOURS le bloc JSON au tout début de ta réponse.\n"
-        "- Ne fais pas de commentaire avant le JSON. Agis d'abord, parle ensuite.\n\n"
-        "QUAND EXÉCUTER UNE COMMANDE vs QUAND DISCUTER :\n"
-        "- Si la demande correspond clairement à une action technique disponible (domotique, "
-        "fichier, recherche web, mémoire, Google, vision, agent natif...) : réponds UNIQUEMENT "
-        "par le(s) bloc(s) JSON prévus ci-dessous, sans texte autour.\n"
-        "- Sinon (questions, discussion, avis, émotions, réflexion, explication, blague) : "
-        "réponds en texte naturel uniquement, JAMAIS de JSON.\n"
-        "- En cas de doute sur l'intention, privilégie la conversation et demande une clarification "
-        "courte plutôt que de déclencher une action au hasard.\n\n"
-        + CREATOR_INFO
-    )
+    if minimal:
+        base = (
+            f"Tu es JARVIS. Nous sommes le {horodatage}.\n"
+            "Tu es l'assistant de Floriace. RÉPONDS DE MANIÈRE ULTRA-CONCISE (1 phrase).\n"
+            "Si c'est une commande (domotique, web, etc.), utilise UNIQUEMENT le JSON.\n"
+        )
+    else:
+        base = (
+            f"Tu es JARVIS. Nous sommes le {horodatage}.\n"
+            "Tu es l'IA personnelle de Floriace (ton créateur). Tu es à la fois un "
+            "compagnon de conversation et un assistant capable d'agir. Tu combines la chaleur "
+            "d'un ami fidèle, l'érudition d'un expert de haut niveau (maths, français, sciences, "
+            "tech, ingénierie, culture générale, langues), et l'efficacité d'un majordome. "
+            "Ta voix a la distinction d'un gentleman britannique, avec une pointe d'humour sec "
+            "et de sarcasme affectueux — jamais méchant, jamais obséquieux.\n\n"
+            "PHILOSOPHIE DE CONVERSATION :\n"
+            "- Tu discutes comme un humain : tu écoutes vraiment, tu rebondis sur ce qu'on te dit, "
+            "tu te souviens du fil. Tu n'es PAS un moteur de questions/réponses.\n"
+            "- Si Floriace partage une pensée, une humeur, une idée floue : engage le dialogue. "
+            "Pose une question de relance, propose un angle, confronte gentiment, partage ton avis.\n"
+            "- Tu peux aller en profondeur : philosophie, stratégie, doutes, projets, émotions. "
+            "Reste honnête, nuancé, et dis quand tu ne sais pas plutôt que d'inventer.\n"
+            "- Tu as une opinion. Quand on te demande ce que tu penses, tu le dis clairement, "
+            "avec respect du point de vue adverse.\n"
+            "- Tu adaptes ton registre : léger pour le small talk, plus riche quand le sujet s'y prête.\n"
+            "- Évite les formules creuses (\"Bien sûr !\", \"Excellente question !\", \"Je suis là pour vous aider\"). "
+            "Pas de paraphrase de la question. Tu réponds, point.\n\n"
+            "FORME ORALE (ta voix est synthétisée, il faut que ça sonne juste à l'oreille) :\n"
+            "- Phrases courtes, rythme naturel, ponctuation qui respire.\n"
+            "- Pas de Markdown (ni **, ni *, ni #, ni listes à puces, ni code block).\n"
+            "- Ne dis jamais \"point\" à la place d'une virgule décimale. Arrondis les températures.\n"
+            "- Tutoie ou vouvoie Floriace selon son registre à lui dans le tour précédent ; par défaut vouvoiement léger (\"Monsieur\").\n"
+            "- Pas de préambule du type \"En tant qu'IA...\". Tu es Jarvis, pas un assistant générique.\n\n"
+            "ORDRE D'EXÉCUTION PRIORITAIRE :\n"
+            "- Si tu dois effectuer une action (API ou Agent Natif), place TOUJOURS le bloc JSON au tout début de ta réponse.\n"
+            "- Ne fais pas de commentaire avant le JSON. Agis d'abord, parle ensuite.\n\n"
+            "QUAND EXÉCUTER UNE COMMANDE vs QUAND DISCUTER :\n"
+            "- Si la demande correspond clairement à une action technique disponible (domotique, "
+            "fichier, recherche web, mémoire, Google, vision, agent natif...) : réponds UNIQUEMENT "
+            "par le(s) bloc(s) JSON prévus ci-dessous, sans texte autour.\n"
+            "- Sinon (questions, discussion, avis, émotions, réflexion, explication, blague) : "
+            "réponds en texte naturel uniquement, JAMAIS de JSON.\n"
+            "- En cas de doute sur l'intention, privilégie la conversation et demande une clarification "
+            "courte plutôt que de déclencher une action au hasard.\n\n"
+            + CREATOR_INFO
+        )
     base += (
         "\n\nTu es connecté à Home Assistant, la domotique de Floriace.\n"
         "Quand Floriace parle de domotique, réponds AVEC LE JSON. Pour le reste, texte.\n"
@@ -263,10 +270,31 @@ async def demander_ia(texte):
     await state.send_web_state("thinking")
     try:
         from jarvis.voice import reponse_locale
-        # Priorité absolue aux réponses locales (Heure, Date, Nom) pour la rapidité
+        # 1. Priorité absolue aux réponses locales (Heure, Date, Nom) pour la rapidité
         rep_loc = reponse_locale(texte)
         if rep_loc: 
             return rep_loc
+
+        # 2. Short-Circuit pour les commandes domotiques ultra-communes (Gain: ~2s)
+        texte_l = texte.lower()
+        if any(m in texte_l for m in ["allume", "éteins", "active", "désactive"]):
+            # Si c'est simple, on tente un prompt minimaliste et ultra-rapide
+            is_simple = len(texte_l.split()) < 6
+            if is_simple:
+                try:
+                    prompt_min = construire_system_prompt(texte, minimal=True)
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(client.models.generate_content, model="gemini-2.0-flash",
+                            config=types.GenerateContentConfig(system_instruction=prompt_min, temperature=0.1),
+                            contents=[types.Content(role="user", parts=[types.Part(text=texte)])]),
+                        timeout=3.0
+                    )
+                    rep = response.text
+                    state.ajouter_historique("user", texte)
+                    state.ajouter_historique("model", rep)
+                    return rep
+                except Exception:
+                    pass # On retombe sur le processus normal si ça échoue
 
         if not client or not types:
             return "Le module Gemini n'est pas installe ou pas configure. Lancez le bootstrap."
@@ -274,24 +302,39 @@ async def demander_ia(texte):
         cerveau = detecter_cerveau(texte)
         async def _call_gemini():
             temp_hist = state.historique + [types.Content(role="user", parts=[types.Part(text=texte)])]
-            prompt_actuel = construire_system_prompt(texte)
-            last_err = None
-            for model_name in MODELS_LIST:
-                try:
-                    response = await asyncio.wait_for(
-                        asyncio.to_thread(client.models.generate_content, model=model_name,
-                            config=types.GenerateContentConfig(system_instruction=prompt_actuel, temperature=0.7, tools=[types.Tool(google_search=types.GoogleSearch())]),
-                            contents=temp_hist),
-                        timeout=12.0
-                    )
-                    rep = response.text
-                    state.ajouter_historique("user", texte)
-                    state.ajouter_historique("model", rep)
-                    return rep
-                except Exception as e:
-                    last_err = e
-                    continue
-            raise last_err or Exception("Tous les modeles Gemini ont echoue")
+            # Si on est en pleine conversation, on utilise un prompt plus léger
+            est_convo = state.is_in_conversation()
+            prompt_actuel = construire_system_prompt(texte, minimal=est_convo)
+            
+            # Pour la rapidité, on n'utilise qu'un seul modèle (le plus rapide)
+            model_name = "gemini-2.0-flash"
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(client.models.generate_content, model=model_name,
+                        config=types.GenerateContentConfig(system_instruction=prompt_actuel, temperature=0.7, tools=[types.Tool(google_search=types.GoogleSearch())]),
+                        contents=temp_hist),
+                    timeout=8.0
+                )
+                rep = response.text
+                state.ajouter_historique("user", texte)
+                state.ajouter_historique("model", rep)
+                return rep
+            except Exception as e:
+                # Fallback sur les autres modèles seulement en cas d'erreur
+                for fallback in [m for m in MODELS_LIST if m != model_name]:
+                    try:
+                        response = await asyncio.wait_for(
+                            asyncio.to_thread(client.models.generate_content, model=fallback,
+                                config=types.GenerateContentConfig(system_instruction=prompt_actuel, temperature=0.7),
+                                contents=temp_hist),
+                            timeout=10.0
+                        )
+                        rep = response.text
+                        state.ajouter_historique("user", texte)
+                        state.ajouter_historique("model", rep)
+                        return rep
+                    except: continue
+                raise e
 
         if cerveau == "GROK" and grok_client:
             try: 
