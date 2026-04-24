@@ -29,9 +29,13 @@ def get_google_creds():
                 print("[GOOGLE] Pas de credentials.json - fonctions Google desactivees.")
                 return None
             flow  = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            # Utilisation d'un port fixe (8085) pour éviter le redirect_uri_mismatch.
-            # N'oubliez pas d'ajouter http://localhost:8085/ dans votre console Google Cloud.
-            creds = flow.run_local_server(port=8085)
+            # On force le mode 'offline' pour obtenir un Refresh Token longue durée.
+            # prompt='consent' force l'affichage de la page d'accord pour garantir le token.
+            creds = flow.run_local_server(
+                port=8085, 
+                access_type='offline', 
+                prompt='consent'
+            )
         with open("token.pickle", "wb") as f:
             pickle.dump(creds, f)
     return creds
