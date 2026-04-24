@@ -279,6 +279,8 @@ async def parler(texte):
         state.speak_volume = 0.0
         state.is_speaking = False
         state.STOP_PARLER = False
+        state.last_jarvis_speech = texte
+        state.last_speech_timestamp = time.time()
         await asyncio.sleep(0.05)
         await state.send_web_state("idle")
 

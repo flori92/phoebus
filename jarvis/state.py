@@ -46,8 +46,12 @@ last_user_activity_ts = 0.0
 silence_ping_sent = False  # Évite de repinger en boucle après un long silence.
 
 # ── Barge-in (interruption de Jarvis par la voix) ─────────────────────────
-BARGE_IN_THRESHOLD = 2200  # RMS au-dessus duquel on considère que l'utilisateur parle.
+BARGE_IN_THRESHOLD = 3000  # RMS au-dessus duquel on considère que l'utilisateur parle.
 BARGE_IN_CONSECUTIVE_CHUNKS = 3  # Nb de chunks consécutifs au-dessus du seuil.
+
+# ── Anti-Écho (Jarvis ne se parle pas à lui-même) ─────────────────────────
+last_jarvis_speech = ""    # Texte exact du dernier bloc prononcé
+last_speech_timestamp = 0.0 # Heure de fin de parole
 
 # ── Tâches de fond (actions longues non bloquantes) ───────────────────────
 background_tasks = {}  # {id: {"task": asyncio.Task, "label": str, "started": ts}}

@@ -20,6 +20,7 @@ PROVIDERS = ("gemini", "groq", "openai", "mistral", "kimi", "grok", "ollama")
 DEFAULT_ORDER = ("gemini", "groq", "openai", "mistral", "kimi", "grok", "ollama")
 METRICS_FILE = BASE_DIR / "logs" / "ai_router_metrics.json"
 FAIL_COOLDOWN_SECONDS = 45
+QUOTA_COOLDOWN_SECONDS = 3600  # 1 heure pour les erreurs de quota (429)
 
 
 @dataclass(frozen=True)
@@ -166,7 +167,17 @@ def record_provider_result(provider: str, ok: bool, latency_ms: float, error: st
         streak = int(item.get("failures_streak", 0)) + 1
         item["failures_streak"] = streak
         item["last_error"] = str(error or "")[:220]
-        item["cooldown_until"] = now + min(180, FAIL_COOLDOWN_SECONDS * streak)
+        
+        # Détecter les erreurs de quota (429) et appliquer une cooldown longue
+        error_lower = str(error or "").lower()
+        is_quota_error = "429" in str(error) or "resource_exhausted" in error_lower or "quota" in error_lower
+        
+        if is_quota_error:
+            # Erreur de quota : cooldown d'1 heure
+            item["cooldown_until"] = now + QUOTA_COOLDOWN_SECONDS
+        else:
+            # Erreur classique : augmentation exponentielle avec max 3 minutes
+            item["cooldown_until"] = now + min(180, FAIL_COOLDOWN_SECONDS * streak)
     _save_metrics(data)
 
 
@@ -176,8 +187,14 @@ def rank_provider_names(
     order: Optional[Iterable[str]] = None,
     mode: Optional[str] = None,
     metrics: Optional[dict] = None,
+    exclude_cooling: bool = True,
 ) -> list[str]:
-    """Retourne les fournisseurs a tenter, dans l'ordre."""
+    """Retourne les fournisseurs a tenter, dans l'ordre.
+    
+    Args:
+        exclude_cooling: Si True (défaut), exclut les providers en cooldown.
+                        Si False, les retourne en dernier (ancien comportement).
+    """
     available_set = set(available or PROVIDERS)
     base = [p for p in (list(order) if order else configured_order()) if p in available_set]
     mode = mode or configured_mode()
@@ -204,7 +221,11 @@ def rank_provider_names(
             cooling.append(provider)
         else:
             healthy.append(provider)
-    return healthy + cooling
+    
+    if exclude_cooling:
+        return healthy  # Exclure complètement les providers en cooldown
+    else:
+        return healthy + cooling  # Ancien comportement
 
 
 def available_provider_names() -> list[str]:

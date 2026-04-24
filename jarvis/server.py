@@ -295,6 +295,30 @@ def listen_and_process(main_loop):
 
                     try:
                         texte = stt_recognize(audio)
+                        if not texte: raise sr.UnknownValueError()
+                        
+                        # ── Anti-Écho : Jarvis ne doit pas s'écouter lui-même ───
+                        maintenant = time.time()
+                        # 1. Si le texte est très proche de ce qu'il vient de dire
+                        from jarvis.utils import normalize_text
+                        last_clean = normalize_text(state.last_jarvis_speech)
+                        this_clean = normalize_text(texte)
+                        
+                        is_echo = False
+                        if last_clean and (last_clean in this_clean or this_clean in last_clean):
+                            if maintenant - state.last_speech_timestamp < 4.0:
+                                is_echo = True
+                        
+                        # 2. Si le texte est court et arrive juste après la fin de parole
+                        if not is_echo and maintenant - state.last_speech_timestamp < 1.0:
+                            if len(texte.split()) < 4:
+                                is_echo = True
+                                
+                        if is_echo:
+                            print(f"[MIC] Écho détecté et ignoré : \"{texte}\"")
+                            asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                            continue
+
                     except sr.UnknownValueError:
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue

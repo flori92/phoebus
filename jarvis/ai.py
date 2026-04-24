@@ -17,7 +17,7 @@ from jarvis.memory import construire_contexte_memoire, resumer_profil, noter_reg
 from jarvis.config import CREATOR_INFO
 from jarvis.brain_router import (
     available_provider_names, build_profile, rank_provider_names,
-    record_provider_result,
+    record_provider_result, _load_metrics,
 )
 from jarvis.rag_memory import rechercher_souvenirs, stocker_souvenir
 
@@ -514,18 +514,29 @@ async def demander_ia(texte):
             # Si c'est simple, on tente un prompt minimaliste et ultra-rapide
             is_simple = len(texte_l.split()) < 6
             if is_simple and client and types:
-                try:
-                    rep = await demander_gemini(
-                        texte,
-                        minimal=True,
-                        model_names=MODELS_LIST[:1],
-                        timeout_s=3.0,
-                        use_search=False,
-                    )
-                    if rep:
-                        return rep
-                except Exception:
-                    pass # On retombe sur le processus normal si ça échoue
+                # Vérifier si Gemini est en cooldown avant de la tenter
+                metrics = _load_metrics()
+                gemini_item = metrics.get("gemini", {})
+                cooldown_until = float(gemini_item.get("cooldown_until", 0) or 0)
+                if cooldown_until <= time.time():  # Gemini n'est pas en cooldown
+                    try:
+                        started = time.perf_counter()
+                        rep = await demander_gemini(
+                            texte,
+                            minimal=True,
+                            model_names=MODELS_LIST[:1],
+                            timeout_s=3.0,
+                            use_search=False,
+                        )
+                        latency_ms = (time.perf_counter() - started) * 1000
+                        if rep:
+                            record_provider_result("gemini", True, latency_ms)
+                            return rep
+                        record_provider_result("gemini", False, latency_ms, "empty response")
+                    except Exception as e:
+                        latency_ms = (time.perf_counter() - started) * 1000
+                        record_provider_result("gemini", False, latency_ms, str(e))
+                        # On retombe sur le processus normal si ça échoue
 
         profile = build_profile(
             texte,
@@ -631,8 +642,20 @@ async def demander_ia_stream(texte, on_sentence=None):
                 await on_sentence(intent.reply)
             return intent.reply
 
-        # Gemini absent → on retombe sur le non-streaming unifié.
+        # Gemini absent OU en cooldown → on retombe sur le non-streaming unifié.
         if not client or not types:
+            rep = await demander_ia(texte)
+            if on_sentence and rep and "{" not in rep:
+                for s in split_streaming(rep + " ")[0]:
+                    await on_sentence(s)
+            return rep
+        
+        # Vérifier si Gemini est en cooldown
+        metrics = _load_metrics()
+        gemini_item = metrics.get("gemini", {})
+        cooldown_until = float(gemini_item.get("cooldown_until", 0) or 0)
+        if cooldown_until > time.time():
+            # Gemini est en cooldown (quota exhausted, etc.) : skip au non-streaming
             rep = await demander_ia(texte)
             if on_sentence and rep and "{" not in rep:
                 for s in split_streaming(rep + " ")[0]:
