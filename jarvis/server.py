@@ -477,9 +477,12 @@ async def run_telegram_bot(main_loop):
     print("[TELEGRAM] Démarrage du bot...")
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        chat_id = str(update.effective_chat.id)
         # Sécurité : on ne répond qu'au propriétaire
-        if TELEGRAM_CHAT_ID and str(update.effective_chat.id) != str(TELEGRAM_CHAT_ID):
-            print(f"[TELEGRAM] Message ignoré de chat_id inconnu : {update.effective_chat.id}")
+        if not TELEGRAM_CHAT_ID:
+            print(f"[TELEGRAM] Message reçu de ID: {chat_id}. Pour sécuriser, ajoutez TELEGRAM_CHAT_ID={chat_id} dans votre .env")
+        elif chat_id != str(TELEGRAM_CHAT_ID):
+            print(f"[TELEGRAM] Message ignoré de chat_id inconnu : {chat_id}")
             return
 
         user_text = update.message.text
