@@ -83,6 +83,7 @@ HA_TOKEN        = os.getenv("HA_TOKEN")
 SERPAPI_API_KEY  = os.getenv("SERPAPI_API_KEY")
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+KIMI_API_KEY    = os.getenv("KIMI_API_KEY")
 JARVIS_WS_TOKEN = os.getenv("JARVIS_WS_TOKEN", "").strip()
 JARVIS_DEVICES_FILE = os.getenv("JARVIS_DEVICES_FILE", "jarvis_devices.json").strip()
 JARVIS_AUDIT_FILE   = os.getenv("JARVIS_AUDIT_FILE", "logs/audit.jsonl").strip()
@@ -106,6 +107,10 @@ mistral_client = None
 if OpenAI and MISTRAL_API_KEY and MISTRAL_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
     mistral_client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
 
+kimi_client = None
+if OpenAI and KIMI_API_KEY and KIMI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+    kimi_client = OpenAI(api_key=KIMI_API_KEY, base_url="https://api.moonshot.cn/v1")
+
 # ── Modèles ─────────────────────────────────────────────────────────────────
 MODELS_LIST  = [
     m.strip() for m in os.getenv(
@@ -125,6 +130,7 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
 GROK_MODEL = os.getenv("GROK_MODEL", "grok-3").strip()
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o").strip()
+KIMI_MODEL = os.getenv("KIMI_MODEL", "moonshot-v1-8k").strip()
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
 BASE_DIR          = Path(__file__).resolve().parent.parent

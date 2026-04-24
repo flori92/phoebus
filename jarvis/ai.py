@@ -8,8 +8,9 @@ import time
 from datetime import datetime
 
 from jarvis.config import (
-    client, grok_client, groq_client, mistral_client, openai_client, CHOSEN_MODEL, MODELS_LIST,
-    OLLAMA_MODELS, OLLAMA_URL, types, GROQ_MODEL, GROK_MODEL, MISTRAL_MODEL, OPENAI_MODEL
+    client, grok_client, groq_client, mistral_client, openai_client, kimi_client,
+    CHOSEN_MODEL, MODELS_LIST, OLLAMA_MODELS, OLLAMA_URL, types,
+    GROQ_MODEL, GROK_MODEL, MISTRAL_MODEL, OPENAI_MODEL, KIMI_MODEL
 )
 import jarvis.state as state
 from jarvis.memory import construire_contexte_memoire, resumer_profil, noter_registre, detecter_registre
@@ -453,6 +454,30 @@ async def demander_openai(texte):
         return None
 
 
+async def demander_kimi(texte):
+    if not kimi_client:
+        return None
+    try:
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises Kimi (Moonshot AI) pour cette réponse. "
+            "C'est un modèle chinois puissant. Ne le mentionne pas à Floriace."
+        )
+        messages = _messages_openai(system_prompt, texte)
+        completion = await asyncio.to_thread(
+            kimi_client.chat.completions.create,
+            model=KIMI_MODEL,
+            messages=messages,
+            temperature=0.7,
+        )
+        rep = completion.choices[0].message.content
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", rep)
+        return rep
+    except Exception as e:
+        print(f"[ERREUR KIMI] {e}")
+        return None
+
+
 async def demander_ia(texte):
     state.is_thinking = True
     state.mark_user_activity()
@@ -526,6 +551,7 @@ async def demander_ia(texte):
             "groq": lambda: demander_groq(texte),
             "mistral": lambda: demander_mistral(texte),
             "openai": lambda: demander_openai(texte),
+            "kimi": lambda: demander_kimi(texte),
             "grok": lambda: demander_grok(texte),
             "ollama": lambda: demander_ollama(texte),
         }
