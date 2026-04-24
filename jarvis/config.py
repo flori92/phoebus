@@ -153,7 +153,7 @@ IS_MACOS    = SYSTEM_NAME == "Darwin"
 DEFAULT_FRONTEND_PORT = 5173
 DEFAULT_WS_PORT       = 8765
 DEFAULT_MOBILE_PORT   = 8080
-WS_AUTH_REQUIRED = bool(JARVIS_WS_TOKEN and JARVIS_WS_TOKEN not in {"CHANGE_ME", "VOTRE_TOKEN_ICI"})
+WS_AUTH_REQUIRED      = False  # Option A : Authentification désactivée par l'utilisateur
 
 # ── Géo / Météo ─────────────────────────────────────────────────────────────
 VILLE_PAR_DEFAUT = "Amilly"

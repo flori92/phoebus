@@ -319,55 +319,77 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(400)
                 self.end_headers()
 
-        elif self.path == '/webhook/command':
-            if not token_valid:
-                print(f"[WEBHOOK] Accès refusé (Token invalide ou manquant) pour {self.client_address[0]}")
+        elif self.path.startswith('/webhook/command'):
+            # Extraction du token depuis le header OU l'URL (?token=...)
+            from urllib.parse import urlparse, parse_qs
+            query = urlparse(self.path).query
+            query_params = parse_qs(query)
+            url_token = query_params.get('token', [None])[0]
+            
+            auth_header = self.headers.get('Authorization') or self.headers.get('authorization', '')
+            provided_token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+            
+            # Si Option A (WS_AUTH_REQUIRED=False), on accepte tout.
+            # Sinon, on vérifie l'un des deux tokens fournis.
+            final_auth_ok = True
+            if WS_AUTH_REQUIRED:
+                final_auth_ok = (provided_token == JARVIS_WS_TOKEN or url_token == JARVIS_WS_TOKEN)
+
+            if not final_auth_ok:
+                print(f"[WEBHOOK] Accès refusé pour {self.client_address[0]}")
                 self.send_response(401)
                 self.end_headers()
+                self.wfile.write(b'{"error": "Unauthorized: Token invalid or missing"}')
                 return
 
             try:
                 content_length = int(self.headers.get('Content-Length', 0))
                 if content_length == 0:
-                    print("[WEBHOOK] Corps de requête vide.")
                     self.send_response(400)
                     self.end_headers()
+                    self.wfile.write(b'{"error": "Empty body"}')
                     return
 
-                post_data = self.rfile.read(content_length)
-                data = json.loads(post_data.decode('utf-8'))
-                texte = data.get("text", "")
+                post_data = self.rfile.read(content_length).decode('utf-8')
                 
-                metadata = {
-                    "battery": data.get("battery", "Inconnue"),
-                    "location": data.get("location", "Inconnue"),
-                    "focus": data.get("focus", "Inconnu")
-                }
+                # Tentative de lecture JSON, sinon on prend le texte brut
+                texte = ""
+                metadata = {}
+                try:
+                    data = json.loads(post_data)
+                    texte = data.get("text", "")
+                    metadata = {
+                        "battery": data.get("battery", "Inconnue"),
+                        "location": data.get("location", "Inconnue"),
+                        "focus": data.get("focus", "Inconnu")
+                    }
+                except:
+                    # Si ce n'est pas du JSON, on traite tout le body comme du texte
+                    texte = post_data.strip()
 
                 if texte:
-                    # On utilise le global main_loop
                     if main_loop:
                         future = asyncio.run_coroutine_threadsafe(
                             executer_commande_generique(texte, source="ios", metadata=metadata), 
                             main_loop
                         )
-                        reponse_texte = future.result(timeout=45) # Augmentation timeout pour Railway
+                        reponse_texte = future.result(timeout=45)
                     else:
-                        reponse_texte = "Erreur système : Boucle non initialisée."
+                        reponse_texte = "Erreur : Jarvis Core non prêt."
                 else:
-                    reponse_texte = "Aucun texte reçu dans le JSON."
+                    reponse_texte = "Je n'ai pas reçu d'instruction, Monsieur."
                 
                 resp_payload = json.dumps({"status": "ok", "reply": reponse_texte}, ensure_ascii=False)
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json; charset=utf-8')
-                self.send_header('Content-Length', str(len(resp_payload.encode('utf-8'))))
                 self.end_headers()
                 self.wfile.write(resp_payload.encode('utf-8'))
                 
             except Exception as e:
-                print(f"[WEBHOOK] Erreur commande : {e}")
-                self.send_response(400)
+                print(f"[WEBHOOK] Erreur : {e}")
+                self.send_response(500)
                 self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
         else:
             self.send_response(404)
             self.end_headers()
