@@ -1,4 +1,4 @@
-# P.H.O.E.B.U.S
+# Phoebus
 
 Assistant vocal local avec interface web Three.js, interface mobile, Home Assistant,
 Google APIs, recherche web, vision ecran et fallback LLM.
