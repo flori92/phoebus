@@ -32,6 +32,18 @@ from jarvis.agent import orchestrer_agent_autonome
 from jarvis.voice import parler
 from jarvis.skills import get_skill, describe_skill
 
+# Imports optionnels des nouveaux modules
+try:
+    from jarvis import spotify as _spotify
+    _SPOTIFY_AVAILABLE = True
+except ImportError:
+    _SPOTIFY_AVAILABLE = False
+
+try:
+    from jarvis.memory_timeline import enregistrer_evenement as _timeline_evt
+except ImportError:
+    _timeline_evt = None
+
 
 async def _executer_en_fond(handler, data, label):
     """Exécute un handler en tâche asyncio séparée pour ne pas bloquer la conversation."""
@@ -378,11 +390,135 @@ async def executer_une_action(d):
         await parler(lister_evenements_calendar())
         return
 
+    # ── SPOTIFY ───────────────────────────────────────────────────────────────
+    elif action == "spotify_play":
+        q = d.get("query", "")
+        if _SPOTIFY_AVAILABLE and q:
+            await parler(await asyncio.to_thread(_spotify.jouer, q))
+        elif not _SPOTIFY_AVAILABLE:
+            await parler("Le module Spotify n'est pas installé. Lancez pip install spotipy.")
+        return
+
+    elif action == "spotify_pause":
+        if _SPOTIFY_AVAILABLE:
+            await parler(await asyncio.to_thread(_spotify.pause))
+        return
+
+    elif action == "spotify_resume":
+        if _SPOTIFY_AVAILABLE:
+            await parler(await asyncio.to_thread(_spotify.reprendre))
+        return
+
+    elif action == "spotify_next":
+        if _SPOTIFY_AVAILABLE:
+            await parler(await asyncio.to_thread(_spotify.suivant))
+        return
+
+    elif action == "spotify_prev":
+        if _SPOTIFY_AVAILABLE:
+            await parler(await asyncio.to_thread(_spotify.precedent))
+        return
+
+    elif action == "spotify_volume":
+        niveau = int(d.get("value", 50))
+        if _SPOTIFY_AVAILABLE:
+            await parler(await asyncio.to_thread(_spotify.volume, niveau))
+        return
+
+    elif action == "spotify_info":
+        if _SPOTIFY_AVAILABLE:
+            info = await asyncio.to_thread(_spotify.info_lecture_en_cours)
+            if info:
+                await parler(
+                    f"En ce moment : '{info['titre']}' de {info['artiste']}, "
+                    f"album {info['album']}."
+                )
+            else:
+                await parler("Aucune lecture en cours sur Spotify.")
+        return
+
+    elif action == "spotify_like":
+        if _SPOTIFY_AVAILABLE:
+            await parler(await asyncio.to_thread(_spotify.liker_morceau_actuel))
+        return
+
+    elif action == "spotify_queue":
+        q = d.get("query", "")
+        if _SPOTIFY_AVAILABLE and q:
+            await parler(await asyncio.to_thread(_spotify.mettre_dans_file, q))
+        return
+
+    elif action == "spotify_playlists":
+        if _SPOTIFY_AVAILABLE:
+            await parler(await asyncio.to_thread(_spotify.lister_playlists))
+        return
+
+    # ── MULTI-UTILISATEURS ────────────────────────────────────────────────────
+    elif action == "enregistrer_voix":
+        nom = d.get("nom", "")
+        if nom:
+            await parler(
+                f"Je vais enregistrer la voix de {nom}. "
+                "Parlez pendant 5 secondes s'il vous plaît."
+            )
+        else:
+            await parler("Pour quel nom souhaitez-vous enregistrer une voix ?")
+        return
+
+    elif action == "lister_utilisateurs":
+        try:
+            from jarvis.multi_user import lister_utilisateurs
+            users = lister_utilisateurs()
+            if users:
+                await parler(f"Profils vocaux enregistrés : {', '.join(users)}.")
+            else:
+                await parler("Aucun profil vocal enregistré pour l'instant.")
+        except Exception as e:
+            await parler(f"Erreur multi-utilisateur : {e}")
+        return
+
+    # ── BRIEFING ──────────────────────────────────────────────────────────────
+    elif action == "briefing":
+        try:
+            from jarvis.briefing import generer_briefing
+            texte = await generer_briefing()
+            await parler(texte)
+        except Exception as e:
+            await parler(f"Impossible de générer le briefing : {e}")
+        return
+
+    # ── MÉMOIRE TIMELINE ──────────────────────────────────────────────────────
+    elif action == "timeline_recente":
+        try:
+            from jarvis.memory_timeline import get_evenements_recents
+            evts = get_evenements_recents(10)
+            if evts:
+                resume = " | ".join(
+                    f"{e['ts'][5:16]} {e['contenu'][:50]}" for e in evts[-5:]
+                )
+                await parler(f"Voici les événements récents : {resume}")
+            else:
+                await parler("Aucun événement dans la timeline pour l'instant.")
+        except Exception as e:
+            await parler(f"Erreur timeline : {e}")
+        return
+
     # ── SYSTEME ──────────────────────────────────────────────────────────────
     elif action == "mode_iron_man":
         e = d.get("etat", "on")
         state.MODE_IRON_MAN = (e == "on")
         await parler("Mode Iron Man activé." if state.MODE_IRON_MAN else "Mode Iron Man désactivé.")
+        return
+
+    elif action == "brain_status":
+        from jarvis.brain_router import router_status
+        status = router_status()
+        disponibles = ", ".join(status.get("available") or []) or "aucun"
+        ordre = ", ".join(status.get("order") or []) or "non configuré"
+        await parler(
+            f"Cerveau en mode {status.get('mode')}. "
+            f"Disponibles : {disponibles}. Ordre préféré : {ordre}."
+        )
         return
 
     # ── WHATSAPP ─────────────────────────────────────────────────────────────

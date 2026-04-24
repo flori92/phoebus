@@ -10,15 +10,47 @@ PyAudio>=0.2.14
 # Modèle français (bonne qualité, ~60 Mo) :
 #     curl -L -o fr_FR-siwis-medium.onnx \
 #       https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx
-#     curl -L -o fr_FR-siwis-medium.onnx.json \
-#       https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json
-# Puis dans .env :
-#     JARVIS_PIPER_MODEL=/chemin/absolu/vers/fr_FR-siwis-medium.onnx
-# Jarvis l'utilise automatiquement s'il est configuré.
 # piper-tts  (décommenter pour installer via pip)
 
-# ── STT local (Whisper) ────────────────────────────────────────────────
-# Pour une reconnaissance vocale hors ligne plus robuste.
-# openai-whisper
-# ou, plus rapide :
-# faster-whisper
+# ── STT local robuste (Whisper) ───────────────────────────────────────────
+# Reconnaissance vocale hors ligne, supérieure à Google STT pour les accents.
+# JARVIS_STT_BACKEND=whisper dans .env pour l'activer.
+# faster-whisper  ← recommandé (GPU/CPU optimisé, très rapide)
+# openai-whisper  ← alternative officielle OpenAI
+
+# ── Wake Word "Hey Jarvis" — 100% gratuit ────────────────────────────────────
+#
+# Option 1 (recommandée) : OpenWakeWord — MIT, modèles ONNX pré-entraînés
+#   pip install openwakeword onnxruntime
+#   → modèle "hey_jarvis" téléchargé automatiquement
+#
+# Option 2 : Vosk — Apache 2.0, STT offline avec keyword spotting
+#   pip install vosk
+#   → Télécharger le modèle FR (40 Mo) :
+#   curl -LO https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip
+#   unzip vosk-model-small-fr-0.22.zip
+#   → Ajouter JARVIS_VOSK_MODEL_PATH=./vosk-model-small-fr-0.22 dans .env
+#
+# Option 3 : Pocketsphinx — BSD, ultra-léger (~1 Mo), keyword spotting natif
+#   pip install pocketsphinx
+#   → Aucune config supplémentaire requise
+#
+# ⚠️  PICOVOICE/PORCUPINE A ÉTÉ RETIRÉ : gratuit non-commercial seulement,
+#     compte requis, risque de changement tarifaire. Utiliser OWW ou Vosk.
+
+
+# ── Spotify ──────────────────────────────────────────────────────────────
+# Contrôle natif de Spotify (play, pause, like, playlists...)
+# spotipy
+# Configurer dans .env :
+#   SPOTIFY_CLIENT_ID=...
+#   SPOTIFY_CLIENT_SECRET=...
+#   SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+# Créer une app sur https://developer.spotify.com/dashboard
+
+# ── Reconnaissance multi-utilisateurs ────────────────────────────────────
+# Identifier qui parle pour adapter les réponses de Jarvis.
+# resemblyzer  ← embeddings vocaux haute qualité
+# scipy        ← fallback MFCC si resemblyzer absent
+# Activer avec JARVIS_MULTI_USER=1 dans .env
+

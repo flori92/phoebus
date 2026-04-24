@@ -23,6 +23,24 @@ from jarvis.stt_backends import get_backend as get_stt_backend
 from jarvis.clarify import transcription_incertaine
 from jarvis import proactive
 
+# Imports optionnels des nouveaux modules
+try:
+    from jarvis import wake_word as _wake_word_module
+    _WAKE_WORD_AVAILABLE = True
+except ImportError:
+    _WAKE_WORD_AVAILABLE = False
+
+try:
+    from jarvis.multi_user import identifier_speaker, MULTI_USER_ENABLED
+except ImportError:
+    identifier_speaker = None
+    MULTI_USER_ENABLED = False
+
+try:
+    from jarvis.memory_timeline import enregistrer_evenement as _timeline_evt
+except ImportError:
+    _timeline_evt = None
+
 
 # ── Sécurité WebSocket ─────────────────────────────────────────────────────
 
@@ -289,6 +307,15 @@ def listen_and_process(main_loop):
 
                     print(f"\n[VOUS] {texte}")
 
+                    # ── Identification du speaker ───────────────────────────
+                    speaker = "Floriace"
+                    if MULTI_USER_ENABLED and identifier_speaker:
+                        try:
+                            speaker, confidence = identifier_speaker(audio)
+                            print(f"[MULTIUSER] Speaker : {speaker} (confiance={confidence:.2f})")
+                        except Exception:
+                            pass
+
                     # Transcription trop courte / charabia → on redemande
                     # plutôt que d'halluciner une réponse.
                     if state.is_in_conversation() and transcription_incertaine(texte):
@@ -396,6 +423,14 @@ async def main():
     if JARVIS_WS_TOKEN and JARVIS_WS_TOKEN != "CHANGE_ME":
         print(f"[RESEAU] Satellite : http://{lan_ip}:8080/?token={JARVIS_WS_TOKEN}")
 
+    from jarvis.brain_router import router_status
+    brain = router_status()
+    print(
+        f"[BRAIN] Mode {brain['mode']} | disponibles: "
+        f"{', '.join(brain['available']) or 'aucun'} | ordre: "
+        f"{', '.join(brain['order'])}"
+    )
+
     from jarvis.automation import demarrer_moteur_automatisation
     demarrer_moteur_automatisation()
 
@@ -420,6 +455,23 @@ async def main():
         except Exception as e:
             print(f"[HA] prewarm échoué : {e}")
     asyncio.create_task(_warmup_ha())
+
+    # ── Wake Word ─────────────────────────────────────────────
+    if _WAKE_WORD_AVAILABLE:
+        def _on_wake_word():
+            """Appelée par le thread wake word quand 'Hey Jarvis' est détecté."""
+            if state.is_in_conversation():
+                return  # Déjà en mode conversation, inutile de réactiver
+            state.extend_conversation(seconds=30)
+            asyncio.run_coroutine_threadsafe(
+                parler("Oui, je vous écoute."),
+                main_loop
+            )
+        _wake_word_module.start(_on_wake_word)
+        print("[WAKE] Détection wake word démarrée.")
+    else:
+        print("[WAKE] Module wake_word non disponible, détection désactivée.")
+    # ──────────────────────────────────────────────────────────
 
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
     asyncio.create_task(proactive.loop(parler))

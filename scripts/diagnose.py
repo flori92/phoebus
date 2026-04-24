@@ -43,9 +43,14 @@ ENV_RULES = {
     "XAI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "SERPAPI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "GROQ_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
+    "MISTRAL_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "JARVIS_WS_TOKEN": lambda value: bool(value and value not in {"CHANGE_ME", "VOTRE_TOKEN_ICI"}),
     "JARVIS_DEVICES_FILE": lambda value: True,
     "JARVIS_AUDIT_FILE": lambda value: True,
+    "JARVIS_BRAIN_MODE": lambda value: (value or "balanced") in {"balanced", "speed", "smart", "privacy"},
+    "JARVIS_BRAIN_ORDER": lambda value: True,
+    "JARVIS_GEMINI_MODELS": lambda value: True,
+    "JARVIS_OLLAMA_MODELS": lambda value: True,
 }
 
 

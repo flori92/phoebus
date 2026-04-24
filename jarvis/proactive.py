@@ -5,30 +5,35 @@ parole de lui-même quand une condition est remplie (rappels, silence trop
 long avec conversation ouverte, etc.). Chaque règle est une coroutine
 indépendante pour que les nouvelles extensions soient faciles à brancher.
 
-Les règles actuelles sont volontairement prudentes pour éviter le
-harcèlement : Jarvis n'intervient que quand une conversation est active
-OU quand il a une info objectivement utile.
+Règles disponibles :
+  1. Silence ping          — "je vous écoute" après 40s dans une conversation
+  2. Silence timeout       — ferme la conversation après 2 min
+  3. Briefing matinal      — résumé journée + météo + agenda chaque matin
+  4. Résumé quotidien LLM  — résume la journée écoulée à 3h du matin
+  5. Alerte météo urgente  — prévient si orage/neige prévu dans l'heure
+  6. Rappels calendrier    — annonce les RDV 15 min avant
 """
 import asyncio
 import time
+from datetime import datetime
 
 import jarvis.state as state
 
 
 _RULES = []
 
+# Drapeaux anti-spam pour les règles ponctuelles
+_alerte_meteo_ts: float = 0.0      # Dernière alerte météo envoyée
+_rappel_rdv_cache: set = set()     # IDs des RDV déjà annoncés ce jour
+
 
 def rule(fn):
-    """Décorateur pour enregistrer une coroutine de règle proactive.
-
-    Le callable reçoit `parler` (coroutine de TTS) et est rappelé tick
-    après tick — il doit se limiter tout seul (ex: drapeau interne).
-    """
+    """Décorateur pour enregistrer une coroutine de règle proactive."""
     _RULES.append(fn)
     return fn
 
 
-# ── Règles par défaut ──────────────────────────────────────────────────────
+# ── Règle 1 : Silence ping ────────────────────────────────────────────────
 
 @rule
 async def _silence_ping(parler):
@@ -44,6 +49,8 @@ async def _silence_ping(parler):
         await parler("Je vous écoute toujours, Monsieur.")
 
 
+# ── Règle 2 : Silence timeout ─────────────────────────────────────────────
+
 @rule
 async def _silence_timeout(parler):
     """Après 2 minutes sans rien, on clôt la conversation gracieusement."""
@@ -56,7 +63,97 @@ async def _silence_timeout(parler):
         state.end_conversation()
 
 
-# ── Boucle ────────────────────────────────────────────────────────────────
+# ── Règle 3 : Briefing matinal ────────────────────────────────────────────
+
+@rule
+async def _briefing_matinal(parler):
+    """Lance le briefing matinal si l'heure est venue et qu'on ne l'a pas encore fait."""
+    if state.is_speaking or state.is_thinking:
+        return
+    try:
+        from jarvis.briefing import verifier_et_lancer_briefing
+        await verifier_et_lancer_briefing(parler)
+    except Exception as e:
+        print(f"[PROACTIVE] Briefing erreur : {e}")
+
+
+# ── Règle 4 : Résumé quotidien LLM (3h du matin) ─────────────────────────
+
+@rule
+async def _resume_quotidien(parler):
+    """À 3h du matin, génère et stocke le résumé LLM de la journée écoulée."""
+    if state.is_speaking or state.is_thinking:
+        return
+    try:
+        from jarvis.memory_timeline import resumer_journee_si_besoin
+        resume = await resumer_journee_si_besoin()
+        if resume:
+            print(f"[PROACTIVE] Résumé quotidien effectué ({len(resume)} chars).")
+    except Exception as e:
+        print(f"[PROACTIVE] Résumé quotidien erreur : {e}")
+
+
+# ── Règle 5 : Alerte météo urgente ───────────────────────────────────────
+
+@rule
+async def _alerte_meteo_urgente(parler):
+    """Prévient proactivement en cas d'alerte météo sévère (orage, tempête)
+    au moins une fois toutes les 4h si non déjà signalé."""
+    global _alerte_meteo_ts
+    if state.is_speaking or state.is_thinking:
+        return
+    now = time.time()
+    # Max 1 alerte toutes les 4h
+    if now - _alerte_meteo_ts < 4 * 3600:
+        return
+    try:
+        from jarvis.home import get_alertes_meteo
+        alerte = await asyncio.to_thread(get_alertes_meteo)
+        if alerte and "Aucune alerte" not in alerte and "orage" in alerte.lower() or (
+            alerte and "Aucune alerte" not in alerte and "neige" in alerte.lower()
+        ):
+            _alerte_meteo_ts = now
+            await parler(f"Floriace, une alerte météo mérite votre attention : {alerte}")
+    except Exception as e:
+        print(f"[PROACTIVE] Alerte météo erreur : {e}")
+
+
+# ── Règle 6 : Rappels calendrier Google ──────────────────────────────────
+
+@rule
+async def _rappel_calendrier(parler):
+    """Annonce les événements du calendrier 15 minutes avant leur début."""
+    global _rappel_rdv_cache
+    if state.is_speaking or state.is_thinking:
+        return
+
+    # Nettoyage du cache à minuit
+    now = datetime.now()
+    if now.hour == 0 and now.minute < 5:
+        _rappel_rdv_cache.clear()
+
+    try:
+        from jarvis.google_services import lister_evenements_prochains
+        evenements = await asyncio.to_thread(lister_evenements_prochains, minutes_avant=15)
+        for evt in (evenements or []):
+            evt_id = evt.get("id", str(evt.get("debut", "")))
+            if evt_id in _rappel_rdv_cache:
+                continue
+            _rappel_rdv_cache.add(evt_id)
+            titre = evt.get("titre", "un événement")
+            debut = evt.get("debut_str", "bientôt")
+            lieu = evt.get("lieu", "")
+            msg = f"Floriace, rappel : {titre} commence à {debut}."
+            if lieu:
+                msg += f" Lieu : {lieu}."
+            await parler(msg)
+    except AttributeError:
+        pass  # lister_evenements_prochains n'existe pas encore — on ignore
+    except Exception as e:
+        print(f"[PROACTIVE] Rappel calendrier erreur : {e}")
+
+
+# ── Boucle principale ─────────────────────────────────────────────────────
 
 async def loop(parler, tick_seconds: float = 5.0):
     """Boucle infinie à lancer en tâche asyncio au démarrage du serveur."""

@@ -174,6 +174,31 @@ def test_response_cache_key_stability():
     assert k1 != k3
 
 
+def test_brain_router_profiles_and_ranking():
+    from jarvis.brain_router import build_profile, rank_provider_names
+
+    p = build_profile("donne-moi les dernières nouvelles sur X", streaming=False)
+    assert p.needs_realtime is True
+    assert p.preferred_provider == "grok"
+    assert rank_provider_names(
+        p,
+        available=["gemini", "groq", "grok", "ollama"],
+        order=["gemini", "groq", "grok", "ollama"],
+        mode="balanced",
+        metrics={},
+    )[0] == "grok"
+
+    p = build_profile("bonjour", streaming=True)
+    assert p.priority == "fast"
+    assert rank_provider_names(
+        p,
+        available=["gemini", "groq", "ollama"],
+        order=["gemini", "groq", "ollama"],
+        mode="speed",
+        metrics={},
+    )[0] == "groq"
+
+
 # ── Exécution directe ─────────────────────────────────────────────────────
 
 def _run_all():
@@ -193,6 +218,7 @@ def _run_all():
         test_sentence_splitter,
         test_correction_detection,
         test_response_cache_key_stability,
+        test_brain_router_profiles_and_ranking,
     ]
     failed = 0
     for fn in tests:

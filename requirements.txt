@@ -12,8 +12,36 @@ requests>=2.31
 SpeechRecognition>=3.10
 websockets>=12.0
 chromadb>=0.4
-pyaudio>=0.2
+scipy>=1.10
 
-# Windows-only helpers used by PyAutoGUI / native automation.
+# ── Audio (micro) — cross-platform ────────────────────────────────────
+# PyAudio nécessite portaudio :
+#   macOS  : brew install portaudio  (géré par install.py / bootstrap.py)
+#   Linux  : sudo apt install portaudio19-dev
+#   Windows: install.py utilise pipwin pour installer un wheel pré-compilé
+pyaudio>=0.2; platform_system != "Windows"
+
+# ── Wake Word — 100% gratuit, 100% local ──────────────────────────────
+openwakeword>=0.6
+# onnxruntime : version standard cross-platform
+onnxruntime>=1.16; platform_system != "Windows"
+# Sur Windows, onnxruntime standard ou DirectML (GPU) — les deux fonctionnent
+onnxruntime>=1.16; platform_system == "Windows"
+vosk>=0.3.44
+pocketsphinx>=5.0
+
+# ── STT local robuste ──────────────────────────────────────────────────
+faster-whisper>=1.0
+
+# ── Spotify ────────────────────────────────────────────────────────────
+spotipy>=2.22
+
+# ── Multi-utilisateurs (embeddings vocaux) ─────────────────────────────
+resemblyzer>=0.1.1
+
+# ── Windows-only helpers ───────────────────────────────────────────────
 comtypes>=1.2; platform_system == "Windows"
 pywin32>=306; platform_system == "Windows"
+
+
+

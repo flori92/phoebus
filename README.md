@@ -26,6 +26,28 @@ avec npm, cree `.env` si besoin et prepare `jarvis_devices.json` a partir du mod
 4. Adaptez `jarvis_devices.json` aux entites de votre Home Assistant.
 5. Pour Google Docs/Gmail/Calendar, placez `credentials.json` a la racine.
 
+## Cerveau multi-provider
+
+Jarvis route maintenant chaque requete vers le meilleur cerveau disponible:
+
+- fast-path local pour les commandes evidentes (domotique, heure, date)
+- Gemini pour les requetes complexes, la recherche outillee et la vision
+- Groq pour les reponses texte tres rapides
+- Mistral comme cerveau francophone/europeen secondaire
+- Grok pour les sujets X/Twitter si `XAI_API_KEY` est configuree
+- Ollama local en repli ou en mode confidentialite
+
+Configurez le comportement dans `.env`:
+
+```bash
+JARVIS_BRAIN_MODE=balanced   # balanced | speed | smart | privacy
+JARVIS_BRAIN_ORDER=gemini,groq,mistral,grok,ollama
+```
+
+Les metriques de latence/echec sont stockees dans `logs/ai_router_metrics.json`.
+Si un fournisseur tombe en erreur, Jarvis le met temporairement en retrait et
+bascule sur le suivant sans casser la conversation.
+
 ## Lancement
 
 ```bash

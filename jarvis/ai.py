@@ -4,16 +4,26 @@ import json
 import asyncio
 import base64
 import requests
+import time
 from datetime import datetime
 
 from jarvis.config import (
-    client, grok_client, groq_client, CHOSEN_MODEL, MODELS_LIST,
-    OLLAMA_MODELS, OLLAMA_URL, types
+    client, grok_client, groq_client, mistral_client, openai_client, CHOSEN_MODEL, MODELS_LIST,
+    OLLAMA_MODELS, OLLAMA_URL, types, GROQ_MODEL, GROK_MODEL, MISTRAL_MODEL, OPENAI_MODEL
 )
 import jarvis.state as state
 from jarvis.memory import construire_contexte_memoire, resumer_profil, noter_registre, detecter_registre
 from jarvis.config import CREATOR_INFO
+from jarvis.brain_router import (
+    available_provider_names, build_profile, rank_provider_names,
+    record_provider_result,
+)
 from jarvis.rag_memory import rechercher_souvenirs, stocker_souvenir
+
+try:
+    from jarvis.memory_timeline import enrichir_contexte_system_prompt as _timeline_ctx
+except ImportError:
+    _timeline_ctx = None
 
 def construire_system_prompt(texte_utilisateur="", minimal=False):
     contexte_memoire = construire_contexte_memoire()
@@ -129,6 +139,10 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "\n\nMODE IRON MAN :\n"
         '{"action": "mode_iron_man", "etat": "on/off"}\n\n'
     )
+    base += (
+        "\n\nOBSERVABILITE DU CERVEAU :\n"
+        '{"action": "brain_status"}\n\n'
+    )
     
     # ── AJOUT : CONTROLE DU VOLUME ──
     base += (
@@ -162,12 +176,22 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         base += "\n\nSOUVENIRS DU PASSE (RAG) pertinents pour la requête actuelle :\n"
         base += souvenirs_rag + "\n"
         base += "Utilise ces souvenirs pour comprendre le contexte, mais ne les mentionne pas explicitement sauf si utile.\n"
+
+    # --- Timeline & Profil enrichi ---
+    if _timeline_ctx and not minimal:
+        try:
+            timeline_snippet = _timeline_ctx(texte_utilisateur)
+            if timeline_snippet:
+                base += "\n\n" + timeline_snippet + "\n"
+        except Exception:
+            pass
         
     base += (
-        "\nMEMOIRE :\n"
+        "MEMOIRE :\n"
         '{"action": "memoriser", "cle": "CLE", "valeur": "VALEUR"}\n'
         '{"action": "oublier", "cle": "CLE"}\n'
-        '{"action": "lister_memoire"}\n\n'
+        '{"action": "lister_memoire"}\n'
+        '{"action": "timeline_recente"}\n\n'
         "GOOGLE :\n"
         '{"action": "create_doc", "title": "TITRE", "content": "CONTENU"}\n'
         '{"action": "write_doc", "content": "TEXTE"}\n'
@@ -175,6 +199,22 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "read_emails"}\n'
         '{"action": "write_email", "recipient": "email@dest.com", "subject": "sujet", "body": "corps du message"}\n'
         '{"action": "read_calendar"}\n\n'
+        "SPOTIFY :\n"
+        '{"action": "spotify_play", "query": "artiste ou titre"}\n'
+        '{"action": "spotify_pause"}\n'
+        '{"action": "spotify_resume"}\n'
+        '{"action": "spotify_next"}\n'
+        '{"action": "spotify_prev"}\n'
+        '{"action": "spotify_volume", "value": 60}\n'
+        '{"action": "spotify_info"}\n'
+        '{"action": "spotify_like"}\n'
+        '{"action": "spotify_queue", "query": "titre"}\n'
+        '{"action": "spotify_playlists"}\n\n'
+        "MULTI-UTILISATEURS :\n"
+        '{"action": "enregistrer_voix", "nom": "Prenom"}\n'
+        '{"action": "lister_utilisateurs"}\n\n'
+        "BRIEFING :\n"
+        '{"action": "briefing"}\n\n'
         "WHATSAPP :\n"
         '{"action": "whatsapp_appel", "contact": "NOM_DU_CONTACT"}\n\n'
         "VISION WEBSOCKET (Interactions basiques depuis navigateur):\n"
@@ -228,6 +268,56 @@ def detecter_cerveau(texte):
     return "GEMINI"
 
 
+def _messages_openai(system_prompt, texte, history_limit=16):
+    messages = [{"role": "system", "content": system_prompt}]
+    for h in state.historique[-history_limit:]:
+        role = "user" if h.role == "user" else "assistant"
+        messages.append({"role": role, "content": h.parts[0].text})
+    messages.append({"role": "user", "content": texte})
+    return messages
+
+
+async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0, use_search=True):
+    if not client or not types:
+        return None
+    prompt_actuel = construire_system_prompt(texte, minimal=minimal)
+    temp_hist = state.historique + [
+        types.Content(role="user", parts=[types.Part(text=texte)])
+    ]
+    models = list(model_names or MODELS_LIST)
+    last_err = None
+    for model_name in models:
+        try:
+            config_kwargs = {
+                "system_instruction": prompt_actuel,
+                "temperature": 0.7,
+            }
+            if use_search:
+                config_kwargs["tools"] = [
+                    types.Tool(google_search=types.GoogleSearch())
+                ]
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model_name,
+                    config=types.GenerateContentConfig(**config_kwargs),
+                    contents=temp_hist,
+                ),
+                timeout=timeout_s,
+            )
+            rep = response.text
+            if rep:
+                state.ajouter_historique("user", texte)
+                state.ajouter_historique("model", rep)
+                return rep
+        except Exception as e:
+            last_err = e
+            continue
+    if last_err:
+        raise last_err
+    return None
+
+
 async def demander_grok(texte):
     if not grok_client:
         return None
@@ -239,19 +329,19 @@ async def demander_grok(texte):
             "\n\n[NOTE INTERNE] Tu utilises ton module Grok pour cette réponse "
             "(infos temps réel X). Ne le mentionne pas à Floriace."
         )
-        messages = [{"role": "system", "content": system_prompt}]
-        messages = [{"role": "system", "content": construire_system_prompt(texte)}]
-        for h in state.historique[-16:]:
-            role = "user" if h.role == "user" else "assistant"
-            messages.append({"role": role, "content": h.parts[0].text})
-        messages.append({"role": "user", "content": texte})
-        completion = grok_client.chat.completions.create(model="grok-3", messages=messages, temperature=0.8)
+        messages = _messages_openai(system_prompt, texte)
+        completion = await asyncio.to_thread(
+            grok_client.chat.completions.create,
+            model=GROK_MODEL,
+            messages=messages,
+            temperature=0.8,
+        )
         rep = completion.choices[0].message.content
         state.ajouter_historique("user", texte)
         state.ajouter_historique("model", rep)
         return rep
     except Exception as e:
-        print(f"[ERREUR GROK] {e}")
+        print(f"[ERREUR GROK] Détail : {e}")
         return None
 
 
@@ -296,22 +386,70 @@ async def demander_groq(texte):
     try:
         # Prompt système UNIFIÉ (même que Gemini).
         system_prompt = construire_system_prompt(texte) + (
-            "\n\n[NOTE INTERNE] Tu utilises Llama 3.3 via Groq pour cette réponse. "
+            "\n\n[NOTE INTERNE] Tu utilises Groq pour cette réponse rapide. "
             "Ne le mentionne pas à Floriace."
         )
-        messages = [{"role": "system", "content": system_prompt}]
-        messages = [{"role": "system", "content": construire_system_prompt(texte)}]
-        for h in state.historique[-16:]:
-            role = "user" if h.role == "user" else "assistant"
-            messages.append({"role": role, "content": h.parts[0].text})
-        messages.append({"role": "user", "content": texte})
-        completion = await asyncio.to_thread(groq_client.chat.completions.create, model="llama-3.3-70b-versatile", messages=messages, temperature=0.8)
+        messages = _messages_openai(system_prompt, texte)
+        completion = await asyncio.to_thread(
+            groq_client.chat.completions.create,
+            model=GROQ_MODEL,
+            messages=messages,
+            temperature=0.8,
+        )
         rep = completion.choices[0].message.content
         state.ajouter_historique("user", texte)
         state.ajouter_historique("model", rep)
         return rep
     except Exception as e:
         print(f"[ERREUR GROQ] {e}")
+        return None
+
+
+async def demander_mistral(texte):
+    if not mistral_client:
+        return None
+    try:
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises Mistral comme cerveau français/européen. "
+            "Ne le mentionne pas à Floriace."
+        )
+        messages = _messages_openai(system_prompt, texte)
+        completion = await asyncio.to_thread(
+            mistral_client.chat.completions.create,
+            model=MISTRAL_MODEL,
+            messages=messages,
+            temperature=0.75,
+        )
+        rep = completion.choices[0].message.content
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", rep)
+        return rep
+    except Exception as e:
+        print(f"[ERREUR MISTRAL] {e}")
+        return None
+
+
+async def demander_openai(texte):
+    if not openai_client:
+        return None
+    try:
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises OpenAI pour cette réponse. "
+            "Ne le mentionne pas à Floriace."
+        )
+        messages = _messages_openai(system_prompt, texte)
+        completion = await asyncio.to_thread(
+            openai_client.chat.completions.create,
+            model=OPENAI_MODEL,
+            messages=messages,
+            temperature=0.7,
+        )
+        rep = completion.choices[0].message.content
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", rep)
+        return rep
+    except Exception as e:
+        print(f"[ERREUR OPENAI] {e}")
         return None
 
 
@@ -350,96 +488,66 @@ async def demander_ia(texte):
         if any(m in texte_l for m in ["allume", "éteins", "active", "désactive"]):
             # Si c'est simple, on tente un prompt minimaliste et ultra-rapide
             is_simple = len(texte_l.split()) < 6
-            if is_simple:
+            if is_simple and client and types:
                 try:
-                    prompt_min = construire_system_prompt(texte, minimal=True)
-                    response = await asyncio.wait_for(
-                        asyncio.to_thread(client.models.generate_content, model="gemini-2.0-flash",
-                            config=types.GenerateContentConfig(system_instruction=prompt_min, temperature=0.1),
-                            contents=[types.Content(role="user", parts=[types.Part(text=texte)])]),
-                        timeout=3.0
+                    rep = await demander_gemini(
+                        texte,
+                        minimal=True,
+                        model_names=MODELS_LIST[:1],
+                        timeout_s=3.0,
+                        use_search=False,
                     )
-                    rep = response.text
-                    state.ajouter_historique("user", texte)
-                    state.ajouter_historique("model", rep)
-                    return rep
+                    if rep:
+                        return rep
                 except Exception:
                     pass # On retombe sur le processus normal si ça échoue
 
-        if not client or not types:
-            return "Le module Gemini n'est pas installe ou pas configure. Lancez le bootstrap."
+        profile = build_profile(
+            texte,
+            streaming=False,
+            in_conversation=state.is_in_conversation(),
+        )
+        available = available_provider_names()
+        order = rank_provider_names(profile, available=available)
+        print(
+            f"[BRAIN] profil={profile.kind}/{profile.priority} "
+            f"providers={','.join(order) or 'aucun'}"
+        )
 
-        cerveau = detecter_cerveau(texte)
-        async def _call_gemini():
-            temp_hist = state.historique + [types.Content(role="user", parts=[types.Part(text=texte)])]
-            # Si on est en pleine conversation, on utilise un prompt plus léger
-            est_convo = state.is_in_conversation()
-            prompt_actuel = construire_system_prompt(texte, minimal=est_convo)
-            
-            # Pour la rapidité, on n'utilise qu'un seul modèle (le plus rapide)
-            model_name = "gemini-2.0-flash"
+        gemini_models = MODELS_LIST[:2] if profile.priority == "fast" else MODELS_LIST
+        provider_calls = {
+            "gemini": lambda: demander_gemini(
+                texte,
+                minimal=state.is_in_conversation(),
+                model_names=gemini_models,
+                timeout_s=profile.timeout_s,
+                use_search=True,
+            ),
+            "groq": lambda: demander_groq(texte),
+            "mistral": lambda: demander_mistral(texte),
+            "openai": lambda: demander_openai(texte),
+            "grok": lambda: demander_grok(texte),
+            "ollama": lambda: demander_ollama(texte),
+        }
+
+        for provider in order:
+            call = provider_calls.get(provider)
+            if call is None:
+                continue
+            started = time.perf_counter()
             try:
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(client.models.generate_content, model=model_name,
-                        config=types.GenerateContentConfig(system_instruction=prompt_actuel, temperature=0.7, tools=[types.Tool(google_search=types.GoogleSearch())]),
-                        contents=temp_hist),
-                    timeout=8.0
-                )
-                rep = response.text
-                state.ajouter_historique("user", texte)
-                state.ajouter_historique("model", rep)
-                return rep
+                rep = await call()
+                latency_ms = (time.perf_counter() - started) * 1000
+                if rep:
+                    record_provider_result(provider, True, latency_ms)
+                    print(f"[BRAIN] {provider} OK en {latency_ms:.0f} ms")
+                    return rep
+                record_provider_result(provider, False, latency_ms, "empty response")
             except Exception as e:
-                # Fallback sur les autres modèles seulement en cas d'erreur
-                for fallback in [m for m in MODELS_LIST if m != model_name]:
-                    try:
-                        response = await asyncio.wait_for(
-                            asyncio.to_thread(client.models.generate_content, model=fallback,
-                                config=types.GenerateContentConfig(system_instruction=prompt_actuel, temperature=0.7),
-                                contents=temp_hist),
-                            timeout=10.0
-                        )
-                        rep = response.text
-                        state.ajouter_historique("user", texte)
-                        state.ajouter_historique("model", rep)
-                        return rep
-                    except: continue
-                raise e
-
-        if cerveau == "GROK" and grok_client:
-            try: 
-                res = await demander_grok(texte)
-                if res: return res
-            except Exception: pass
-        
-        try: return await _call_gemini()
-        except Exception as e:
-            print(f"[IA] Gemini KO : {e} — repli sur Groq/Grok/Ollama (même prompt complet).")
-        try: 
-            res = await _call_gemini()
-            if res: return res
-        except Exception: pass
-
-        from jarvis.home import recherche_web_serpapi
-        if len(texte.split()) > 2:
-            res_serp = recherche_web_serpapi(texte)
-            if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
-                return "Voici ce que j'ai trouvé sur le web : " + res_serp
-
-        # Repli sur les LLM concurrents AVEC le prompt unifié — ils gardent la
-        # personnalité de Jarvis. SerpAPI en tout dernier recours (réponse
-        # générique) plutôt qu'avant Groq.
-        rep_groq = await demander_groq(texte)
-        if rep_groq: return rep_groq
-
-        if grok_client:
-            try:
-                rep_grok = await demander_grok(texte)
-                if rep_grok: return rep_grok
-            except Exception: pass
-
-        rep_ollama = await demander_ollama(texte)
-        if rep_ollama: return rep_ollama
+                latency_ms = (time.perf_counter() - started) * 1000
+                record_provider_result(provider, False, latency_ms, str(e))
+                print(f"[BRAIN] {provider} KO en {latency_ms:.0f} ms : {e}")
+                continue
 
         # Ultime filet : recherche web si on a une vraie question factuelle.
         from jarvis.home import recherche_web_serpapi
@@ -505,6 +613,11 @@ async def demander_ia_stream(texte, on_sentence=None):
                     await on_sentence(s)
             return rep
 
+        profile = build_profile(
+            texte,
+            streaming=True,
+            in_conversation=state.is_in_conversation(),
+        )
         prompt_actuel = construire_system_prompt(texte)
         temp_hist = state.historique + [
             types.Content(role="user", parts=[types.Part(text=texte)])
@@ -514,8 +627,10 @@ async def demander_ia_stream(texte, on_sentence=None):
         full = ""
         json_detected = False
         last_err = None
+        started = time.perf_counter()
+        models = MODELS_LIST[:2] if profile.priority == "fast" else MODELS_LIST
 
-        for model_name in MODELS_LIST:
+        for model_name in models:
             try:
                 def _start_stream():
                     return client.models.generate_content_stream(
@@ -572,12 +687,18 @@ async def demander_ia_stream(texte, on_sentence=None):
 
                 state.ajouter_historique("user", texte)
                 state.ajouter_historique("model", full)
+                record_provider_result(
+                    "gemini", True, (time.perf_counter() - started) * 1000
+                )
                 return full
             except Exception as e:
                 last_err = e
                 continue
 
         # Tous les modèles Gemini ont raté le streaming : repli non-streaming.
+        record_provider_result(
+            "gemini", False, (time.perf_counter() - started) * 1000, str(last_err)
+        )
         print(f"[STREAM] Gemini KO ({last_err}) — repli non-streaming.")
         rep = await demander_ia(texte)
         if on_sentence and rep and "{" not in rep:

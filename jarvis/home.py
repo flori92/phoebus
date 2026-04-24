@@ -111,7 +111,7 @@ def ha_get_states_cached(max_age=30):
     now = time.time()
     if HA_STATES_CACHE["states"] and now - HA_STATES_CACHE["ts"] < max_age:
         return HA_STATES_CACHE["states"]
-    if not HA_URL or not HA_TOKEN or HA_TOKEN == "VOTRE_TOKEN_ICI":
+    if not HA_URL or not HA_TOKEN or HA_TOKEN in ["VOTRE_TOKEN_ICI", "VOTRE_API"] or "url-home-assitant" in HA_URL.lower():
         return []
     try:
         r = requests.get(f"{HA_URL}/api/states", headers=HA_HEADERS, timeout=6)
@@ -286,7 +286,7 @@ def ha_appeler_service(domaine, service, entity_id, donnees=None):
 
 
 def ha_get_etat(entity_id, attribut=None):
-    if not HA_URL or "url-home-assitant" in HA_URL.lower() or "url-home-assistant" in HA_URL.lower():
+    if not HA_URL or "url-home-assitant" in HA_URL.lower() or HA_TOKEN == "VOTRE_API":
         return "inconnu"
     try:
         r    = requests.get(f"{HA_URL}/api/states/{entity_id}", headers=HA_HEADERS, timeout=5)

@@ -162,3 +162,56 @@ def creer_google_sheet(titre="Nouvelle Feuille"):
         return f"Feuille {titre} creee et ouverte."
     except Exception as e:
         return f"Erreur Google Sheets : {e}"
+
+
+def lister_evenements_prochains(minutes_avant: int = 15) -> list:
+    """Renvoie les événements Google Calendar qui démarrent dans `minutes_avant` minutes.
+
+    Chaque élément est un dict :
+      {id, titre, debut (datetime), debut_str (str HH:MM), lieu, description}
+
+    Utilisé par le moteur proactif pour les rappels de RDV.
+    """
+    try:
+        from datetime import timedelta
+        service = get_calendar_service()
+        if not service:
+            return []
+        now      = datetime.now(timezone.utc)
+        time_min = now.isoformat()
+        time_max = (now + timedelta(minutes=minutes_avant + 1)).isoformat()
+        events   = service.events().list(
+            calendarId="primary",
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+        items = events.get("items", [])
+        result = []
+        for e in items:
+            start_raw = e["start"].get("dateTime") or e["start"].get("date", "")
+            try:
+                # Parse ISO 8601
+                start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+                # N'annoncer que si l'événement commence dans [minutes_avant-2, minutes_avant+1] min
+                delta = (start_dt - now).total_seconds() / 60
+                if not (minutes_avant - 2 <= delta <= minutes_avant + 1):
+                    continue
+                debut_str = start_dt.strftime("%Hh%M")
+            except Exception:
+                debut_str = start_raw
+                start_dt  = None
+            result.append({
+                "id":          e.get("id", ""),
+                "titre":       e.get("summary", "Événement"),
+                "debut":       start_dt,
+                "debut_str":   debut_str,
+                "lieu":        e.get("location", ""),
+                "description": e.get("description", ""),
+            })
+        return result
+    except Exception as e:
+        print(f"[CALENDAR] Erreur lister_evenements_prochains : {e}")
+        return []
+

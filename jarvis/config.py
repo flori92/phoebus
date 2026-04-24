@@ -14,7 +14,7 @@ except ImportError:
     def load_dotenv(*args, **kwargs):
         return False
 
-load_dotenv()
+load_dotenv(override=True)
 
 # ── Imports optionnels ──────────────────────────────────────────────────────
 try:
@@ -77,10 +77,12 @@ except ImportError:
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 XAI_API_KEY     = os.getenv("XAI_API_KEY")
+OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
 HA_URL          = os.getenv("HA_URL")
 HA_TOKEN        = os.getenv("HA_TOKEN")
 SERPAPI_API_KEY  = os.getenv("SERPAPI_API_KEY")
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 JARVIS_WS_TOKEN = os.getenv("JARVIS_WS_TOKEN", "").strip()
 JARVIS_DEVICES_FILE = os.getenv("JARVIS_DEVICES_FILE", "jarvis_devices.json").strip()
 JARVIS_AUDIT_FILE   = os.getenv("JARVIS_AUDIT_FILE", "logs/audit.jsonl").strip()
@@ -88,19 +90,41 @@ JARVIS_AUDIT_FILE   = os.getenv("JARVIS_AUDIT_FILE", "logs/audit.jsonl").strip()
 # ── Clients IA ──────────────────────────────────────────────────────────────
 client = genai.Client(api_key=GEMINI_API_KEY) if genai and GEMINI_API_KEY else None
 
+openai_client = None
+if OpenAI and OPENAI_API_KEY and OPENAI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
 grok_client = None
-if OpenAI and XAI_API_KEY and XAI_API_KEY != "VOTRE_CLE_ICI":
+if OpenAI and XAI_API_KEY and XAI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
     grok_client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
 groq_client = None
-if OpenAI and GROQ_API_KEY and GROQ_API_KEY != "VOTRE_CLE_ICI":
+if OpenAI and GROQ_API_KEY and GROQ_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
     groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
+mistral_client = None
+if OpenAI and MISTRAL_API_KEY and MISTRAL_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+    mistral_client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
+
 # ── Modèles ─────────────────────────────────────────────────────────────────
-MODELS_LIST  = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
+MODELS_LIST  = [
+    m.strip() for m in os.getenv(
+        "JARVIS_GEMINI_MODELS",
+        "gemini-2.0-flash,gemini-2.0-flash-lite,gemini-1.5-flash",
+    ).split(",") if m.strip()
+]
 CHOSEN_MODEL = MODELS_LIST[0]
 OLLAMA_URL    = "http://127.0.0.1:11434"
-OLLAMA_MODELS = ["mistral:instruct", "mistral", "llama3:8b", "llama3", "gemma4"]
+OLLAMA_MODELS = [
+    m.strip() for m in os.getenv(
+        "JARVIS_OLLAMA_MODELS",
+        "mistral:instruct,mistral,llama3:8b,llama3,gemma4",
+    ).split(",") if m.strip()
+]
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-3").strip()
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o").strip()
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
 BASE_DIR          = Path(__file__).resolve().parent.parent
