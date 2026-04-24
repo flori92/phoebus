@@ -43,7 +43,7 @@ Jarvis route maintenant chaque requete vers le meilleur cerveau disponible:
 
 ### Raccourcis iPhone (Siri / Texte)
 Jarvis expose un Webhook pour recevoir des commandes directement depuis votre iPhone.
-- **URL** : `http://VOTRE_IP_LAN:8080/webhook/command`
+- **URL** : `http://VOTRE_IP_LAN:8090/webhook/command`
 - **Méthode** : `POST`
 - **Headers** : `Authorization: Bearer VOTRE_WS_TOKEN` (si configuré)
 - **Body (JSON)** : `{"text": "votre commande ici"}`

@@ -152,7 +152,7 @@ IS_MACOS    = SYSTEM_NAME == "Darwin"
 # ── Réseau ──────────────────────────────────────────────────────────────────
 DEFAULT_FRONTEND_PORT = 5173
 DEFAULT_WS_PORT       = 8765
-DEFAULT_MOBILE_PORT   = 8080
+DEFAULT_MOBILE_PORT   = 8090
 WS_AUTH_REQUIRED      = False  # Option A : Authentification désactivée par l'utilisateur
 
 # ── Géo / Météo ─────────────────────────────────────────────────────────────
