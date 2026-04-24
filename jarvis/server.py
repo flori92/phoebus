@@ -469,7 +469,7 @@ def listen_and_process(main_loop):
                             continue
 
                         # ── Anti-Écho : Jarvis ne doit pas s'écouter lui-même ───
-                        
+                        maintenant = time.time()
                         is_echo = False
                         recent_speech = (
                             state.is_speaking
