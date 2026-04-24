@@ -21,6 +21,9 @@ output/
 # AI Models
 models/
 
+# macOS Shortcuts
+*.shortcut/
+
 # Python
 __pycache__/
 *.py[cod]
