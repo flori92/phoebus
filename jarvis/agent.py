@@ -8,7 +8,10 @@ import json
 import base64
 from pathlib import Path
 
-from jarvis.config import client, CHOSEN_MODEL, IS_WINDOWS, IS_MACOS, pyautogui, Image, types
+from jarvis.config import (
+    client, CHOSEN_MODEL, IS_WINDOWS, IS_MACOS, pyautogui, Image, types,
+    groq_client, GROQ_MODEL, mistral_client, MISTRAL_MODEL
+)
 from jarvis.security import audit_log
 from jarvis.utils import normalize_text
 import jarvis.state as state
@@ -154,19 +157,59 @@ RÈGLES VITALES:
     for etape in range(10):  # Limite de sécurité anti-boucle infinie
         try:
             print(f"[AGENT NATIF] Étape {etape+1}/10. L'agent réfléchit...")
-            # On utilise FLASH spécifiquement pour l'agent car c'est ULTRA réactif
-            model_name = "gemini-2.0-flash" 
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=model_name,
-                contents=historique_agent,
-                config=types.GenerateContentConfig(
-                    system_instruction=agent_prompt,
-                    temperature=0.1,
-                ),
-            )
             
-            rep_text = response.text.strip()
+            rep_text = ""
+            # 1. Tentative Gemini (Recommandé pour Vision/Complexe)
+            try:
+                model_name = "gemini-2.0-flash" 
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model_name,
+                    contents=historique_agent,
+                    config=types.GenerateContentConfig(
+                        system_instruction=agent_prompt,
+                        temperature=0.1,
+                    ),
+                )
+                rep_text = response.text.strip()
+            except Exception as e:
+                print(f"[AGENT NATIF] Gemini indisponible ({str(e)[:50]}), repli...")
+                # 2. Repli Groq (Llama 3.3) - Très efficace pour le JSON
+                if groq_client:
+                    try:
+                        # Conversion historique pour OpenAI/Groq format
+                        messages = [{"role": "system", "content": agent_prompt}]
+                        for c in historique_agent:
+                            role = "user" if c.role == "user" else "assistant"
+                            messages.append({"role": role, "content": c.parts[0].text})
+                        
+                        comp = await asyncio.to_thread(
+                            groq_client.chat.completions.create,
+                            model=GROQ_MODEL,
+                            messages=messages,
+                            temperature=0.1
+                        )
+                        rep_text = comp.choices[0].message.content.strip()
+                    except Exception as e2:
+                        print(f"[AGENT NATIF] Groq indisponible, repli final...")
+                        # 3. Repli final Mistral
+                        if mistral_client:
+                            messages = [{"role": "system", "content": agent_prompt}]
+                            for c in historique_agent:
+                                role = "user" if c.role == "user" else "assistant"
+                                messages.append({"role": role, "content": c.parts[0].text})
+                            comp = await asyncio.to_thread(
+                                mistral_client.chat.completions.create,
+                                model=MISTRAL_MODEL,
+                                messages=messages,
+                                temperature=0.1
+                            )
+                            rep_text = comp.choices[0].message.content.strip()
+            
+            if not rep_text:
+                return "Aucun cerveau disponible pour l'agent natif."
+            
+            print(f"[AGENT NATIF] Pensée de l'agent: {rep_text[:100]}...")
             
             # Sauvegarder la pensée de l'agent
             historique_agent.append(types.Content(role="model", parts=[types.Part(text=rep_text)]))
@@ -175,10 +218,18 @@ RÈGLES VITALES:
             start = rep_text.find('{')
             end = rep_text.rfind('}')
             if start == -1 or end == -1:
-                return "L'agent s'est perdu dans ses pensées et n'a pas renvoyé d'action valide."
+                # Si pas de JSON, on demande à l'agent d'être plus rigoureux au prochain tour
+                historique_agent.append(types.Content(role="user", parts=[types.Part(text="ERREUR: Ta réponse ne contient pas de bloc JSON valide. Réponds UNIQUEMENT avec le JSON.")]))
+                continue
                 
             cmd_json = rep_text[start:end+1]
-            data = json.loads(cmd_json)
+            try:
+                # strict=False permet de gérer les sauts de ligne dans les chaînes de caractères
+                data = json.loads(cmd_json, strict=False)
+            except Exception as e:
+                print(f"[AGENT NATIF] Erreur parsing JSON: {e}")
+                historique_agent.append(types.Content(role="user", parts=[types.Part(text=f"ERREUR: JSON invalide ({e}). Vérifie ton formatage.")]))
+                continue
             
             action = data.get("action")
             
