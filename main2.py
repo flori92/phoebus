@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-JARVIS Core Launcher
-Point d'entrée principal pour lancer l'assistant JARVIS et son interface web.
+PHOEBUS Core Launcher
+Point d'entrée principal pour lancer l'assistant PHOEBUS et son interface web.
 """
 import sys
 import asyncio
@@ -27,10 +27,10 @@ if __name__ == "__main__":
     ensure_venv()
 
 try:
-    from jarvis.server import main as jarvis_main
+    from PHOEBUS.server import main as PHOEBUS_main
 except ImportError as e:
-    print(f"[ERREUR FATALE] Impossible de charger le package 'jarvis': {e}")
-    print("Assurez-vous d'exécuter ce script depuis la racine du projet Jarvis.")
+    print(f"[ERREUR FATALE] Impossible de charger le package 'PHOEBUS': {e}")
+    print("Assurez-vous d'exécuter ce script depuis la racine du projet PHOEBUS.")
     sys.exit(1)
 
 async def run_frontend():
@@ -60,8 +60,8 @@ async def run_frontend():
 
 async def main():
     # On lance le backend et le frontend en parallèle
-    # jarvis_main() est une fonction asynchrone qui contient déjà sa propre boucle infinie
-    tasks = [jarvis_main()]
+    # PHOEBUS_main() est une fonction asynchrone qui contient déjà sa propre boucle infinie
+    tasks = [PHOEBUS_main()]
     
     # On ne lance le frontend que si on n'est pas dans un environnement de prod restreint
     if os.path.exists("frontend"):

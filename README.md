@@ -1,4 +1,4 @@
-# Phoebus
+# PHOEBUS
 
 Assistant vocal local avec interface web Three.js, interface mobile, Home Assistant,
 Google APIs, recherche web, vision ecran et fallback LLM.
@@ -16,19 +16,19 @@ py scripts\bootstrap.py
 ```
 
 Le bootstrap cree `.venv`, installe les dependances Python, installe le frontend
-avec npm, cree `.env` si besoin et prepare `jarvis_devices.json` a partir du modele.
+avec npm, cree `.env` si besoin et prepare `phoebus_devices.json` a partir du modele.
 
 ## Configuration
 
 1. Copiez `.env.example` vers `.env` si le bootstrap ne l'a pas deja fait.
 2. Renseignez les cles utiles: Gemini, Home Assistant, YouTube, SerpAPI, Groq/xAI.
-3. Definissez `JARVIS_WS_TOKEN` avec une valeur forte pour securiser les clients web/mobile.
-4. Adaptez `jarvis_devices.json` aux entites de votre Home Assistant.
+3. Definissez `PHOEBUS_WS_TOKEN` avec une valeur forte pour securiser les clients web/mobile.
+4. Adaptez `phoebus_devices.json` aux entites de votre Home Assistant.
 5. Pour Google Docs/Gmail/Calendar, placez `credentials.json` a la racine.
 
 ## Cerveau multi-provider
 
-Phoebus route maintenant chaque requete vers le meilleur cerveau disponible:
+PHOEBUS route maintenant chaque requete vers le meilleur cerveau disponible:
 
 - fast-path local pour les commandes evidentes (domotique, heure, date)
 - Gemini pour les requetes complexes, la recherche outillee et la vision
@@ -42,27 +42,27 @@ Phoebus route maintenant chaque requete vers le meilleur cerveau disponible:
 ## iPhone & Telegram Integration
 
 ### Raccourcis iPhone (Siri / Texte)
-Phoebus expose un Webhook pour recevoir des commandes directement depuis votre iPhone.
+PHOEBUS expose un Webhook pour recevoir des commandes directement depuis votre iPhone.
 - **URL** : `http://VOTRE_IP_LAN:8090/webhook/command`
 - **Méthode** : `POST`
 - **Headers** : `Authorization: Bearer VOTRE_WS_TOKEN` (si configuré)
 - **Body (JSON)** : `{"text": "votre commande ici"}`
 
 ### Bot Telegram
-Vous pouvez piloter Phoebus par message via un bot privé.
+Vous pouvez piloter PHOEBUS par message via un bot privé.
 1. Créez un bot via [@BotFather](https://t.me/botfather).
 2. Ajoutez `TELEGRAM_TOKEN=votre_token` dans `.env`.
-3. (Optionnel) Ajoutez `TELEGRAM_CHAT_ID=votre_id` pour que Phoebus ne réponde qu'à vous.
+3. (Optionnel) Ajoutez `TELEGRAM_CHAT_ID=votre_id` pour que PHOEBUS ne réponde qu'à vous.
 
 Configurez le comportement dans `.env`:
 
 ```bash
-JARVIS_BRAIN_MODE=balanced   # balanced | speed | smart | privacy
-JARVIS_BRAIN_ORDER=gemini,groq,mistral,grok,ollama
+PHOEBUS_BRAIN_MODE=balanced   # balanced | speed | smart | privacy
+PHOEBUS_BRAIN_ORDER=gemini,groq,mistral,grok,ollama
 ```
 
 Les metriques de latence/echec sont stockees dans `logs/ai_router_metrics.json`.
-Si un fournisseur tombe en erreur, Phoebus le met temporairement en retrait et
+Si un fournisseur tombe en erreur, PHOEBUS le met temporairement en retrait et
 bascule sur le suivant sans casser la conversation.
 
 ## Lancement
@@ -74,10 +74,10 @@ bascule sur le suivant sans casser la conversation.
 Ou:
 
 ```bash
-./demarrer_jarvis.sh
+./demarrer_phoebus.sh
 ```
 
-Sur Windows, utilisez `DÉMARRER_JARVIS.bat`.
+Sur Windows, utilisez `DÉMARRER_PHOEBUS.bat`.
 
 ## Diagnostic
 
@@ -91,23 +91,23 @@ sont desactives, mais le backend et l'interface mobile restent utilisables.
 ## Home Assistant portable
 
 Le backend garde des alias historiques dans `main2.py`, mais la couche portable
-se configure via `jarvis_devices.json`:
+se configure via `phoebus_devices.json`:
 
 - `aliases` mappe les noms prononces vers les vraies entites Home Assistant
 - `sensitive_actions` active ou desactive les confirmations
 - les entites peuvent aussi etre decouvertes dynamiquement via l'API `/api/states`
 
-Le fichier versionne est `jarvis_devices.example.json`. La copie locale
-`jarvis_devices.json` est ignoree par Git.
+Le fichier versionne est `phoebus_devices.example.json`. La copie locale
+`phoebus_devices.json` est ignoree par Git.
 
 ## Securite
 
-- websocket protege par token via `JARVIS_WS_TOKEN`
+- websocket protege par token via `PHOEBUS_WS_TOKEN`
 - journal d'audit JSONL dans `logs/audit.jsonl`
 - confirmation vocale obligatoire pour les actions sensibles
-- secrets locaux ignores par Git (`.env`, `credentials.json`, `jarvis_devices.json`)
+- secrets locaux ignores par Git (`.env`, `credentials.json`, `phoebus_devices.json`)
 
-En mode local simple, laissez `JARVIS_WS_TOKEN=CHANGE_ME` pour des tests rapides.
+En mode local simple, laissez `PHOEBUS_WS_TOKEN=CHANGE_ME` pour des tests rapides.
 Pour une installation reseau ou domotique reelle, remplacez-le par un token fort.
 
 ## Satellites
@@ -123,4 +123,4 @@ L'architecture recommandee est:
 - `main2.py` pour l'orchestration locale
 - Home Assistant OS pour la domotique
 - clients web/mobile comme satellites
-- alias et politique de securite dans `jarvis_devices.json`
+- alias et politique de securite dans `phoebus_devices.json`

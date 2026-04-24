@@ -6,15 +6,15 @@ token.json
 VOS_API.txt
 
 # Local memory / generated runtime data
-jarvis_memoire.json
-jarvis_devices.json
-jarvis_timeline.json
-jarvis_tts_*.mp3
-jarvis_vision_temp.png
+phoebus_memoire.json
+phoebus_devices.json
+phoebus_timeline.json
+PHOEBUS_tts_*.mp3
+PHOEBUS_vision_temp.png
 .spotify_cache
 logs/
-jarvis_tts_cache/
-jarvis_vector_db/
+phoebus_tts_cache/
+phoebus_vector_db/
 backups/
 output/
 

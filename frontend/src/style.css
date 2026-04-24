@@ -15,15 +15,15 @@ body {
   background: #050508;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
-  --jarvis-voice: 0;
-  --jarvis-gaze-x: 0px;
-  --jarvis-gaze-y: 0px;
-  --jarvis-eye-open: 1;
-  --jarvis-eye-wide: 0;
-  --jarvis-mouth-open: 0.05;
-  --jarvis-mouth-width: 1;
-  --jarvis-mouth-skew: 0;
-  --jarvis-mouth-lift: 0;
+  --PHOEBUS-voice: 0;
+  --PHOEBUS-gaze-x: 0px;
+  --PHOEBUS-gaze-y: 0px;
+  --PHOEBUS-eye-open: 1;
+  --PHOEBUS-eye-wide: 0;
+  --PHOEBUS-mouth-open: 0.05;
+  --PHOEBUS-mouth-width: 1;
+  --PHOEBUS-mouth-skew: 0;
+  --PHOEBUS-mouth-lift: 0;
   --avatar-energy: 0.32;
   --avatar-presence: 0.96;
   --avatar-shift-x: 0px;
@@ -42,6 +42,12 @@ body {
   --avatar-accent-rgb: 88, 202, 255;
   --avatar-soft-rgb: 197, 241, 255;
   --avatar-hot-rgb: 255, 219, 134;
+  --PHOEBUS-solar-intensity: 1;
+}
+
+/* Application de la luminosité solaire globale (cycle circadien PHOEBUS) */
+html {
+  filter: brightness(calc(0.8 + 0.3 * var(--PHOEBUS-solar-intensity, 1)));
 }
 
 /* Perspective sur body pour que le tilt 3D du visage (rotateX/rotateY)
@@ -187,52 +193,52 @@ body {
 }
 
 /* Mode 'none' ou fallback forcé : on n'affiche que l'image fixe (bouche fermée) */
-#avatar-core[data-jarvis-clip="none"] .avatar-face-video {
+#avatar-core[data-PHOEBUS-clip="none"] .avatar-face-video {
   opacity: 0 !important;
 }
-#avatar-core[data-jarvis-clip="none"] .avatar-face-fallback,
+#avatar-core[data-PHOEBUS-clip="none"] .avatar-face-fallback,
 #avatar-core[data-video-fallback="true"] .avatar-face-fallback {
   opacity: calc(var(--avatar-opacity) * 0.96);
 }
 
-#avatar-core[data-jarvis-clip="reflective"] .avatar-face-media {
+#avatar-core[data-PHOEBUS-clip="reflective"] .avatar-face-media {
   --avatar-media-scale: 1.11;
   --avatar-media-position-x: 47%;
   --avatar-media-position-y: 37%;
 }
 
-#avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+#avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.14;
   --avatar-media-position-x: 47.5%;
   --avatar-media-position-y: 38%;
 }
 
-body[data-jarvis-state="thinking"] #avatar-core[data-jarvis-clip="reflective"] .avatar-face-media {
+body[data-PHOEBUS-state="thinking"] #avatar-core[data-PHOEBUS-clip="reflective"] .avatar-face-media {
   --avatar-media-scale: 1.16;
   --avatar-media-position-y: 35%;
   --avatar-media-shift-y: -4px;
 }
 
-body[data-jarvis-mood="warm"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media,
-body[data-jarvis-mood="joy"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+body[data-PHOEBUS-mood="warm"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media,
+body[data-PHOEBUS-mood="joy"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.16;
   --avatar-media-position-y: 39%;
   --avatar-media-shift-y: 1px;
 }
 
-body[data-jarvis-mood="alert"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+body[data-PHOEBUS-mood="alert"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.155;
   --avatar-media-position-y: 36%;
   --avatar-media-shift-y: -2px;
 }
 
-body[data-jarvis-mood="serious"] #avatar-core[data-jarvis-clip="reflective"] .avatar-face-media {
+body[data-PHOEBUS-mood="serious"] #avatar-core[data-PHOEBUS-clip="reflective"] .avatar-face-media {
   --avatar-media-scale: 1.13;
   --avatar-media-position-y: 36%;
   --avatar-media-shift-y: -1px;
 }
 
-body[data-jarvis-state="speaking"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+body[data-PHOEBUS-state="speaking"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.18;
   --avatar-media-position-y: 38%;
 }
@@ -257,16 +263,16 @@ body[data-jarvis-state="speaking"] #avatar-core[data-jarvis-clip="expressive"] .
 
 /* On cache les yeux/bouche synthétiques quand la vidéo tourne (thinking/speaking)
    car la vidéo contient déjà son propre visage animé. */
-body[data-jarvis-state="thinking"] #avatar-eyes,
-body[data-jarvis-state="thinking"] #avatar-mouth,
-body[data-jarvis-state="speaking"] #avatar-eyes,
-body[data-jarvis-state="speaking"] #avatar-mouth {
+body[data-PHOEBUS-state="thinking"] #avatar-eyes,
+body[data-PHOEBUS-state="thinking"] #avatar-mouth,
+body[data-PHOEBUS-state="speaking"] #avatar-eyes,
+body[data-PHOEBUS-state="speaking"] #avatar-mouth {
   opacity: 0;
   pointer-events: none;
 }
 
 #avatar-eyes {
-  transform: translate(var(--jarvis-gaze-x), var(--jarvis-gaze-y));
+  transform: translate(var(--PHOEBUS-gaze-x), var(--PHOEBUS-gaze-y));
   transition: transform 260ms ease;
 }
 
@@ -349,7 +355,7 @@ body[data-jarvis-state="speaking"] #avatar-mouth {
   box-shadow:
     0 0 10px rgba(117, 220, 255, 0.62),
     0 0 24px rgba(64, 180, 255, 0.36);
-  transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(var(--jarvis-eye-open));
+  transform: translate(-50%, -50%) scaleX(calc(1 + var(--PHOEBUS-eye-wide))) scaleY(var(--PHOEBUS-eye-open));
   transform-origin: center;
   animation: avatar-blink 6.4s infinite;
   opacity: 0.92;
@@ -383,10 +389,10 @@ body[data-jarvis-state="speaking"] #avatar-mouth {
     0 0 10px rgba(66, 183, 255, 0.35),
     inset 0 0 12px rgba(173, 236, 255, 0.2);
   transform:
-    translate(-50%, calc(var(--jarvis-mouth-lift) * -18px))
-    scaleX(var(--jarvis-mouth-width))
-    skewX(calc(var(--jarvis-mouth-skew) * 10deg))
-    scaleY(calc(0.46 + var(--jarvis-mouth-open)));
+    translate(-50%, calc(var(--PHOEBUS-mouth-lift) * -18px))
+    scaleX(var(--PHOEBUS-mouth-width))
+    skewX(calc(var(--PHOEBUS-mouth-skew) * 10deg))
+    scaleY(calc(0.46 + var(--PHOEBUS-mouth-open)));
   transform-origin: center top;
   transition:
     transform 120ms ease,
@@ -406,49 +412,49 @@ body[data-jarvis-state="speaking"] #avatar-mouth {
   box-shadow: 0 0 10px rgba(115, 218, 255, 0.5);
 }
 
-body[data-jarvis-state="listening"] .avatar-eye {
+body[data-PHOEBUS-state="listening"] .avatar-eye {
   background: linear-gradient(90deg, rgba(35, 197, 94, 0.08), rgba(132, 255, 181, 0.9), rgba(35, 197, 94, 0.08));
   box-shadow:
     0 0 10px rgba(128, 255, 178, 0.5),
     0 0 24px rgba(35, 197, 94, 0.28);
 }
 
-body[data-jarvis-state="thinking"] .avatar-eye {
+body[data-PHOEBUS-state="thinking"] .avatar-eye {
   background: linear-gradient(90deg, rgba(245, 158, 11, 0.08), rgba(255, 217, 118, 0.9), rgba(245, 158, 11, 0.08));
   box-shadow:
     0 0 10px rgba(255, 217, 118, 0.46),
     0 0 24px rgba(245, 158, 11, 0.28);
 }
 
-body[data-jarvis-state="speaking"] #avatar-shell {
+body[data-PHOEBUS-state="speaking"] #avatar-shell {
   opacity: 1;
 }
 
-body[data-jarvis-state="speaking"] #avatar-mouth {
+body[data-PHOEBUS-state="speaking"] #avatar-mouth {
   box-shadow:
     0 0 14px rgba(66, 183, 255, 0.52),
     0 0 32px rgba(66, 183, 255, 0.24),
     inset 0 0 12px rgba(173, 236, 255, 0.26);
 }
 
-body[data-jarvis-mood="warm"] #avatar-mouth::before,
-body[data-jarvis-mood="joy"] #avatar-mouth::before {
+body[data-PHOEBUS-mood="warm"] #avatar-mouth::before,
+body[data-PHOEBUS-mood="joy"] #avatar-mouth::before {
   background: rgba(218, 248, 255, 0.92);
 }
 
-body[data-jarvis-mood="joy"] #avatar-halo {
+body[data-PHOEBUS-mood="joy"] #avatar-halo {
   opacity: 0.86;
 }
 
-body[data-jarvis-mood="confident"] #avatar-mouth {
+body[data-PHOEBUS-mood="confident"] #avatar-mouth {
   border-color: rgba(154, 226, 255, 0.72);
 }
 
-body[data-jarvis-mood="alert"] .avatar-eye {
+body[data-PHOEBUS-mood="alert"] .avatar-eye {
   background: linear-gradient(90deg, rgba(255, 111, 111, 0.08), rgba(179, 234, 255, 0.95), rgba(255, 111, 111, 0.08));
 }
 
-body[data-jarvis-mood="serious"] #avatar-halo {
+body[data-PHOEBUS-mood="serious"] #avatar-halo {
   opacity: 0.64;
 }
 
@@ -506,12 +512,12 @@ body[data-jarvis-mood="serious"] #avatar-halo {
   46%,
   50%,
   100% {
-    transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(var(--jarvis-eye-open));
+    transform: translate(-50%, -50%) scaleX(calc(1 + var(--PHOEBUS-eye-wide))) scaleY(var(--PHOEBUS-eye-open));
     opacity: 0.92;
   }
   48%,
   49% {
-    transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(calc(var(--jarvis-eye-open) * 0.08));
+    transform: translate(-50%, -50%) scaleX(calc(1 + var(--PHOEBUS-eye-wide))) scaleY(calc(var(--PHOEBUS-eye-open) * 0.08));
     opacity: 0.45;
   }
 }
@@ -520,7 +526,7 @@ body[data-jarvis-mood="serious"] #avatar-halo {
 
 /* Couleurs d'aura par état : custom properties surchargées via [data-state]. */
 .face-avatar {
-  /* défaut = idle, teinte bleue Jarvis */
+  /* défaut = idle, teinte bleue PHOEBUS */
   --aura-core: 76, 168, 232;        /* rgb */
   --aura-accent: 129, 212, 250;
   --aura-warm: 186, 230, 253;
@@ -731,7 +737,7 @@ body.has-face-avatar #orb-canvas {
   transition: opacity 600ms ease, filter 600ms ease;
 }
 
-/* Quand Jarvis parle, les neurones virent vers les teintes chaudes
+/* Quand PHOEBUS parle, les neurones virent vers les teintes chaudes
    pour dialoguer avec l'aura du visage. */
 body.has-face-avatar[data-state="speaking"] #orb-canvas {
   filter: hue-rotate(195deg) saturate(1.15);

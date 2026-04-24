@@ -1,5 +1,5 @@
 /**
- * JARVIS — Face Avatar.
+ * PHOEBUS — Face Avatar.
  *
  * Portrait animé synchronisé avec le backend via WebSocket, composé de
  * plusieurs couches de motion pour donner l'impression d'un visage vivant :
@@ -26,7 +26,7 @@ export interface FaceAvatar {
 
 // ── Assets ─────────────────────────────────────────────────────────────────
 
-const ASSETS_PATH = "/jarvis-face";
+const ASSETS_PATH = "/phoebus-face";
 
 const FRAMES = {
   base: `${ASSETS_PATH}/base-neutral.png`,

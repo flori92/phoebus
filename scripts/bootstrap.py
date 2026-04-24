@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Bootstrap (lanceur rapide depuis demarrer_jarvis.sh / DÉMARRER_JARVIS.bat)
+PHOEBUS — Bootstrap (lanceur rapide depuis demarrer_phoebus.sh / DÉMARRER_PHOEBUS.bat)
 
 Vérifie que le venv et les paquets sont présents, sinon lance l'installation.
 Plus léger que install.py : appelé à chaque démarrage.
@@ -140,12 +140,12 @@ def ensure_env_template() -> None:
 
 
 def ensure_devices_template() -> None:
-    target  = ROOT / "jarvis_devices.json"
-    example = ROOT / "jarvis_devices.example.json"
+    target  = ROOT / "phoebus_devices.json"
+    example = ROOT / "phoebus_devices.example.json"
     if not target.exists() and example.exists():
         import shutil as _sh
         _sh.copyfile(example, target)
-        print("[BOOTSTRAP] jarvis_devices.json créé depuis l'exemple.")
+        print("[BOOTSTRAP] phoebus_devices.json créé depuis l'exemple.")
 
 
 def main() -> int:
@@ -159,7 +159,7 @@ def main() -> int:
 
     ensure_env_template()
     ensure_devices_template()
-    for d in ["logs", "models", "temp", "output", "jarvis_speaker_profiles", "jarvis_tts_cache"]:
+    for d in ["logs", "models", "temp", "output", "PHOEBUS_speaker_profiles", "phoebus_tts_cache"]:
         (ROOT / d).mkdir(exist_ok=True)
 
     install_system_deps()

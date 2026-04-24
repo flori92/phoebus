@@ -12,7 +12,7 @@ const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_URL = `${WS_SCHEME}://${window.location.hostname}:8765`;
 const RECONNECT_DELAY_MS = 2500;
 const SPEECH_LANG = "fr-FR";
-const WS_TOKEN_STORAGE_KEY = "jarvis_ws_token";
+const WS_TOKEN_STORAGE_KEY = "PHOEBUS_ws_token";
 
 function getStoredToken() {
   const params = new URLSearchParams(window.location.search);
@@ -25,7 +25,7 @@ function getStoredToken() {
 }
 
 function requestToken() {
-  const token = window.prompt("Token JARVIS", getStoredToken()) || "";
+  const token = window.prompt("Token PHOEBUS", getStoredToken()) || "";
   const trimmed = token.trim();
   if (trimmed) {
     localStorage.setItem(WS_TOKEN_STORAGE_KEY, trimmed);
@@ -38,12 +38,12 @@ const badgeEl      = document.getElementById("connection-badge");
 const badgeLabelEl = document.getElementById("connection-label");
 const statusEl     = document.getElementById("status-text");
 const userTextEl   = document.getElementById("user-text");
-const jarvisTextEl = document.getElementById("jarvis-text");
+const PHOEBUSTextEl = document.getElementById("PHOEBUS-text");
 const micBtn       = document.getElementById("mic-btn");
 const micIcon      = micBtn.querySelector(".mic-icon");
 const stopIcon     = micBtn.querySelector(".stop-icon");
 const micLabelEl   = document.getElementById("mic-label");
-const stopJarvisBtn= document.getElementById("stop-jarvis-btn");
+const stopPHOEBUSBtn= document.getElementById("stop-PHOEBUS-btn");
 const avatarCoreEl = document.getElementById("avatar-core");
 const avatarFallbackEl = document.getElementById("avatar-face-fallback");
 const avatarReflectiveVideoEl = document.getElementById("avatar-video-reflective");
@@ -393,9 +393,9 @@ class FaceAvatar {
       this.failedClips.has(nextClip) || !this.readyClips.has(nextClip);
 
     this.activeClip = nextClip;
-    this.media.coreEl.dataset.jarvisClip = nextClip;
+    this.media.coreEl.dataset.PHOEBUSClip = nextClip;
     this.media.coreEl.dataset.videoFallback = showFallback ? "true" : "false";
-    document.body.dataset.jarvisClip = nextClip;
+    document.body.dataset.PHOEBUSClip = nextClip;
 
     this.media.fallbackEl.src = AVATAR_FALLBACK_URLS[fallbackFrame];
     this.media.fallbackEl.dataset.fallbackFrame = fallbackFrame;
@@ -557,14 +557,14 @@ function renderFace() {
           ? 5.2
           : 6.8;
 
-  faceRoot.style.setProperty("--jarvis-gaze-x", `${currentGaze.x.toFixed(2)}px`);
-  faceRoot.style.setProperty("--jarvis-gaze-y", `${currentGaze.y.toFixed(2)}px`);
-  faceRoot.style.setProperty("--jarvis-eye-open", eyeOpen.toFixed(3));
-  faceRoot.style.setProperty("--jarvis-eye-wide", eyeWide.toFixed(3));
-  faceRoot.style.setProperty("--jarvis-mouth-open", mouthOpen.toFixed(3));
-  faceRoot.style.setProperty("--jarvis-mouth-width", mouthWidth.toFixed(3));
-  faceRoot.style.setProperty("--jarvis-mouth-skew", mouthSkew.toFixed(3));
-  faceRoot.style.setProperty("--jarvis-mouth-lift", mouthLift.toFixed(3));
+  faceRoot.style.setProperty("--PHOEBUS-gaze-x", `${currentGaze.x.toFixed(2)}px`);
+  faceRoot.style.setProperty("--PHOEBUS-gaze-y", `${currentGaze.y.toFixed(2)}px`);
+  faceRoot.style.setProperty("--PHOEBUS-eye-open", eyeOpen.toFixed(3));
+  faceRoot.style.setProperty("--PHOEBUS-eye-wide", eyeWide.toFixed(3));
+  faceRoot.style.setProperty("--PHOEBUS-mouth-open", mouthOpen.toFixed(3));
+  faceRoot.style.setProperty("--PHOEBUS-mouth-width", mouthWidth.toFixed(3));
+  faceRoot.style.setProperty("--PHOEBUS-mouth-skew", mouthSkew.toFixed(3));
+  faceRoot.style.setProperty("--PHOEBUS-mouth-lift", mouthLift.toFixed(3));
   faceRoot.style.setProperty("--avatar-energy", avatarEnergy.toFixed(3));
   faceRoot.style.setProperty("--avatar-presence", avatarPresence.toFixed(3));
   faceRoot.style.setProperty("--avatar-shift-x", `${shellShiftX.toFixed(2)}px`);
@@ -583,7 +583,7 @@ function renderFace() {
   faceRoot.style.setProperty("--avatar-accent-rgb", palette.accentRgb);
   faceRoot.style.setProperty("--avatar-soft-rgb", palette.softRgb);
   faceRoot.style.setProperty("--avatar-hot-rgb", palette.hotRgb);
-  document.body.dataset.jarvisMood = currentMood;
+  document.body.dataset.PHOEBUSMood = currentMood;
 }
 
 function scheduleMoodReset(ms = 3600) {
@@ -864,7 +864,7 @@ function setVoiceLevel(level) {
   const baseline = currentState === "speaking" ? 0.08 : 0;
   currentVoiceLevel = Math.max(baseline, Math.min(1, level || 0));
   faceAvatar.setVolume(Math.max(0, Math.min(1, level || 0)));
-  faceRoot.style.setProperty("--jarvis-voice", currentVoiceLevel.toFixed(3));
+  faceRoot.style.setProperty("--PHOEBUS-voice", currentVoiceLevel.toFixed(3));
   renderFace();
 }
 
@@ -873,7 +873,7 @@ const STATE_LABELS = {
   idle:      "en attente",
   listening: "je vous écoute...",
   thinking:  "en réflexion...",
-  speaking:  "phoebus répond...",
+  speaking:  "PHOEBUS répond...",
 };
 
 function applyState(state) {
@@ -882,7 +882,7 @@ function applyState(state) {
     "state-idle", "state-listening", "state-thinking", "state-speaking"
   );
   document.body.classList.add(`state-${state}`);
-  document.body.dataset.jarvisState = state;
+  document.body.dataset.PHOEBUSState = state;
   currentState = state;
   statusEl.textContent = STATE_LABELS[state] || state;
   if (state === "listening") {
@@ -909,9 +909,9 @@ function applyState(state) {
 
   // Affichage du bouton Stop global seulement si ca parle
   if (state === "speaking") {
-    stopJarvisBtn.style.display = "flex";
+    stopPHOEBUSBtn.style.display = "flex";
   } else {
-    stopJarvisBtn.style.display = "none";
+    stopPHOEBUSBtn.style.display = "none";
   }
 
   // Icône microphone
@@ -937,8 +937,8 @@ applyState("idle");
 let currentAudio = null;
 let fakeVolumeInterval = null;
 
-// Écouteur pour le bouton stop JARVIS
-stopJarvisBtn.addEventListener("click", () => {
+// Écouteur pour le bouton stop PHOEBUS
+stopPHOEBUSBtn.addEventListener("click", () => {
   window.speechSynthesis.cancel(); // Stoppe l'audio mobile (fallback)
   if (currentAudio) {
     currentAudio.pause();
@@ -1073,12 +1073,12 @@ function connectWS() {
         return;
       }
 
-      if (data.action === "jarvis_expression" && data.text) {
+      if (data.action === "PHOEBUS_expression" && data.text) {
         consumeExpressionText(data.text, { id: data.id });
         return;
       }
 
-      if (data.action === "jarvis_lipsync" && Array.isArray(data.frames)) {
+      if (data.action === "PHOEBUS_lipsync" && Array.isArray(data.frames)) {
         rememberPendingLipsync(data.frames, data.id);
         if (data.id && data.id === activeSpeechId && currentState === "speaking") {
           const activeFrames = consumePendingLipsync(data.id);
@@ -1103,19 +1103,19 @@ function connectWS() {
         }
       }
 
-      if (data.action === "jarvis_audio_chunk" && data.audio_b64) {
+      if (data.action === "PHOEBUS_audio_chunk" && data.audio_b64) {
         streamingPlayer.playChunk(data.audio_b64, data.id);
         return;
       }
 
-      // Réponse textuelle de JARVIS destinée au mobile avec audio distant (même voix que web)
-      if (data.action === "jarvis_audio" && data.audio_b64) {
-        afficherReponseJarvis(data.text);
+      // Réponse textuelle de PHOEBUS destinée au mobile avec audio distant (même voix que web)
+      if (data.action === "PHOEBUS_audio" && data.audio_b64) {
+        afficherReponsePHOEBUS(data.text);
         jouerAudioBase64(data.audio_b64, { id: data.id, text: data.text });
       }
       // Fallback ancienne méthode (sans audio)
-      else if (data.action === "jarvis_response" && data.text) {
-        afficherReponseJarvis(data.text);
+      else if (data.action === "PHOEBUS_response" && data.text) {
+        afficherReponsePHOEBUS(data.text);
         parleSynthese(data.text, { id: data.id, text: data.text });
       }
     } catch (e) {
@@ -1155,12 +1155,12 @@ function sendCommand(text) {
 // ── Affichage dialogue ──────────────────────────────────────────────────────
 function afficherTexteUtilisateur(text) {
   userTextEl.textContent = `"${text}"`;
-  jarvisTextEl.textContent = "";
+  PHOEBUSTextEl.textContent = "";
 }
 
-function afficherReponseJarvis(text) {
+function afficherReponsePHOEBUS(text) {
   const textePropre = cleanSpeechText(text);
-  jarvisTextEl.textContent = textePropre || text;
+  PHOEBUSTextEl.textContent = textePropre || text;
 }
 
 function jouerAudioBase64(base64) {
@@ -1277,13 +1277,13 @@ if (SpeechRecognition) {
 
   recognition.addEventListener("start", () => {
     isListening = true;
-    // Interruption : si on commence à parler, Jarvis se tait
+    // Interruption : si on commence à parler, PHOEBUS se tait
     streamingPlayer.stop();
     cancelTimedLipsync();
     
     applyState("listening");
     userTextEl.textContent  = "";
-    jarvisTextEl.textContent = "";
+    PHOEBUSTextEl.textContent = "";
     console.log("[STT] Écoute démarrée.");
   });
 
@@ -1318,7 +1318,7 @@ if (SpeechRecognition) {
       const envoyé = sendCommand(texteCapture);
       if (!envoyé) {
         applyState("idle");
-        userTextEl.textContent = "⚠ Non connecté à JARVIS";
+        userTextEl.textContent = "⚠ Non connecté à PHOEBUS";
       }
     } else {
       applyState("idle");
@@ -1351,7 +1351,7 @@ if (SpeechRecognition) {
 micBtn.addEventListener("click", () => {
   if (!recognition) return;
 
-  // Bloquer si JARVIS pense ou parle
+  // Bloquer si PHOEBUS pense ou parle
   if (currentState === "thinking" || currentState === "speaking") return;
 
   if (isListening) {
@@ -1370,4 +1370,4 @@ micBtn.addEventListener("click", () => {
 
 // ── Démarrage ───────────────────────────────────────────────────────────────
 connectWS();
-console.log("[JARVIS MOBILE] Interface initialisée. WebSocket :", WS_URL);
+console.log("[PHOEBUS MOBILE] Interface initialisée. WebSocket :", WS_URL);

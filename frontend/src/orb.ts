@@ -11,7 +11,7 @@
  *  triggerDemo() – 10-second spectacular light show (Big Bang → Hypervortex →
  *                  Pulse Rings → Rainbow Collapse → settle)
  *
- * Ported & heavily enhanced from https://github.com/ethanplusai/jarvis
+ * Ported & heavily enhanced from https://github.com/ethanplusai/PHOEBUS
  */
 
 import * as THREE from "three";
@@ -132,6 +132,38 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     x2: number; y2: number; z2: number;
   }[] = [];
 
+  // ── Solar / Circadian (PHOEBUS) ───────────────────────────────────────────
+  function getSolarPalette(t: number) {
+    const date = new Date();
+    const hour = date.getHours() + date.getMinutes() / 60;
+
+    // Keyframes: hour -> [BaseColor, BrightnessFactor]
+    // 0: Night (Indigo), 5: Dawn (Purple/Pink), 7: Sunrise (Orange/Gold),
+    // 12: Noon (White/Yellow), 17: Afternoon (Golden), 19: Sunset (Orange/Red),
+    // 21: Twilight (Deep Purple), 24: Night
+    const night = { col: new THREE.Color(0x0a1128), bright: 0.35 };
+    const dawn = { col: new THREE.Color(0x3e1f47), bright: 0.5 };
+    const sunrise = { col: new THREE.Color(0xff8c42), bright: 0.85 };
+    const noon = { col: new THREE.Color(0xffffee), bright: 1.1 };
+    const afternoon = { col: new THREE.Color(0xffca3a), bright: 0.95 };
+    const sunset = { col: new THREE.Color(0xff3f00), bright: 0.9 };
+    const twilight = { col: new THREE.Color(0x2a1b3d), bright: 0.45 };
+
+    let k1, k2, ratio;
+    if (hour < 5) { k1 = night; k2 = dawn; ratio = hour / 5; }
+    else if (hour < 7) { k1 = dawn; k2 = sunrise; ratio = (hour - 5) / 2; }
+    else if (hour < 12) { k1 = sunrise; k2 = noon; ratio = (hour - 7) / 5; }
+    else if (hour < 17) { k1 = noon; k2 = afternoon; ratio = (hour - 12) / 5; }
+    else if (hour < 19) { k1 = afternoon; k2 = sunset; ratio = (hour - 17) / 2; }
+    else if (hour < 21) { k1 = sunset; k2 = twilight; ratio = (hour - 19) / 2; }
+    else { k1 = twilight; k2 = night; ratio = (hour - 21) / 3; }
+
+    const col = k1.col.clone().lerp(k2.col, ratio);
+    const bright = k1.bright + (k2.bright - k1.bright) * ratio;
+
+    return { col, bright };
+  }
+
   // ── Base state vars ────────────────────────────────────────────────────────
   let state: OrbState = "idle";
   let targetRadius = 25, currentRadius = 25;
@@ -165,10 +197,10 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   const clock = new THREE.Clock();
 
   // ── Colour helpers ─────────────────────────────────────────────────────────
-  const COL_BASE = new THREE.Color(0x4ca8e8);
-  const COL_THINK = new THREE.Color(0x6ec4ff);
-  const COL_SPEAK = new THREE.Color(0x5ab8f0);
-  const COL_BRIGHT = new THREE.Color(0xb8eeff);
+  let COL_BASE = new THREE.Color(0x4ca8e8);
+  let COL_THINK = new THREE.Color(0x6ec4ff);
+  let COL_SPEAK = new THREE.Color(0x5ab8f0);
+  let COL_BRIGHT = new THREE.Color(0xb8eeff);
   const COL_FLASH = new THREE.Color(0xffffff);
   const _tmpColor = new THREE.Color();
   const _rainbowCol = new THREE.Color();
@@ -188,6 +220,18 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     const dt = Math.min(t - prevT, 0.05);
     prevT = t;
 
+    // ── Solar palette update ────────────────────────────────────────────────
+    // PHOEBUS adjusts its internal core colors based on the sun's position.
+    const solar = getSolarPalette(t);
+    COL_BASE.lerp(solar.col, 0.02);
+    // Derived colors follow the base solar color with slight offsets
+    _tmpColor.copy(solar.col).addScalar(0.15);
+    COL_THINK.lerp(_tmpColor, 0.02);
+    _tmpColor.copy(solar.col).multiplyScalar(1.1);
+    COL_SPEAK.lerp(_tmpColor, 0.02);
+    _tmpColor.copy(solar.col).addScalar(0.3);
+    COL_BRIGHT.lerp(_tmpColor, 0.02);
+
     // ── Demo expiry ──────────────────────────────────────────────────────────
     if (demoActive && t - demoStartTime >= DEMO_DURATION) {
       demoActive = false;
@@ -203,45 +247,45 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     // ── Per-state targets ───────────────────────────────────────────────────
     if (demoActive) {
       if (demoBigBang) {
-        targetRadius = 40; targetSpeed = 1.0; targetBright = 1.0; targetSize = 0.75;
+        targetRadius = 40; targetSpeed = 1.0; targetBright = 1.0 * solar.bright; targetSize = 0.75;
         targetLineAmount = 1.0; targetElectronRate = 0.04;
         targetVortex = 0.5; targetBreathAmp = 2.5;
       } else if (demoVortex) {
-        targetRadius = 32; targetSpeed = 0.9; targetBright = 1.0; targetSize = 0.65;
+        targetRadius = 32; targetSpeed = 0.9; targetBright = 1.0 * solar.bright; targetSize = 0.65;
         targetLineAmount = 1.0; targetElectronRate = 0.04;
         targetVortex = 4.5; targetBreathAmp = 2.0;
       } else if (demoPulse) {
-        targetRadius = 28; targetSpeed = 0.7; targetBright = 0.95; targetSize = 0.55;
+        targetRadius = 28; targetSpeed = 0.7; targetBright = 0.95 * solar.bright; targetSize = 0.55;
         targetLineAmount = 0.9; targetElectronRate = 0.03;
         targetVortex = 2.0; targetBreathAmp = 3.0;
       } else {
         // Collapse
-        targetRadius = 10; targetSpeed = 0.5; targetBright = 0.85; targetSize = 0.5;
+        targetRadius = 10; targetSpeed = 0.5; targetBright = 0.85 * solar.bright; targetSize = 0.5;
         targetLineAmount = 0.7; targetElectronRate = 0.015;
         targetVortex = 1.0; targetBreathAmp = 0.5;
       }
     } else {
       switch (state) {
         case "idle":
-          targetRadius = 28; targetSpeed = 0.2; targetBright = 0.5; targetSize = 0.35;
+          targetRadius = 28; targetSpeed = 0.2; targetBright = 0.5 * solar.bright; targetSize = 0.35;
           targetLineAmount = 0.15; targetElectronRate = 0;
           targetVortex = 0; targetBreathAmp = 0;
           break;
 
         case "listening":
-          targetRadius = 22; targetSpeed = 0.3; targetBright = 0.65; targetSize = 0.4;
+          targetRadius = 22; targetSpeed = 0.3; targetBright = 0.65 * solar.bright; targetSize = 0.4;
           targetLineAmount = 0.4; targetElectronRate = 0;
           targetVortex = 0; targetBreathAmp = 0;
           break;
 
         case "thinking":
-          targetRadius = 16; targetSpeed = 0.5; targetBright = 0.7; targetSize = 0.3;
+          targetRadius = 16; targetSpeed = 0.5; targetBright = 0.7 * solar.bright; targetSize = 0.3;
           targetLineAmount = 1.0; targetElectronRate = 0.015;
           targetVortex = 0; targetBreathAmp = 0;
           break;
 
         case "speaking":
-          targetRadius = 20; targetSpeed = 0.45; targetBright = 0.78; targetSize = 0.46;
+          targetRadius = 20; targetSpeed = 0.45; targetBright = 0.78 * solar.bright; targetSize = 0.46;
           targetLineAmount = 0.92; targetElectronRate = 0.01;
           targetVortex = 1.4; targetBreathAmp = 1.0;
           break;
@@ -284,7 +328,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       mid    = mS / (16 * 255);
       treble = tS / (24 * 255);
     } else if (state === "speaking") {
-      // Use external volume if no analyser (Jarvis on PC)
+      // Use external volume if no analyser (PHOEBUS on PC)
       bass = externalVolume * 0.6;
       mid = externalVolume * 0.3;
       treble = externalVolume * 0.1;

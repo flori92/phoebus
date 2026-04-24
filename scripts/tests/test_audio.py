@@ -1,6 +1,6 @@
 import asyncio
-from jarvis.ai import demander_ia
-from jarvis.voice import parler
+from PHOEBUS.ai import demander_ia
+from PHOEBUS.voice import parler
 import pygame
 
 async def test():

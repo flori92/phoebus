@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-JARVIS — Script d'Installation Universel (One-Click)
+PHOEBUS — Script d'Installation Universel (One-Click)
 Supporte : Windows 10/11, macOS 12+, Linux (Debian/Ubuntu, Fedora, Arch)
 
 Étapes :
   1. Vérification Python 3.10+
   2. Dépendances système (portaudio, ffmpeg, unzip)
   3. Environnement virtuel .venv
-  4. Fichiers de configuration (.env, jarvis_devices.json)
+  4. Fichiers de configuration (.env, phoebus_devices.json)
   5. Dossiers applicatifs
   6. Paquets Python (requirements.txt) avec gestion PyAudio Windows
   7. Modèle Vosk FR (wake word offline, ~40 Mo)
@@ -39,7 +39,7 @@ IS_LINUX = SYSTEM == "Linux"
 VOSK_FR_URL  = "https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip"
 VOSK_FR_ZIP  = MODELS_DIR / "vosk-model-small-fr-0.22.zip"
 VOSK_FR_DIR  = MODELS_DIR / "vosk-model-small-fr-0.22"
-VOSK_ENV_KEY = "JARVIS_VOSK_MODEL_PATH"
+VOSK_ENV_KEY = "PHOEBUS_VOSK_MODEL_PATH"
 
 # ── Couleurs ─────────────────────────────────────────────────────────────────
 
@@ -166,21 +166,21 @@ def create_config_files():
     else:
         ok(".env déjà présent.")
 
-    dev_file, dev_example = ROOT / "jarvis_devices.json", ROOT / "jarvis_devices.example.json"
+    dev_file, dev_example = ROOT / "phoebus_devices.json", ROOT / "phoebus_devices.example.json"
     if not dev_file.exists() and dev_example.exists():
         shutil.copyfile(dev_example, dev_file)
-        ok("jarvis_devices.json créé.")
+        ok("phoebus_devices.json créé.")
     else:
-        ok("jarvis_devices.json déjà présent.")
+        ok("phoebus_devices.json déjà présent.")
 
 
 # ── 5. Dossiers ───────────────────────────────────────────────────────────────
 
 def setup_folders():
     step("Dossiers applicatifs")
-    for d in ["logs", "models", "temp", "output", "jarvis_speaker_profiles"]:
+    for d in ["logs", "models", "temp", "output", "PHOEBUS_speaker_profiles"]:
         (ROOT / d).mkdir(exist_ok=True)
-    ok("logs/, models/, temp/, output/, jarvis_speaker_profiles/ prêts.")
+    ok("logs/, models/, temp/, output/, PHOEBUS_speaker_profiles/ prêts.")
 
 
 # ── 6. Paquets Python ─────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ def _install_pyaudio_windows(python_exe: Path) -> bool:
             return True
 
     warn("PyAudio non installé sur Windows — le micro local est désactivé.")
-    warn("Jarvis fonctionnera via l'interface web et mobile sans micro PC.")
+    warn("PHOEBUS fonctionnera via l'interface web et mobile sans micro PC.")
     return False
 
 
@@ -345,7 +345,7 @@ def _download_urllib(url: str, dest: Path):
 
 
 def _patch_env_vosk():
-    """Met à jour JARVIS_VOSK_MODEL_PATH dans .env avec un chemin RELATIF portable."""
+    """Met à jour PHOEBUS_VOSK_MODEL_PATH dans .env avec un chemin RELATIF portable."""
     env_file = ROOT / ".env"
     if not env_file.exists():
         return
@@ -410,26 +410,26 @@ def create_shortcut():
         return
     try:
         if IS_WIN:
-            p = desktop / "JARVIS.bat"
+            p = desktop / "PHOEBUS.bat"
             p.write_text(
-                f'@echo off\ncd /d "{ROOT}"\nstart cmd /k "DÉMARRER_JARVIS.bat"\n',
+                f'@echo off\ncd /d "{ROOT}"\nstart cmd /k "DÉMARRER_PHOEBUS.bat"\n',
                 encoding="utf-8"
             )
-            ok("JARVIS.bat créé sur le Bureau Windows.")
+            ok("PHOEBUS.bat créé sur le Bureau Windows.")
         elif IS_MAC:
-            p = desktop / "Démarrer JARVIS.command"
-            p.write_text(f'#!/bin/bash\ncd "{ROOT}"\n./demarrer_jarvis.sh\n')
+            p = desktop / "Démarrer PHOEBUS.command"
+            p.write_text(f'#!/bin/bash\ncd "{ROOT}"\n./demarrer_phoebus.sh\n')
             os.chmod(p, 0o755)
-            ok("'Démarrer JARVIS.command' créé sur le Bureau macOS.")
+            ok("'Démarrer PHOEBUS.command' créé sur le Bureau macOS.")
         elif IS_LINUX:
-            p = desktop / "JARVIS.desktop"
+            p = desktop / "PHOEBUS.desktop"
             p.write_text(
-                f"[Desktop Entry]\nName=J.A.R.V.I.S\n"
-                f"Exec={ROOT}/demarrer_jarvis.sh\nTerminal=true\n"
+                f"[Desktop Entry]\nName=PHOEBUS\n"
+                f"Exec={ROOT}/demarrer_phoebus.sh\nTerminal=true\n"
                 f"Type=Application\nIcon=utilities-terminal\n"
             )
             os.chmod(p, 0o755)
-            ok("JARVIS.desktop créé sur le Bureau Linux.")
+            ok("PHOEBUS.desktop créé sur le Bureau Linux.")
     except Exception as e:
         warn(f"Raccourci non créé : {e}")
 
@@ -453,9 +453,9 @@ def print_summary(python_exe: Path):
     print(f"\n{C.YELLOW}Prochaines étapes :{C.END}")
     print(f"  1. Éditez {C.BOLD}.env{C.END} et ajoutez vos clés API")
     if IS_WIN:
-        print(f"  2. Double-cliquez sur {C.BOLD}DÉMARRER_JARVIS.bat{C.END}")
+        print(f"  2. Double-cliquez sur {C.BOLD}DÉMARRER_PHOEBUS.bat{C.END}")
     else:
-        print(f"  2. Lancez : {C.BOLD}./demarrer_jarvis.sh{C.END}")
+        print(f"  2. Lancez : {C.BOLD}./demarrer_phoebus.sh{C.END}")
     print(f"  3. Diagnostic : {C.BOLD}{python_exe} scripts/diagnose.py{C.END}\n")
 
 

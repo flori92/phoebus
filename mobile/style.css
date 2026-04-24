@@ -19,15 +19,15 @@
   /* Orb colors par état */
   --orb-color: var(--blue);
   --orb-glow: var(--blue-glow);
-  --jarvis-voice: 0;
-  --jarvis-gaze-x: 0px;
-  --jarvis-gaze-y: 0px;
-  --jarvis-eye-open: 1;
-  --jarvis-eye-wide: 0;
-  --jarvis-mouth-open: 0.05;
-  --jarvis-mouth-width: 1;
-  --jarvis-mouth-skew: 0;
-  --jarvis-mouth-lift: 0;
+  --PHOEBUS-voice: 0;
+  --PHOEBUS-gaze-x: 0px;
+  --PHOEBUS-gaze-y: 0px;
+  --PHOEBUS-eye-open: 1;
+  --PHOEBUS-eye-wide: 0;
+  --PHOEBUS-mouth-open: 0.05;
+  --PHOEBUS-mouth-width: 1;
+  --PHOEBUS-mouth-skew: 0;
+  --PHOEBUS-mouth-lift: 0;
   --avatar-energy: 0.32;
   --avatar-presence: 0.96;
   --avatar-shift-x: 0px;
@@ -123,8 +123,8 @@ html, body {
 #connection-badge.connected #connection-label { color: rgba(34,197,94,0.7); }
 #connection-badge.disconnected #connection-label { color: rgba(239,68,68,0.6); }
 
-/* ── Bouton STOP JARVIS ───────────────────────────────────────────────────── */
-#stop-jarvis-btn {
+/* ── Bouton STOP PHOEBUS ───────────────────────────────────────────────────── */
+#stop-PHOEBUS-btn {
   position: fixed; top: 16px; left: 16px;
   display: flex; align-items: center; gap: 6px;
   padding: 6px 14px;
@@ -142,11 +142,11 @@ html, body {
   display: none; /* Masqué par défaut, géré par JS */
 }
 
-#stop-jarvis-btn svg {
+#stop-PHOEBUS-btn svg {
   width: 14px; height: 14px;
 }
 
-#stop-jarvis-btn:active {
+#stop-PHOEBUS-btn:active {
   transform: scale(0.95);
   background: rgba(239,68,68,0.2);
 }
@@ -307,52 +307,52 @@ html, body {
 }
 
 /* Mode 'none' ou fallback forcé : on n'affiche que l'image fixe (bouche fermée) */
-#avatar-core[data-jarvis-clip="none"] .avatar-face-video {
+#avatar-core[data-PHOEBUS-clip="none"] .avatar-face-video {
   opacity: 0 !important;
 }
-#avatar-core[data-jarvis-clip="none"] .avatar-face-fallback,
+#avatar-core[data-PHOEBUS-clip="none"] .avatar-face-fallback,
 #avatar-core[data-video-fallback="true"] .avatar-face-fallback {
   opacity: calc(var(--avatar-opacity) * 0.96);
 }
 
-#avatar-core[data-jarvis-clip="reflective"] .avatar-face-media {
+#avatar-core[data-PHOEBUS-clip="reflective"] .avatar-face-media {
   --avatar-media-scale: 1.11;
   --avatar-media-position-x: 47%;
   --avatar-media-position-y: 37%;
 }
 
-#avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+#avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.14;
   --avatar-media-position-x: 47.5%;
   --avatar-media-position-y: 38%;
 }
 
-body[data-jarvis-state="thinking"] #avatar-core[data-jarvis-clip="reflective"] .avatar-face-media {
+body[data-PHOEBUS-state="thinking"] #avatar-core[data-PHOEBUS-clip="reflective"] .avatar-face-media {
   --avatar-media-scale: 1.16;
   --avatar-media-position-y: 35%;
   --avatar-media-shift-y: -4px;
 }
 
-body[data-jarvis-mood="warm"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media,
-body[data-jarvis-mood="joy"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+body[data-PHOEBUS-mood="warm"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media,
+body[data-PHOEBUS-mood="joy"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.16;
   --avatar-media-position-y: 39%;
   --avatar-media-shift-y: 1px;
 }
 
-body[data-jarvis-mood="alert"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+body[data-PHOEBUS-mood="alert"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.155;
   --avatar-media-position-y: 36%;
   --avatar-media-shift-y: -2px;
 }
 
-body[data-jarvis-mood="serious"] #avatar-core[data-jarvis-clip="reflective"] .avatar-face-media {
+body[data-PHOEBUS-mood="serious"] #avatar-core[data-PHOEBUS-clip="reflective"] .avatar-face-media {
   --avatar-media-scale: 1.13;
   --avatar-media-position-y: 36%;
   --avatar-media-shift-y: -1px;
 }
 
-body[data-jarvis-state="speaking"] #avatar-core[data-jarvis-clip="expressive"] .avatar-face-media {
+body[data-PHOEBUS-state="speaking"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.18;
   --avatar-media-position-y: 38%;
 }
@@ -377,16 +377,16 @@ body[data-jarvis-state="speaking"] #avatar-core[data-jarvis-clip="expressive"] .
 
 /* On cache les yeux/bouche synthétiques quand la vidéo tourne (thinking/speaking)
    car la vidéo contient déjà son propre visage animé. */
-body[data-jarvis-state="thinking"] #avatar-eyes,
-body[data-jarvis-state="thinking"] #avatar-mouth,
-body[data-jarvis-state="speaking"] #avatar-eyes,
-body[data-jarvis-state="speaking"] #avatar-mouth {
+body[data-PHOEBUS-state="thinking"] #avatar-eyes,
+body[data-PHOEBUS-state="thinking"] #avatar-mouth,
+body[data-PHOEBUS-state="speaking"] #avatar-eyes,
+body[data-PHOEBUS-state="speaking"] #avatar-mouth {
   opacity: 0;
   pointer-events: none;
 }
 
 #avatar-eyes {
-  transform: translate(var(--jarvis-gaze-x), var(--jarvis-gaze-y));
+  transform: translate(var(--PHOEBUS-gaze-x), var(--PHOEBUS-gaze-y));
   transition: transform 260ms ease;
 }
 
@@ -469,7 +469,7 @@ body[data-jarvis-state="speaking"] #avatar-mouth {
   box-shadow:
     0 0 10px rgba(117, 220, 255, 0.62),
     0 0 24px rgba(64, 180, 255, 0.36);
-  transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(var(--jarvis-eye-open));
+  transform: translate(-50%, -50%) scaleX(calc(1 + var(--PHOEBUS-eye-wide))) scaleY(var(--PHOEBUS-eye-open));
   transform-origin: center;
   animation: avatar-blink 6.4s infinite;
   opacity: 0.92;
@@ -498,10 +498,10 @@ body[data-jarvis-state="speaking"] #avatar-mouth {
     0 0 10px rgba(66, 183, 255, 0.35),
     inset 0 0 12px rgba(173, 236, 255, 0.2);
   transform:
-    translate(-50%, calc(var(--jarvis-mouth-lift) * -18px))
-    scaleX(var(--jarvis-mouth-width))
-    skewX(calc(var(--jarvis-mouth-skew) * 10deg))
-    scaleY(calc(0.46 + var(--jarvis-mouth-open)));
+    translate(-50%, calc(var(--PHOEBUS-mouth-lift) * -18px))
+    scaleX(var(--PHOEBUS-mouth-width))
+    skewX(calc(var(--PHOEBUS-mouth-skew) * 10deg))
+    scaleY(calc(0.46 + var(--PHOEBUS-mouth-open)));
   transform-origin: center top;
   transition:
     transform 120ms ease,
@@ -542,24 +542,24 @@ body.state-speaking #avatar-mouth {
     inset 0 0 12px rgba(173, 236, 255, 0.26);
 }
 
-body[data-jarvis-mood="warm"] #avatar-mouth::before,
-body[data-jarvis-mood="joy"] #avatar-mouth::before {
+body[data-PHOEBUS-mood="warm"] #avatar-mouth::before,
+body[data-PHOEBUS-mood="joy"] #avatar-mouth::before {
   background: rgba(218, 248, 255, 0.92);
 }
 
-body[data-jarvis-mood="joy"] #avatar-halo {
+body[data-PHOEBUS-mood="joy"] #avatar-halo {
   opacity: 0.82;
 }
 
-body[data-jarvis-mood="confident"] #avatar-mouth {
+body[data-PHOEBUS-mood="confident"] #avatar-mouth {
   border-color: rgba(154, 226, 255, 0.72);
 }
 
-body[data-jarvis-mood="alert"] .avatar-eye {
+body[data-PHOEBUS-mood="alert"] .avatar-eye {
   background: linear-gradient(90deg, rgba(255, 111, 111, 0.08), rgba(179, 234, 255, 0.95), rgba(255, 111, 111, 0.08));
 }
 
-body[data-jarvis-mood="serious"] #avatar-halo {
+body[data-PHOEBUS-mood="serious"] #avatar-halo {
   opacity: 0.6;
 }
 
@@ -608,11 +608,11 @@ body[data-jarvis-mood="serious"] #avatar-halo {
 
 @keyframes avatar-blink {
   0%, 46%, 50%, 100% {
-    transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(var(--jarvis-eye-open));
+    transform: translate(-50%, -50%) scaleX(calc(1 + var(--PHOEBUS-eye-wide))) scaleY(var(--PHOEBUS-eye-open));
     opacity: 0.92;
   }
   48%, 49% {
-    transform: translate(-50%, -50%) scaleX(calc(1 + var(--jarvis-eye-wide))) scaleY(calc(var(--jarvis-eye-open) * 0.08));
+    transform: translate(-50%, -50%) scaleX(calc(1 + var(--PHOEBUS-eye-wide))) scaleY(calc(var(--PHOEBUS-eye-open) * 0.08));
     opacity: 0.45;
   }
 }
@@ -654,15 +654,15 @@ body.state-speaking  #status-text { color: rgba(14,165,233,0.8); }
   font-size: 13px;
 }
 
-.jarvis-bubble {
+.PHOEBUS-bubble {
   background: rgba(14,165,233,0.06);
   border: 1px solid rgba(14,165,233,0.12);
   color: rgba(255,255,255,0.85);
   font-size: 14px;
 }
 
-.jarvis-bubble::before {
-  content: 'JARVIS  ';
+.PHOEBUS-bubble::before {
+  content: 'PHOEBUS  ';
   font-size: 10px; letter-spacing: 2px;
   color: rgba(14,165,233,0.5); font-weight: 400;
   display: block; margin-bottom: 4px;

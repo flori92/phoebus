@@ -10,7 +10,7 @@
 import { createOrb, type OrbState } from "./orb";
 import "./style.css";
 
-type JarvisMood =
+type PHOEBUSMood =
   | "neutral"
   | "warm"
   | "joy"
@@ -69,14 +69,43 @@ type AvatarMediaElements = {
   expressiveVideoEl: HTMLVideoElement;
 };
 
+// ── Solar Helpers (PHOEBUS) ─────────────────────────────────────────────────
+function getSolarRgb() {
+  const date = new Date();
+  const hour = date.getHours() + date.getMinutes() / 60;
+
+  const night = { r: 10, g: 17, b: 40 };
+  const dawn = { r: 62, g: 31, b: 71 };
+  const sunrise = { r: 255, g: 140, b: 66 };
+  const noon = { r: 255, g: 255, b: 230 };
+  const afternoon = { r: 255, g: 202, b: 58 };
+  const sunset = { r: 255, g: 63, b: 0 };
+  const twilight = { r: 42, g: 27, b: 61 };
+
+  let k1, k2, ratio;
+  if (hour < 5) { k1 = night; k2 = dawn; ratio = hour / 5; }
+  else if (hour < 7) { k1 = dawn; k2 = sunrise; ratio = (hour - 5) / 2; }
+  else if (hour < 12) { k1 = sunrise; k2 = noon; ratio = (hour - 7) / 5; }
+  else if (hour < 17) { k1 = noon; k2 = afternoon; ratio = (hour - 12) / 5; }
+  else if (hour < 19) { k1 = afternoon; k2 = sunset; ratio = (hour - 17) / 2; }
+  else if (hour < 21) { k1 = sunset; k2 = twilight; ratio = (hour - 19) / 2; }
+  else { k1 = twilight; k2 = night; ratio = (hour - 21) / 3; }
+
+  const r = Math.round(k1.r + (k2.r - k1.r) * ratio);
+  const g = Math.round(k1.g + (k2.g - k1.g) * ratio);
+  const b = Math.round(k1.b + (k2.b - k1.b) * ratio);
+
+  return `${r}, ${g}, ${b}`;
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const WS_HOST = window.location.hostname || "localhost";
 const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_URL = `${WS_SCHEME}://${WS_HOST}:8765`;
 const RECONNECT_INTERVAL_MS = 2_000;
-const WS_TOKEN_STORAGE_KEY = "jarvis_ws_token";
+const WS_TOKEN_STORAGE_KEY = "PHOEBUS_ws_token";
 const FACE_ROOT = document.documentElement;
-const MOOD_PRESETS: Record<JarvisMood, MoodPreset> = {
+const MOOD_PRESETS: Record<PHOEBUSMood, MoodPreset> = {
   neutral: {
     eyeOpen: 1,
     eyeWide: 0,
@@ -174,10 +203,12 @@ const AVATAR_POSTER_URLS: Record<AvatarClipKey, string> = {
 };
 const AVATAR_CLIP_KEYS: AvatarClipKey[] = ["reflective", "expressive", "none"];
 
-function resolveAvatarPalette(state: OrbState, mood: JarvisMood): AvatarVisualPalette {
+function resolveAvatarPalette(state: OrbState, mood: PHOEBUSMood): AvatarVisualPalette {
+  const solarRgb = getSolarRgb();
+  
   let palette: AvatarVisualPalette = {
-    accentRgb: "88, 202, 255",
-    softRgb: "197, 241, 255",
+    accentRgb: solarRgb,
+    softRgb: solarRgb, // Will be lightened/shifted if needed
     hotRgb: "255, 219, 134",
   };
 
@@ -239,7 +270,7 @@ function resolveAvatarPalette(state: OrbState, mood: JarvisMood): AvatarVisualPa
   }
 }
 
-function resolveAvatarClip(state: OrbState, _mood: JarvisMood): AvatarClipKey {
+function resolveAvatarClip(state: OrbState, _mood: PHOEBUSMood): AvatarClipKey {
   if (state === "thinking") {
     return "reflective";
   }
@@ -250,7 +281,7 @@ function resolveAvatarClip(state: OrbState, _mood: JarvisMood): AvatarClipKey {
   return "none";
 }
 
-function resolveFallbackFrame(state: OrbState, mood: JarvisMood): AvatarFallbackFrameKey {
+function resolveFallbackFrame(state: OrbState, mood: PHOEBUSMood): AvatarFallbackFrameKey {
   if (state === "thinking") {
     return "thinking";
   }
@@ -302,7 +333,7 @@ function getStoredToken(): string {
 
 function requestToken(): string {
   const current = getStoredToken();
-  const provided = window.prompt("Token JARVIS", current)?.trim() ?? "";
+  const provided = window.prompt("Token PHOEBUS", current)?.trim() ?? "";
   if (provided) {
     localStorage.setItem(WS_TOKEN_STORAGE_KEY, provided);
   }
@@ -319,7 +350,7 @@ function rand(min: number, max: number): number {
 
 class FaceAvatar {
   private state: OrbState = "idle";
-  private mood: JarvisMood = "neutral";
+  private mood: PHOEBUSMood = "neutral";
   private activeClip: AvatarClipKey = "reflective";
   private readyClips = new Set<AvatarClipKey>();
   private failedClips = new Set<AvatarClipKey>();
@@ -349,7 +380,7 @@ class FaceAvatar {
     this.updateMedia();
   }
 
-  setMood(mood: JarvisMood): void {
+  setMood(mood: PHOEBUSMood): void {
     this.mood = mood;
     this.updateMedia();
   }
@@ -421,9 +452,9 @@ class FaceAvatar {
       this.failedClips.has(nextClip) || !this.readyClips.has(nextClip);
 
     this.activeClip = nextClip;
-    this.media.coreEl.dataset.jarvisClip = nextClip;
+    this.media.coreEl.dataset.PHOEBUSClip = nextClip;
     this.media.coreEl.dataset.videoFallback = showFallback ? "true" : "false";
-    document.body.dataset.jarvisClip = nextClip;
+    document.body.dataset.PHOEBUSClip = nextClip;
 
     this.media.fallbackEl.src = AVATAR_FALLBACK_URLS[fallbackFrame];
     this.media.fallbackEl.dataset.fallbackFrame = fallbackFrame;
@@ -447,7 +478,7 @@ function normalizeSpeech(text: string): string {
     .toLowerCase();
 }
 
-function inferMood(text: string): JarvisMood {
+function inferMood(text: string): PHOEBUSMood {
   const normalized = normalizeSpeech(text);
 
   if (
@@ -490,9 +521,19 @@ function getRestViseme(): VisemeState {
     : { open: 0.01, width: 1, skew: 0, lift: 0 };
 }
 
+function getSolarIntensity() {
+  const date = new Date();
+  const hour = date.getHours() + date.getMinutes() / 60;
+  // Intensity: 0.4 at night, 1.3 at noon
+  // Use a simple sine-like curve or similar
+  const intensity = 0.85 + 0.45 * Math.cos(((hour - 12) * Math.PI) / 12);
+  return intensity.toFixed(3);
+}
+
 function renderFace(): void {
   const preset = MOOD_PRESETS[currentMood];
   const palette = resolveAvatarPalette(currentState, currentMood);
+  const solarIntensity = getSolarIntensity();
   const eyeOpen = clamp(
     preset.eyeOpen +
       (currentState === "listening" ? 0.06 : 0) +
@@ -569,14 +610,15 @@ function renderFace(): void {
           ? 5.2
           : 6.8;
 
-  FACE_ROOT.style.setProperty("--jarvis-gaze-x", `${currentGaze.x.toFixed(2)}px`);
-  FACE_ROOT.style.setProperty("--jarvis-gaze-y", `${currentGaze.y.toFixed(2)}px`);
-  FACE_ROOT.style.setProperty("--jarvis-eye-open", eyeOpen.toFixed(3));
-  FACE_ROOT.style.setProperty("--jarvis-eye-wide", eyeWide.toFixed(3));
-  FACE_ROOT.style.setProperty("--jarvis-mouth-open", mouthOpen.toFixed(3));
-  FACE_ROOT.style.setProperty("--jarvis-mouth-width", mouthWidth.toFixed(3));
-  FACE_ROOT.style.setProperty("--jarvis-mouth-skew", mouthSkew.toFixed(3));
-  FACE_ROOT.style.setProperty("--jarvis-mouth-lift", mouthLift.toFixed(3));
+  FACE_ROOT.style.setProperty("--PHOEBUS-solar-intensity", solarIntensity);
+  FACE_ROOT.style.setProperty("--PHOEBUS-gaze-x", `${currentGaze.x.toFixed(2)}px`);
+  FACE_ROOT.style.setProperty("--PHOEBUS-gaze-y", `${currentGaze.y.toFixed(2)}px`);
+  FACE_ROOT.style.setProperty("--PHOEBUS-eye-open", eyeOpen.toFixed(3));
+  FACE_ROOT.style.setProperty("--PHOEBUS-eye-wide", eyeWide.toFixed(3));
+  FACE_ROOT.style.setProperty("--PHOEBUS-mouth-open", mouthOpen.toFixed(3));
+  FACE_ROOT.style.setProperty("--PHOEBUS-mouth-width", mouthWidth.toFixed(3));
+  FACE_ROOT.style.setProperty("--PHOEBUS-mouth-skew", mouthSkew.toFixed(3));
+  FACE_ROOT.style.setProperty("--PHOEBUS-mouth-lift", mouthLift.toFixed(3));
   FACE_ROOT.style.setProperty("--avatar-energy", avatarEnergy.toFixed(3));
   FACE_ROOT.style.setProperty("--avatar-presence", avatarPresence.toFixed(3));
   FACE_ROOT.style.setProperty("--avatar-shift-x", `${shellShiftX.toFixed(2)}px`);
@@ -595,7 +637,7 @@ function renderFace(): void {
   FACE_ROOT.style.setProperty("--avatar-accent-rgb", palette.accentRgb);
   FACE_ROOT.style.setProperty("--avatar-soft-rgb", palette.softRgb);
   FACE_ROOT.style.setProperty("--avatar-hot-rgb", palette.hotRgb);
-  document.body.dataset.jarvisMood = currentMood;
+  document.body.dataset.PHOEBUSMood = currentMood;
 }
 
 function scheduleMoodReset(ms = 3_600): void {
@@ -869,11 +911,11 @@ const orb = createOrb(canvas);
 const STATE_LABELS: Record<OrbState, string> = {
   idle: "",
   listening: "écoute...",
-  thinking: "phébus réfléchit...",
-  speaking: "phébus répond...",
+  thinking: "PHOEBUS réfléchit...",
+  speaking: "PHOEBUS répond...",
 };
 let currentState: OrbState = "idle";
-let currentMood: JarvisMood = "neutral";
+let currentMood: PHOEBUSMood = "neutral";
 let currentVoiceLevel = 0;
 let currentGaze = { x: 0, y: 0 };
 let currentViseme: VisemeState = getRestViseme();
@@ -894,7 +936,7 @@ function setVoiceLevel(level: number): void {
   const baseline = currentState === "speaking" ? 0.08 : 0;
   currentVoiceLevel = Math.max(baseline, Math.min(1, level || 0));
   faceAvatar.setVolume(Math.max(0, Math.min(1, level || 0)));
-  FACE_ROOT.style.setProperty("--jarvis-voice", currentVoiceLevel.toFixed(3));
+  FACE_ROOT.style.setProperty("--PHOEBUS-voice", currentVoiceLevel.toFixed(3));
   renderFace();
 }
 
@@ -906,7 +948,7 @@ function applyState(state: OrbState): void {
   // et l'aura sans JS additionnel.
   document.body.dataset.state = state;
   statusEl.textContent = STATE_LABELS[state];
-  document.body.dataset.jarvisState = state;
+  document.body.dataset.PHOEBUSState = state;
 
   if (state === "listening") {
     currentMood = "alert";
@@ -1078,15 +1120,15 @@ function connect(): void {
         orb.triggerDemo();
         return;
       }
-      if (data.action === "jarvis_expression" && data.text) {
+      if (data.action === "PHOEBUS_expression" && data.text) {
         consumeExpressionText(data.text, { scheduleFallback: true, id: data.id });
         return;
       }
-      if (data.action === "jarvis_lipsync" && Array.isArray(data.frames)) {
+      if (data.action === "PHOEBUS_lipsync" && Array.isArray(data.frames)) {
         startTimedLipsync(data.frames, data.id);
         return;
       }
-      if (data.action === "jarvis_audio_chunk" && data.id && data.text) {
+      if (data.action === "PHOEBUS_audio_chunk" && data.id && data.text) {
         streamingPlayer.playChunk(data.text, data.id);
         return;
       }
@@ -1134,6 +1176,11 @@ setConnected(false);
 renderFace();
 applyState("idle");
 connect();
+
+// Mise à jour périodique de la palette solaire (chaque minute)
+setInterval(() => {
+  renderFace();
+}, 60_000);
 
 // Silence unused-import warning for showError
 void showError;

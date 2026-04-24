@@ -16,7 +16,7 @@ import os
 import sys
 import time
 
-# Permet d'importer `jarvis` même en exécution directe.
+# Permet d'importer `PHOEBUS` même en exécution directe.
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 if ROOT not in sys.path:
@@ -24,7 +24,7 @@ if ROOT not in sys.path:
 
 
 def test_clarify_transcription_incertaine():
-    from jarvis.clarify import transcription_incertaine
+    from PHOEBUS.clarify import transcription_incertaine
     assert transcription_incertaine("") is True
     assert transcription_incertaine("...") is True
     assert transcription_incertaine("zz") is True
@@ -35,7 +35,7 @@ def test_clarify_transcription_incertaine():
 
 
 def test_clarify_demande_ambigue():
-    from jarvis.clarify import demande_ambigue, question_pour_clarifier
+    from PHOEBUS.clarify import demande_ambigue, question_pour_clarifier
     assert demande_ambigue("allume") is True
     assert demande_ambigue("éteins") is True
     assert demande_ambigue("ouvre") is True
@@ -46,7 +46,7 @@ def test_clarify_demande_ambigue():
 
 
 def test_risk_levels():
-    import jarvis.security as security
+    import PHOEBUS.security as security
 
     original_config = security.DEVICE_CONFIG
     try:
@@ -62,7 +62,7 @@ def test_risk_levels():
 
 
 def test_conversation_window():
-    import jarvis.state as st
+    import PHOEBUS.state as st
     st.end_conversation()
     assert st.is_in_conversation() is False
     st.extend_conversation(2)
@@ -72,14 +72,14 @@ def test_conversation_window():
 
 
 def test_registre_detection():
-    from jarvis.memory import detecter_registre
+    from PHOEBUS.memory import detecter_registre
     assert detecter_registre("tu peux allumer la lumière ?") == "tu"
     assert detecter_registre("pouvez-vous me dire l'heure ?") == "vous"
     assert detecter_registre("bref, salut") is None
 
 
 def test_skill_registry():
-    from jarvis.skills import skill, get_skill, list_skills
+    from PHOEBUS.skills import skill, get_skill, list_skills
 
     @skill("__test_demo", risk="medium", help="démo")
     async def _h(d):
@@ -91,7 +91,7 @@ def test_skill_registry():
 
 
 def test_naturaliser_markdown():
-    from jarvis.text_shaping import naturaliser
+    from PHOEBUS.text_shaping import naturaliser
     assert "**" not in naturaliser("c'est **très** bien")
     assert "`" not in naturaliser("voici `code` ici")
     # Le contenu reste.
@@ -99,14 +99,14 @@ def test_naturaliser_markdown():
 
 
 def test_naturaliser_abreviations():
-    from jarvis.text_shaping import naturaliser
+    from PHOEBUS.text_shaping import naturaliser
     assert "Monsieur Favi" in naturaliser("M. Favi est là")
     assert "par exemple" in naturaliser("p. ex. ceci").lower()
     assert "c'est-à-dire" in naturaliser("c.-à-d. ceci")
 
 
 def test_naturaliser_unites():
-    from jarvis.text_shaping import naturaliser
+    from PHOEBUS.text_shaping import naturaliser
     assert "degrés" in naturaliser("Il fait 25°C")
     assert "pour cent" in naturaliser("à 80%")
     assert "euros" in naturaliser("ça fait 12€")
@@ -114,22 +114,22 @@ def test_naturaliser_unites():
 
 
 def test_naturaliser_respiration():
-    from jarvis.text_shaping import naturaliser
+    from PHOEBUS.text_shaping import naturaliser
     # Ajoute une virgule après "donc" suivi d'un espace+minuscule.
     out = naturaliser("donc voici la réponse")
     assert "donc," in out.lower()
 
 
 def test_naturaliser_idempotent():
-    from jarvis.text_shaping import naturaliser
+    from PHOEBUS.text_shaping import naturaliser
     t = "M. Favi, donc il fait 20°C **aujourd'hui**."
     assert naturaliser(naturaliser(t)) == naturaliser(t)
 
 
 def test_intent_fast_path():
-    from jarvis.intent import detect
+    from PHOEBUS.intent import detect
     # Commandes reconnues
-    r = detect("Jarvis, allume la lumière du salon")
+    r = detect("PHOEBUS, allume la lumière du salon")
     assert r is not None and r.name == "allumer" and '"salon"' in r.reply
     r = detect("éteins la cuisine")
     assert r is not None and r.name == "eteindre"
@@ -143,7 +143,7 @@ def test_intent_fast_path():
 
 
 def test_sentence_splitter():
-    from jarvis.sentence_splitter import split, split_streaming
+    from PHOEBUS.sentence_splitter import split, split_streaming
     r = split("Bonjour Floriace. Comment allez-vous ?")
     assert len(r) == 2
     # Abréviations ne coupent pas (M. Favi reste dans la 1re phrase).
@@ -156,15 +156,15 @@ def test_sentence_splitter():
 
 
 def test_correction_detection():
-    from jarvis.memory_unified import looks_like_correction
+    from PHOEBUS.memory_unified import looks_like_correction
     assert looks_like_correction("Non, je voulais dire Lyon")
     assert looks_like_correction("tu te trompes")
-    assert not looks_like_correction("merci jarvis")
+    assert not looks_like_correction("merci PHOEBUS")
     assert not looks_like_correction("allume le salon")
 
 
 def test_response_cache_key_stability():
-    from jarvis.response_cache import _cache_key
+    from PHOEBUS.response_cache import _cache_key
     # Même texte, même voix → même clé (déterministe).
     k1 = _cache_key("Bonjour Floriace.", "fr-FR-Remy", "auto")
     k2 = _cache_key("Bonjour Floriace.", "fr-FR-Remy", "auto")
@@ -175,7 +175,7 @@ def test_response_cache_key_stability():
 
 
 def test_brain_router_profiles_and_ranking():
-    from jarvis.brain_router import build_profile, rank_provider_names
+    from PHOEBUS.brain_router import build_profile, rank_provider_names
 
     p = build_profile("donne-moi les dernières nouvelles sur X", streaming=False)
     assert p.needs_realtime is True

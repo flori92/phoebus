@@ -14,22 +14,22 @@ PyAudio>=0.2.14
 
 # ── STT local robuste (Whisper) ───────────────────────────────────────────
 # Reconnaissance vocale hors ligne, supérieure à Google STT pour les accents.
-# JARVIS_STT_BACKEND=whisper dans .env pour l'activer.
+# PHOEBUS_STT_BACKEND=whisper dans .env pour l'activer.
 # faster-whisper  ← recommandé (GPU/CPU optimisé, très rapide)
 # openai-whisper  ← alternative officielle OpenAI
 
-# ── Wake Word "Hey Jarvis" — 100% gratuit ────────────────────────────────────
+# ── Wake Word "Hey PHOEBUS" — 100% gratuit ────────────────────────────────────
 #
 # Option 1 (recommandée) : OpenWakeWord — MIT, modèles ONNX pré-entraînés
 #   pip install openwakeword onnxruntime
-#   → modèle "hey_jarvis" téléchargé automatiquement
+#   → modèle "hey_PHOEBUS" téléchargé automatiquement
 #
 # Option 2 : Vosk — Apache 2.0, STT offline avec keyword spotting
 #   pip install vosk
 #   → Télécharger le modèle FR (40 Mo) :
 #   curl -LO https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip
 #   unzip vosk-model-small-fr-0.22.zip
-#   → Ajouter JARVIS_VOSK_MODEL_PATH=./vosk-model-small-fr-0.22 dans .env
+#   → Ajouter PHOEBUS_VOSK_MODEL_PATH=./vosk-model-small-fr-0.22 dans .env
 #
 # Option 3 : Pocketsphinx — BSD, ultra-léger (~1 Mo), keyword spotting natif
 #   pip install pocketsphinx
@@ -49,8 +49,8 @@ PyAudio>=0.2.14
 # Créer une app sur https://developer.spotify.com/dashboard
 
 # ── Reconnaissance multi-utilisateurs ────────────────────────────────────
-# Identifier qui parle pour adapter les réponses de Jarvis.
+# Identifier qui parle pour adapter les réponses de PHOEBUS.
 # resemblyzer  ← embeddings vocaux haute qualité
 # scipy        ← fallback MFCC si resemblyzer absent
-# Activer avec JARVIS_MULTI_USER=1 dans .env
+# Activer avec PHOEBUS_MULTI_USER=1 dans .env
 
