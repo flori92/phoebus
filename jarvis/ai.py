@@ -18,6 +18,13 @@ def construire_system_prompt(texte_utilisateur=""):
     contexte_memoire = construire_contexte_memoire()
     profil_appris = resumer_profil()
 
+    # --- Contexte Home Assistant dynamique (découverte live des entités) ---
+    try:
+        from jarvis.home import resume_ha_context
+        contexte_ha = resume_ha_context()
+    except Exception:
+        contexte_ha = ""
+
     # --- RAG : Mémoire à Long Terme ---
     souvenirs_rag = ""
     if texte_utilisateur:
@@ -124,6 +131,9 @@ def construire_system_prompt(texte_utilisateur=""):
     if profil_appris:
         base += "\n" + profil_appris + "\n"
 
+    if contexte_ha:
+        base += "\n\n" + contexte_ha + "\n"
+
     if souvenirs_rag:
         base += "\n\nSOUVENIRS DU PASSE (RAG) pertinents pour la requête actuelle :\n"
         base += souvenirs_rag + "\n"
@@ -163,6 +173,27 @@ def construire_system_prompt(texte_utilisateur=""):
         "d'inventer une réponse."
     )
     return base
+
+
+def _capture_correction_if_any(texte: str) -> None:
+    """Si l'utilisateur vient de corriger la dernière réponse de Jarvis,
+    on enregistre cet échange dans le RAG avec importance haute. Jarvis
+    en tiendra compte aux prompts futurs."""
+    try:
+        from jarvis.memory_unified import looks_like_correction, note_correction
+        if not looks_like_correction(texte):
+            return
+        # Dernière chose que Jarvis a dite (si disponible dans l'historique).
+        last_model = None
+        for entry in reversed(state.historique):
+            if entry.role == "model":
+                last_model = entry.parts[0].text
+                break
+        if last_model:
+            note_correction(last_model, texte)
+            print("[MEMOIRE] correction capturée → RAG importance 3.")
+    except Exception as e:
+        print(f"[MEMOIRE] détection correction : {e}")
 
 
 def detecter_cerveau(texte):
@@ -263,6 +294,11 @@ async def demander_ia(texte):
     reg = detecter_registre(texte)
     if reg:
         noter_registre(reg)
+
+    # ── Détection de correction : si l'utilisateur corrige, on capture
+    # l'échange précédent pour apprentissage à long terme (RAG).
+    _capture_correction_if_any(texte)
+
     await state.send_web_state("thinking")
     try:
         # ── FAST-PATH : dispatcher d'intention local ──────────────────────
@@ -361,6 +397,9 @@ async def demander_ia_stream(texte, on_sentence=None):
     reg = detecter_registre(texte)
     if reg:
         noter_registre(reg)
+
+    _capture_correction_if_any(texte)
+
     await state.send_web_state("thinking")
 
     try:

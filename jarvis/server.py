@@ -398,6 +398,16 @@ async def main():
             print(f"[CACHE-TTS] warmup a échoué : {e}")
     asyncio.create_task(_warmup_tts())
 
+    # Pré-chauffage Home Assistant : peuple le cache d'entités pour que le
+    # premier prompt système contienne déjà la liste fraîche.
+    async def _warmup_ha():
+        try:
+            from jarvis.home import prewarm_ha_context
+            await asyncio.to_thread(prewarm_ha_context)
+        except Exception as e:
+            print(f"[HA] prewarm échoué : {e}")
+    asyncio.create_task(_warmup_ha())
+
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
     asyncio.create_task(proactive.loop(parler))
 

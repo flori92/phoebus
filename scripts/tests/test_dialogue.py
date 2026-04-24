@@ -120,6 +120,54 @@ def test_naturaliser_idempotent():
     assert naturaliser(naturaliser(t)) == naturaliser(t)
 
 
+def test_intent_fast_path():
+    from jarvis.intent import detect
+    # Commandes reconnues
+    r = detect("Jarvis, allume la lumière du salon")
+    assert r is not None and r.name == "allumer" and '"salon"' in r.reply
+    r = detect("éteins la cuisine")
+    assert r is not None and r.name == "eteindre"
+    r = detect("mets le thermostat à 21")
+    assert r is not None and r.name == "thermostat" and "21" in r.reply
+    r = detect("quelle heure est-il")
+    assert r is not None and r.name == "heure"
+    # Non reconnu → None → retombe sur LLM
+    assert detect("raconte-moi une blague") is None
+    assert detect("comment tu te sens aujourd'hui") is None
+
+
+def test_sentence_splitter():
+    from jarvis.sentence_splitter import split, split_streaming
+    r = split("Bonjour Floriace. Comment allez-vous ?")
+    assert len(r) == 2
+    # Abréviations ne coupent pas (M. Favi reste dans la 1re phrase).
+    r = split("M. Favi est arrivé. Il a apporté des croissants !")
+    assert len(r) == 2 and "M. Favi" in r[0]
+    # Streaming : fragment sans terminateur → reste en buffer
+    sentences, buf = split_streaming("Bonjour Floriace. Je m'appe")
+    assert sentences == ["Bonjour Floriace."]
+    assert buf.strip().startswith("Je m")
+
+
+def test_correction_detection():
+    from jarvis.memory_unified import looks_like_correction
+    assert looks_like_correction("Non, je voulais dire Lyon")
+    assert looks_like_correction("tu te trompes")
+    assert not looks_like_correction("merci jarvis")
+    assert not looks_like_correction("allume le salon")
+
+
+def test_response_cache_key_stability():
+    from jarvis.response_cache import _cache_key
+    # Même texte, même voix → même clé (déterministe).
+    k1 = _cache_key("Bonjour Floriace.", "fr-FR-Remy", "auto")
+    k2 = _cache_key("Bonjour Floriace.", "fr-FR-Remy", "auto")
+    assert k1 == k2
+    # Voix différente → clé différente.
+    k3 = _cache_key("Bonjour Floriace.", "fr-FR-Henri", "auto")
+    assert k1 != k3
+
+
 # ── Exécution directe ─────────────────────────────────────────────────────
 
 def _run_all():
@@ -135,6 +183,10 @@ def _run_all():
         test_naturaliser_unites,
         test_naturaliser_respiration,
         test_naturaliser_idempotent,
+        test_intent_fast_path,
+        test_sentence_splitter,
+        test_correction_detection,
+        test_response_cache_key_stability,
     ]
     failed = 0
     for fn in tests:
