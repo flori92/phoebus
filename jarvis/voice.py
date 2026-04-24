@@ -1,5 +1,7 @@
 # jarvis/voice.py
 """Synthèse vocale (TTS), reconnaissance (STT) et logique de fallback local."""
+import platform
+import audioop
 import re
 import math
 import time
@@ -85,6 +87,61 @@ def resoudre_traduction_localement(texte):
         for k, v in dic.items():
             if k in t: return f"En anglais, '{k}' se dit '{v['en']}'."
     return None
+
+
+# ── Interruption vocale (Barge-in Monitor) ──────────────────────────────────
+
+class BargeInMonitor(threading.Thread):
+    """Surveille le micro en tâche de fond PENDANT que Jarvis parle.
+    Si un niveau sonore élevé (voix humaine) est détecté, il stoppe Jarvis.
+    """
+    def __init__(self, threshold=2200, consecutive=3):
+        super().__init__(daemon=True)
+        # Sous macOS, utiliser 1024 pour éviter les 'Input overflowed'
+        self.chunk_size = 1024 if platform.system() == "Darwin" else 512
+        self.threshold = threshold
+        self.consecutive = consecutive
+        self.stop_requested = False
+
+    def run(self):
+        if not pyaudio: return
+        pa = pyaudio.PyAudio()
+        try:
+            stream = pa.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=16000,
+                input=True,
+                frames_per_buffer=self.chunk_size
+            )
+            count = 0
+            while not self.stop_requested:
+                try:
+                    data = stream.read(self.chunk_size, exception_on_overflow=False)
+                    rms = audioop.rms(data, 2)
+                    if rms > self.threshold:
+                        count += 1
+                        if count >= self.consecutive:
+                            print(f"[MIC] Interruption détectée (RMS={rms})")
+                            state.STOP_PARLER = True
+                            break
+                    else:
+                        count = 0
+                except:
+                    break
+            stream.stop_stream()
+            stream.close()
+        finally:
+            pa.terminate()
+
+def start_barge_in_monitor():
+    if not pyaudio: return None
+    monitor = BargeInMonitor(
+        threshold=getattr(state, "BARGE_IN_THRESHOLD", 2200),
+        consecutive=getattr(state, "BARGE_IN_CONSECUTIVE_CHUNKS", 3)
+    )
+    monitor.start()
+    return monitor
 
 
 # ── TTS (Edge-TTS + Pygame) ────────────────────────────────────────────────
@@ -185,6 +242,7 @@ async def parler(texte):
     await state.send_web_state("speaking")
     state.speak_volume = 0.0
 
+    monitor = start_barge_in_monitor()
     try:
         # ── Pipeline : pendant qu'on joue N, on synthétise N+1. ───────────
         prep_task = asyncio.create_task(_prepare_tts(sentences[0]))
@@ -201,8 +259,7 @@ async def parler(texte):
                 next_task = asyncio.create_task(_prepare_tts(sentences[i + 1]))
 
             if state.STOP_PARLER:
-                if next_task:
-                    next_task.cancel()
+                if next_task: next_task.cancel()
                 break
 
             path, is_cache = result
@@ -210,14 +267,15 @@ async def parler(texte):
                 await _play_file(path, is_cache, s)
 
             if state.STOP_PARLER:
-                if next_task:
-                    next_task.cancel()
+                if next_task: next_task.cancel()
                 break
 
             prep_task = next_task
     except Exception as e:
         print(f"Erreur TTS : {e}")
     finally:
+        if monitor:
+            monitor.stop_requested = True
         state.speak_volume = 0.0
         state.is_speaking = False
         state.STOP_PARLER = False

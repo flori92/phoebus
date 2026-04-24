@@ -281,30 +281,30 @@ def listen_and_process(main_loop):
             r.adjust_for_ambient_noise(source, duration=1)
             print("[MIC] Prêt à écouter localement...")
             while True:
-                # Suppression du bloc 'if state.is_speaking or state.is_thinking: continue'
-                # pour permettre l'interruption (Barge-in).
                 try:
                     state.is_listening = True
                     asyncio.run_coroutine_threadsafe(state.send_web_state("listening"), main_loop)
                     # On écoute. Le Recognizer de SpeechRecognition gère l'énergie de manière dynamique par défaut.
-                    audio = r.listen(source, timeout=10, phrase_time_limit=10)
-
-                    # Si on est en train de parler et qu'une parole est détectée,
-                    # on signale au moteur TTS de s'arrêter.
-                    if state.is_speaking:
-                        print("[MIC] Parole détectée pendant que Jarvis parle. Interruption...")
-                        state.STOP_PARLER = True
-
+                    audio = r.listen(source, timeout=15, phrase_time_limit=10)
                     state.is_listening = False
-                    asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
+
+                    # Si on vient d'interrompre Jarvis, on attend un tout petit peu
+                    # pour que le flux audio se coupe proprement avant de traiter.
+                    if state.STOP_PARLER:
+                        time.sleep(0.2)
+
                     try:
                         texte = stt_recognize(audio)
                     except sr.UnknownValueError:
-                        raise
+                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                        continue
                     except Exception as e:
                         print(f"[MIC] STT {stt_name} a échoué : {e}")
-                        raise sr.UnknownValueError()
+                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                        continue
 
+                    # On ne passe en 'thinking' que si on a vraiment du texte à traiter
+                    asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
                     print(f"\n[VOUS] {texte}")
 
                     # ── Identification du speaker ───────────────────────────
