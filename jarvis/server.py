@@ -222,20 +222,43 @@ async def start_websocket_server():
         print(f"[WEB] Erreur WebSocket : {e}")
 
 
-async def executer_commande_generique(texte: str, source: str = "voix"):
-    """Exécute une commande texte provenant de n'importe quelle source."""
-    if not texte: return
+async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
+    """Exécute une commande texte et renvoie la réponse textuelle finale."""
+    if not texte: return ""
     
     state.mark_user_activity()
-    print(f"[{source.upper()}] {texte}")
+    meta_str = ""
+    if metadata:
+        m = metadata
+        meta_str = f" [Batt: {m.get('battery')}% | Loc: {m.get('location')} | Focus: {m.get('focus')}]"
     
+    print(f"[{source.upper()}{meta_str}] {texte}")
+    
+    # On injecte les métadonnées dans le contexte pour l'IA
+    contexte_ios = ""
+    if metadata:
+        contexte_ios = (
+            f"\n[INFO IPHONE] Batterie: {metadata.get('battery')}% | "
+            f"Position: {metadata.get('location')} | "
+            f"Mode de concentration: {metadata.get('focus')}\n"
+        )
+    
+    query_enrichie = contexte_ios + texte
+    
+    final_rep = ""
     spoken = {"v": False}
     async def _on_sentence(s):
+        nonlocal final_rep
         spoken["v"] = True
+        final_rep += s + " "
         await parler(s)
 
     # On utilise le streaming pour la réactivité
-    rep = await demander_ia_stream(texte, on_sentence=_on_sentence)
+    rep = await demander_ia_stream(query_enrichie, on_sentence=_on_sentence)
+    
+    # Si le streaming n'a pas tout capté ou si c'est du JSON
+    if not final_rep or "{" in (rep or ""):
+        final_rep = rep
 
     if "{" in (rep or "") and "}" in (rep or ""):
         await traiter_reponse_ia(rep)
@@ -245,6 +268,7 @@ async def executer_commande_generique(texte: str, source: str = "voix"):
     
     # On reste à l'écoute après une commande externe
     state.extend_conversation()
+    return final_rep.strip()
 
 
 # ── Serveur Mobile (HTTP) ──────────────────────────────────────────────────
@@ -291,14 +315,30 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 texte = data.get("text", "")
+                metadata = {
+                    "battery": data.get("battery", "Inconnue"),
+                    "location": data.get("location", "Inconnue"),
+                    "focus": data.get("focus", "Inconnu")
+                }
+
                 if texte:
                     from jarvis.server import main_loop
-                    asyncio.run_coroutine_threadsafe(executer_commande_generique(texte, source="ios"), main_loop)
+                    # On utilise un Future pour attendre le résultat de la coroutine
+                    future = asyncio.run_coroutine_threadsafe(
+                        executer_commande_generique(texte, source="ios", metadata=metadata), 
+                        main_loop
+                    )
+
+                    # On attend le résultat (timeout 30s)
+                    reponse_texte = future.result(timeout=30)
+                else:
+                    reponse_texte = "Aucun texte reçu."
                 
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(b'{"status": "ok"}')
+                resp_payload = json.dumps({"status": "ok", "reply": reponse_texte})
+                self.wfile.write(resp_payload.encode('utf-8'))
             except Exception as e:
                 print(f"[WEBHOOK] Erreur commande : {e}")
                 self.send_response(400)
@@ -488,12 +528,16 @@ async def run_telegram_bot(main_loop):
         user_text = update.message.text
         if not user_text: return
 
-        # On exécute la commande via le cœur Jarvis
-        asyncio.run_coroutine_threadsafe(
+        # On exécute la commande via le cœur Jarvis et on attend la réponse
+        future = asyncio.run_coroutine_threadsafe(
             executer_commande_generique(user_text, source="telegram"),
             main_loop
         )
-        await update.message.reply_text("Commande reçue, Monsieur.")
+        try:
+            reponse_texte = future.result(timeout=30)
+            await update.message.reply_text(reponse_texte or "Action exécutée, Monsieur.")
+        except Exception as e:
+            await update.message.reply_text(f"Désolé, une erreur est survenue : {e}")
 
     try:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
