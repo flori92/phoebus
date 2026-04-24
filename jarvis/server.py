@@ -222,6 +222,11 @@ async def start_websocket_server():
         print(f"[WEB] Erreur WebSocket : {e}")
 
 
+# ── Globaux ────────────────────────────────────────────────────────────────
+
+main_loop = None
+
+
 async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
     """Exécute une commande texte et renvoie la réponse textuelle finale."""
     if not texte: return ""
@@ -296,8 +301,8 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 data = json.loads(post_data.decode('utf-8'))
                 message = data.get("message", "")
                 if message:
-                    from jarvis.server import main_loop
-                    asyncio.run_coroutine_threadsafe(parler(message), main_loop)
+                    if main_loop:
+                        asyncio.run_coroutine_threadsafe(parler(message), main_loop)
                 self.send_response(200)
                 self.end_headers()
             except:
@@ -306,15 +311,23 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
 
         elif self.path == '/webhook/command':
             if not token_valid:
+                print(f"[WEBHOOK] Accès refusé (Token invalide ou manquant) pour {self.client_address[0]}")
                 self.send_response(401)
                 self.end_headers()
                 return
 
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                if content_length == 0:
+                    print("[WEBHOOK] Corps de requête vide.")
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+
+                post_data = self.rfile.read(content_length)
                 data = json.loads(post_data.decode('utf-8'))
                 texte = data.get("text", "")
+                
                 metadata = {
                     "battery": data.get("battery", "Inconnue"),
                     "location": data.get("location", "Inconnue"),
@@ -322,23 +335,25 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 }
 
                 if texte:
-                    from jarvis.server import main_loop
-                    # On utilise un Future pour attendre le résultat de la coroutine
-                    future = asyncio.run_coroutine_threadsafe(
-                        executer_commande_generique(texte, source="ios", metadata=metadata), 
-                        main_loop
-                    )
-
-                    # On attend le résultat (timeout 30s)
-                    reponse_texte = future.result(timeout=30)
+                    # On utilise le global main_loop
+                    if main_loop:
+                        future = asyncio.run_coroutine_threadsafe(
+                            executer_commande_generique(texte, source="ios", metadata=metadata), 
+                            main_loop
+                        )
+                        reponse_texte = future.result(timeout=45) # Augmentation timeout pour Railway
+                    else:
+                        reponse_texte = "Erreur système : Boucle non initialisée."
                 else:
-                    reponse_texte = "Aucun texte reçu."
+                    reponse_texte = "Aucun texte reçu dans le JSON."
                 
+                resp_payload = json.dumps({"status": "ok", "reply": reponse_texte}, ensure_ascii=False)
                 self.send_response(200)
-                self.send_header('Content-type', 'application/json')
+                self.send_header('Content-type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(resp_payload.encode('utf-8'))))
                 self.end_headers()
-                resp_payload = json.dumps({"status": "ok", "reply": reponse_texte})
                 self.wfile.write(resp_payload.encode('utf-8'))
+                
             except Exception as e:
                 print(f"[WEBHOOK] Erreur commande : {e}")
                 self.send_response(400)
@@ -556,6 +571,7 @@ async def run_telegram_bot(main_loop):
 # ── Boucle Principale ──────────────────────────────────────────────────────
 
 async def main():
+    global main_loop
     print("="*60)
     print(" JARVIS CORE - DEMARRAGE (MODULARISÉ)".center(60))
     print("="*60)
