@@ -2,6 +2,8 @@
 .env
 credentials.json
 token.pickle
+token.json
+VOS_API.txt
 
 # Local memory / generated runtime data
 jarvis_memoire.json
@@ -11,6 +13,10 @@ jarvis_tts_*.mp3
 jarvis_vision_temp.png
 .spotify_cache
 logs/
+jarvis_tts_cache/
+jarvis_vector_db/
+backups/
+output/
 
 # AI Models
 models/
@@ -30,4 +36,3 @@ frontend/dist/
 Thumbs.db
 .idea/
 .vscode/
-jarvis_vector_db/
