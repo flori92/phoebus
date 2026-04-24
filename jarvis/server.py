@@ -211,15 +211,15 @@ async def start_websocket_server():
         print("[WEB] websockets non installe.")
         return
     try:
-        from jarvis.utils import find_available_port
-        port = find_available_port(DEFAULT_WS_PORT)
+        # On utilise le port fixe 8765 pour être synchro avec le frontend
+        port = DEFAULT_WS_PORT
         print(f"[WEB] Serveur WebSocket sur ws://0.0.0.0:{port}")
         if WS_AUTH_REQUIRED:
             print("[WEB] AUTHENTIFICATION REQUISE (Token actif).")
         async with websockets.serve(ws_handler, "0.0.0.0", port):
             await asyncio.Future()
     except Exception as e:
-        print(f"[WEB] Erreur WebSocket : {e}")
+        print(f"[WEB] Erreur WebSocket (port {DEFAULT_WS_PORT} probablement occupé) : {e}")
 
 
 # ── Globaux ────────────────────────────────────────────────────────────────
@@ -397,13 +397,13 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
 
 def run_mobile_server():
     try:
-        from jarvis.utils import find_available_port
-        port = find_available_port(DEFAULT_MOBILE_PORT)
+        # On force le port 8090
+        port = DEFAULT_MOBILE_PORT
         with socketserver.TCPServer(("0.0.0.0", port), MobileHandler) as httpd:
             print(f"[MOBILE] App satellite dispo sur http://0.0.0.0:{port}")
             httpd.serve_forever()
     except Exception as e:
-        print(f"[MOBILE] Serveur erreur : {e}")
+        print(f"[MOBILE] Serveur erreur (port {DEFAULT_MOBILE_PORT} occupé) : {e}")
 
 
 # ── Écoute Vocale (STT) ────────────────────────────────────────────────────

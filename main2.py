@@ -12,14 +12,16 @@ import subprocess
 # ── Auto-VENV Switch ────────────────────────────────────────────────────────
 def ensure_venv():
     """S'assure que le script tourne dans le venv, sinon se relance lui-même."""
-    is_venv = (hasattr(sys, 'real_prefix') or 
-               (target := os.path.join(os.getcwd(), ".venv", "bin", "python")) and 
-               sys.executable == target)
+    # Détection robuste du venv
+    in_venv = (sys.prefix != sys.base_prefix) or hasattr(sys, 'real_prefix')
     
     venv_py = os.path.join(os.getcwd(), ".venv", "bin", "python")
-    if not is_venv and os.path.exists(venv_py) and sys.executable != venv_py:
-        print(f"[SYSTEM] Relance du script dans l'environnement virtuel...")
-        os.execv(venv_py, [venv_py] + sys.argv)
+    
+    # Si on n'est pas dans le venv et qu'il existe, on relance
+    if not in_venv and os.path.exists(venv_py):
+        if sys.executable != venv_py:
+            print(f"[SYSTEM] Passage sur l'environnement virtuel (.venv)...")
+            os.execv(venv_py, [venv_py] + sys.argv)
 
 if __name__ == "__main__":
     ensure_venv()

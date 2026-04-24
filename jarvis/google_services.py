@@ -13,32 +13,42 @@ from jarvis.config import (
 import jarvis.state as state
 
 
+import threading
+
+_google_creds_lock = threading.Lock()
+
 def get_google_creds():
     if not InstalledAppFlow or not GoogleRequest:
         print("[GOOGLE] Dependances Google absentes - fonctions Google desactivees.")
         return None
-    creds = None
-    if os.path.exists("token.pickle"):
-        with open("token.pickle", "rb") as f:
-            creds = pickle.load(f)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(GoogleRequest())
-        else:
-            if not os.path.exists("credentials.json"):
-                print("[GOOGLE] Pas de credentials.json - fonctions Google desactivees.")
-                return None
-            flow  = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            # On force le mode 'offline' pour obtenir un Refresh Token longue durée.
-            # prompt='consent' force l'affichage de la page d'accord pour garantir le token.
-            creds = flow.run_local_server(
-                port=8085, 
-                access_type='offline', 
-                prompt='consent'
-            )
-        with open("token.pickle", "wb") as f:
-            pickle.dump(creds, f)
-    return creds
+    
+    with _google_creds_lock:
+        creds = None
+        if os.path.exists("token.pickle"):
+            with open("token.pickle", "rb") as f:
+                creds = pickle.load(f)
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(GoogleRequest())
+                except Exception as e:
+                    print(f"[GOOGLE] Erreur refresh token : {e}")
+                    creds = None
+            
+            if not creds or not creds.valid:
+                if not os.path.exists("credentials.json"):
+                    print("[GOOGLE] Pas de credentials.json - fonctions Google desactivees.")
+                    return None
+                flow  = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+                # On force le mode 'offline' pour obtenir un Refresh Token longue durée.
+                creds = flow.run_local_server(
+                    port=8085, 
+                    access_type='offline', 
+                    prompt='consent'
+                )
+            with open("token.pickle", "wb") as f:
+                pickle.dump(creds, f)
+        return creds
 
 
 def get_docs_service():
