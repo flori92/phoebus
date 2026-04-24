@@ -148,9 +148,13 @@ def construire_system_prompt(texte_utilisateur=""):
         "REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { \"action\": \"ha_lumiere\", ... } { \"action\": \"meteo\", ... }).\n"
         "REGLE ABSOLUE : Si la demande n est PAS une commande JSON, reponds TOUJOURS en texte naturel, sans JSON, "
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"
-        "REGLE DE CONVERSATION CONTINUE : on est probablement au milieu d'un échange. "
-        "Tiens compte des derniers tours, ne redemande pas ce qui a déjà été dit, et n'ouvre pas "
-        "chaque réponse par \"Bonjour\" ou \"Monsieur\" à répétition. Enchaîne naturellement.\n"
+        "REGLE DE SALUTATIONS ET CONTINUITÉ :\n"
+        "- Si l'historique est vide OU si Floriace te dit bonjour en premier, "
+        "salue-le normalement et chaleureusement ('Bonjour Floriace', 'Bonsoir Monsieur'…). "
+        "C'est important — ne zappe pas la salutation d'ouverture.\n"
+        "- Dans un échange clairement en cours (plusieurs tours récents), n'ouvre "
+        "pas chaque réponse par 'Bonjour' ou 'Monsieur' — enchaîne naturellement "
+        "en tenant compte des derniers tours.\n"
         "REGLE D'AMBIGUITE : si la demande est floue, incomplète, ou pourrait viser plusieurs "
         "cibles (ex. \"allume\" sans pièce, \"ouvre\" sans fichier), NE DEVINE PAS : pose une "
         "question courte et précise pour lever le doute. Tu peux proposer deux options si c'est utile.\n"
@@ -172,7 +176,14 @@ async def demander_grok(texte):
     if not grok_client:
         return None
     try:
-        messages = [{"role": "system", "content": "Tu es JARVIS, l'IA de Floriace. Tu utilises actuellement ton module Grok pour les infos en temps reel. Tu conserves ton ton naturel, chaleureux et conversationnel."}]
+        # Prompt système UNIFIÉ : Grok reçoit exactement la même personnalité,
+        # mémoire, profil et règles que Gemini — Jarvis reste cohérent quel
+        # que soit le cerveau qui répond.
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises ton module Grok pour cette réponse "
+            "(infos temps réel X). Ne le mentionne pas à Floriace."
+        )
+        messages = [{"role": "system", "content": system_prompt}]
         for h in state.historique[-16:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
@@ -189,7 +200,11 @@ async def demander_grok(texte):
 
 async def demander_ollama(texte):
     try:
-        messages = [{"role": "system", "content": "Tu es JARVIS, l'IA de Floriace. Tu utilises actuellement ton module local Ollama. Réponds en français, en phrases courtes, de manière chaleureuse et naturelle."}]
+        # Prompt système UNIFIÉ (même que Gemini).
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu tournes en local sur Ollama. Ne le mentionne pas."
+        )
+        messages = [{"role": "system", "content": system_prompt}]
         for h in state.historique[-12:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
@@ -222,7 +237,12 @@ async def demander_groq(texte):
     if not groq_client:
         return None
     try:
-        messages = [{"role": "system", "content": "Tu es JARVIS, l'IA de Floriace. Tu utilises actuellement Llama 3.3 de Groq. Conserve un ton naturel, chaleureux, et enchaîne la conversation sans te présenter à chaque tour."}]
+        # Prompt système UNIFIÉ (même que Gemini).
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises Llama 3.3 via Groq pour cette réponse. "
+            "Ne le mentionne pas à Floriace."
+        )
+        messages = [{"role": "system", "content": system_prompt}]
         for h in state.historique[-16:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
@@ -245,6 +265,17 @@ async def demander_ia(texte):
         noter_registre(reg)
     await state.send_web_state("thinking")
     try:
+        # ── FAST-PATH : dispatcher d'intention local ──────────────────────
+        # Latence ~50 ms au lieu d'un round-trip cloud de 1–2 s pour les
+        # commandes évidentes (allume X, éteins Y, heure, date, thermostat...).
+        from jarvis.intent import detect as detect_intent
+        intent = detect_intent(texte)
+        if intent is not None:
+            print(f"[INTENT] fast-path : {intent.name}")
+            state.ajouter_historique("user", texte)
+            state.ajouter_historique("model", intent.reply)
+            return intent.reply
+
         from jarvis.voice import reponse_locale
         if not client or not types:
             rep_loc = reponse_locale(texte)
@@ -278,27 +309,34 @@ async def demander_ia(texte):
             except Exception: pass
         
         try: return await _call_gemini()
-        except Exception: pass
+        except Exception as e:
+            print(f"[IA] Gemini KO : {e} — repli sur Groq/Grok/Ollama (même prompt complet).")
 
+        # Repli sur les LLM concurrents AVEC le prompt unifié — ils gardent la
+        # personnalité de Jarvis. SerpAPI en tout dernier recours (réponse
+        # générique) plutôt qu'avant Groq.
+        rep_groq = await demander_groq(texte)
+        if rep_groq: return rep_groq
+
+        if grok_client:
+            try:
+                rep_grok = await demander_grok(texte)
+                if rep_grok: return rep_grok
+            except Exception: pass
+
+        rep_ollama = await demander_ollama(texte)
+        if rep_ollama: return rep_ollama
+
+        # Ultime filet : recherche web si on a une vraie question factuelle.
         from jarvis.home import recherche_web_serpapi
         if len(texte.split()) > 2:
             res_serp = recherche_web_serpapi(texte)
             if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
                 return "Voici ce que j'ai trouvé sur le web : " + res_serp
 
-        rep_groq = await demander_groq(texte)
-        if rep_groq: return rep_groq
-        
-        if grok_client:
-            try: return await demander_grok(texte)
-            except Exception: pass
-
-        rep_ollama = await demander_ollama(texte)
-        if rep_ollama: return rep_ollama
-
         rep_loc = reponse_locale(texte)
         if rep_loc: return rep_loc
-        
+
         return "Desole Floriace, mes serveurs sont surchargés. Je reste disponible pour vos commandes domestiques locales."
     finally:
         state.is_thinking = False

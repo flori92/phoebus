@@ -361,6 +361,18 @@ async def main():
     from jarvis.automation import demarrer_moteur_automatisation
     demarrer_moteur_automatisation()
 
+    # Pré-chauffage du cache TTS : on synthétise les 30 phrases les plus
+    # fréquentes en arrière-plan pour qu'elles soient "instantanées" dès
+    # la première utilisation. N'attend pas la fin pour démarrer le reste.
+    async def _warmup_tts():
+        try:
+            from jarvis.response_cache import prewarm
+            from jarvis.tts_backends import synthesize_to_file, EDGE_VOICE
+            await prewarm(synthesize_to_file, EDGE_VOICE, "auto")
+        except Exception as e:
+            print(f"[CACHE-TTS] warmup a échoué : {e}")
+    asyncio.create_task(_warmup_tts())
+
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
     asyncio.create_task(proactive.loop(parler))
 

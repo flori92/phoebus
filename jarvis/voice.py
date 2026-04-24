@@ -12,8 +12,9 @@ import webbrowser
 from jarvis.config import edge_tts, pygame, pyaudio, sr, CLAP_THRESHOLD, pyautogui
 import jarvis.state as state
 from jarvis.home import resolve_ha_entity, PIECES_LUMIERES, ha_get_etat, ha_lumiere
-from jarvis.tts_backends import synthesize_to_file, TtsUnavailable
+from jarvis.tts_backends import synthesize_to_file, TtsUnavailable, EDGE_VOICE
 from jarvis.text_shaping import naturaliser
+from jarvis.response_cache import lookup as cache_lookup, register as cache_register
 
 # ── Résolution locale (Math, Fr, Conversions, Trad) ──────────────────────
 
@@ -109,16 +110,26 @@ async def parler(texte):
     await state.send_web_state("speaking")
     state.speak_volume = 0.0
     tmp = f"jarvis_tts_{int(time.time()*1000)}.mp3"
-    
+    tmp_is_cache = False  # ne pas supprimer le fichier si on joue du cache
+
     try:
-        try:
-            await synthesize_to_file(texte_tts, tmp)
-        except TtsUnavailable:
-            recipients = state.get_authenticated_clients()
-            if recipients:
-                msg = json.dumps({"action": "jarvis_response", "text": texte_tts})
-                await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
-            return
+        # ── Lookup cache : si on a déjà synthétisé cette phrase, on lit direct ──
+        cache_backend = "auto"  # la clé inclut la voix : suffit à dédupliquer
+        cached = cache_lookup(texte_tts, EDGE_VOICE, cache_backend)
+        if cached is not None:
+            tmp = str(cached)
+            tmp_is_cache = True
+        else:
+            try:
+                await synthesize_to_file(texte_tts, tmp)
+                # Post-synthèse : on archive pour la prochaine fois.
+                cache_register(texte_tts, EDGE_VOICE, cache_backend, tmp)
+            except TtsUnavailable:
+                recipients = state.get_authenticated_clients()
+                if recipients:
+                    msg = json.dumps({"action": "jarvis_response", "text": texte_tts})
+                    await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
+                return
         
         if state._skip_pc_audio:
             recipients = state.get_authenticated_clients()
@@ -160,10 +171,12 @@ async def parler(texte):
                 pygame.mixer.music.unload()
         except: pass
         await asyncio.sleep(0.1)
-        try:
-            import os
-            if os.path.exists(tmp): os.remove(tmp)
-        except: pass
+        # On ne supprime le fichier temporaire QUE s'il ne vient pas du cache.
+        if not tmp_is_cache:
+            try:
+                import os
+                if os.path.exists(tmp): os.remove(tmp)
+            except: pass
         await state.send_web_state("idle")
 
 
