@@ -7,7 +7,7 @@ import json
 import base64
 from pathlib import Path
 
-from jarvis.config import client, CHOSEN_MODEL, IS_WINDOWS, IS_MACOS, pyautogui, Image
+from jarvis.config import client, CHOSEN_MODEL, IS_WINDOWS, IS_MACOS, pyautogui, Image, types
 from jarvis.security import audit_log
 from jarvis.utils import normalize_text
 import jarvis.state as state
@@ -126,23 +126,24 @@ Le système exécutera la commande et te renverra le résultat. Tu devras alors 
 
 COMMANDES DISPONIBLES (réponds avec UN SEUL bloc JSON valide, rien d'autre):
 
-1. Exécuter une ligne de commande (Terminal/Shell, ex: créer fichiers, grep, curl, lancer apps):
+1. Exécuter un script Python complet (ULTRA RAPIDE, pour automatiser des tâches complexes d'un coup):
+{"action": "python_script", "code": "import os\\n..."}
+
+2. Exécuter une ligne de commande (Terminal/Shell):
 {"action": "shell", "cmd": "ta_commande_ici"}
 
-2. Observer l'écran (capture locale directe et silencieuse):
+3. Observer l'écran (capture locale directe et silencieuse):
 {"action": "voir_ecran"}
 
-3. Interagir avec la souris/clavier (clicks, frappe, raccourcis):
-{"action": "clavier_souris", "type_action": "click|typewrite|press|hotkey", "params": {"x": 500, "y": 500, "button": "left"} / {"text": "hello"} / {"key": "enter"} / {"keys": ["ctrl", "c"]}}
+4. Interagir avec la souris/clavier (clicks, frappe, raccourcis):
+{"action": "clavier_souris", "type_action": "click|typewrite|press|hotkey", "params": {...}}
 
-4. Déclarer la tâche terminée (réponse finale à l'utilisateur):
-{"action": "terminer", "message": "Ton résumé de l'action accomplie"}
+5. Déclarer la tâche terminée:
+{"action": "terminer", "message": "Résumé"}
 
 RÈGLES VITALES:
-- Tu as accès en lecture/écriture à tout le système.
-- Si on te demande de chercher, modifier, supprimer ou copier, utilise `shell` de préférence (bash/cmd) car c'est plus rapide et fiable.
-- N'utilise la vision + clic que pour les interfaces graphiques (navigateur web, apps fenêtrées où le terminal ne suffit pas).
-- Ne pose pas de question à l'utilisateur tant que la tâche n'est pas "terminer". Fais-le toi-même.
+- Privilégie TOUJOURS `python_script` ou `shell` pour la rapidité (exécution < 1s).
+- N'utilise la vision que si tu es bloqué sur une interface graphique pure.
 """
     
     historique_agent = [
@@ -152,12 +153,15 @@ RÈGLES VITALES:
     for etape in range(10):  # Limite de sécurité anti-boucle infinie
         try:
             print(f"[AGENT NATIF] Étape {etape+1}/10. L'agent réfléchit...")
-            response = client.models.generate_content(
-                model=CHOSEN_MODEL,
+            # On utilise FLASH spécifiquement pour l'agent car c'est ULTRA réactif
+            model_name = "gemini-2.0-flash" 
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model_name,
                 contents=historique_agent,
                 config=types.GenerateContentConfig(
                     system_instruction=agent_prompt,
-                    temperature=0.2, # Température basse pour garantir le respect du JSON
+                    temperature=0.1,
                 ),
             )
             
@@ -182,6 +186,16 @@ RÈGLES VITALES:
                 print(f"[AGENT NATIF] Fin avec succès: {msg}")
                 return msg
                 
+            elif action == "python_script":
+                code = data.get("code", "")
+                print(f"[AGENT NATIF] Exécute script Python...")
+                # On écrit le code dans un fichier temporaire et on l'exécute
+                with open("jarvis_tmp_script.py", "w") as f:
+                    f.write(code)
+                res = executer_commande_shell("python3 jarvis_tmp_script.py")
+                os.remove("jarvis_tmp_script.py")
+                historique_agent.append(types.Content(role="user", parts=[types.Part(text=f"Résultat script Python:\n{res}")]))
+
             elif action == "shell":
                 cmd = data.get("cmd", "")
                 print(f"[AGENT NATIF] Exécute: {cmd}")

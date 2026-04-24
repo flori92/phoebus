@@ -44,6 +44,10 @@ const micIcon      = micBtn.querySelector(".mic-icon");
 const stopIcon     = micBtn.querySelector(".stop-icon");
 const micLabelEl   = document.getElementById("mic-label");
 const stopJarvisBtn= document.getElementById("stop-jarvis-btn");
+const avatarCoreEl = document.getElementById("avatar-core");
+const avatarFallbackEl = document.getElementById("avatar-face-fallback");
+const avatarReflectiveVideoEl = document.getElementById("avatar-video-reflective");
+const avatarExpressiveVideoEl = document.getElementById("avatar-video-expressive");
 
 // ── ORB 3D ──────────────────────────────────────────────────────────────────
 let orb = null;
@@ -74,6 +78,795 @@ let ws           = null;
 let isListening  = false;
 let reconnectTimer = null;
 let authToken = getStoredToken();
+const faceRoot = document.documentElement;
+const MOOD_PRESETS = {
+  neutral: {
+    eyeOpen: 1,
+    eyeWide: 0,
+    mouthBase: 0.04,
+    mouthWidth: 1,
+    mouthSkew: 0,
+    mouthLift: 0,
+  },
+  warm: {
+    eyeOpen: 0.98,
+    eyeWide: 0.06,
+    mouthBase: 0.05,
+    mouthWidth: 1.04,
+    mouthSkew: 0.02,
+    mouthLift: 0.03,
+  },
+  joy: {
+    eyeOpen: 0.92,
+    eyeWide: 0.18,
+    mouthBase: 0.06,
+    mouthWidth: 1.1,
+    mouthSkew: 0.02,
+    mouthLift: 0.07,
+  },
+  confident: {
+    eyeOpen: 0.94,
+    eyeWide: 0.04,
+    mouthBase: 0.04,
+    mouthWidth: 1.03,
+    mouthSkew: 0.05,
+    mouthLift: 0.02,
+  },
+  alert: {
+    eyeOpen: 1.14,
+    eyeWide: 0.22,
+    mouthBase: 0.02,
+    mouthWidth: 0.95,
+    mouthSkew: 0,
+    mouthLift: -0.02,
+  },
+  serious: {
+    eyeOpen: 0.86,
+    eyeWide: -0.02,
+    mouthBase: 0.02,
+    mouthWidth: 0.92,
+    mouthSkew: -0.03,
+    mouthLift: -0.01,
+  },
+};
+const PHONEME_CLUSTERS = [
+  "eaux",
+  "eau",
+  "oin",
+  "ion",
+  "ain",
+  "ein",
+  "ien",
+  "ou",
+  "on",
+  "an",
+  "en",
+  "in",
+  "ai",
+  "ei",
+  "au",
+  "eu",
+  "oeu",
+  "oe",
+  "oi",
+  "ui",
+  "ch",
+  "gn",
+  "ph",
+];
+const AVATAR_FALLBACK_URLS = {
+  neutral: "avatar/neutral.png",
+  "speak-light": "avatar/speak-light.png",
+  "speak-oh": "avatar/speak-oh.png",
+  "speak-open": "avatar/speak-open.png",
+  thinking: "avatar/thinking.png",
+  blink: "avatar/blink.png",
+  smile: "avatar/smile.png",
+  alert: "avatar/alert.png",
+  serious: "avatar/serious.png",
+};
+const AVATAR_CLIP_URLS = {
+  reflective: "avatar/reflective.mp4",
+  expressive: "avatar/expressive.mp4",
+  none: "",
+};
+const AVATAR_POSTER_URLS = {
+  reflective: "avatar/neutral.png",
+  expressive: "avatar/smile.png",
+  none: "avatar/neutral.png",
+};
+const AVATAR_CLIP_KEYS = ["reflective", "expressive", "none"];
+
+function resolveAvatarPalette(state, mood) {
+  let palette = {
+    accentRgb: "88, 202, 255",
+    softRgb: "197, 241, 255",
+    hotRgb: "255, 219, 134",
+  };
+
+  switch (mood) {
+    case "warm":
+    case "joy":
+      palette = {
+        accentRgb: "96, 221, 255",
+        softRgb: "214, 247, 255",
+        hotRgb: "255, 210, 150",
+      };
+      break;
+    case "alert":
+      palette = {
+        accentRgb: "255, 126, 126",
+        softRgb: "255, 220, 220",
+        hotRgb: "174, 235, 255",
+      };
+      break;
+    case "serious":
+      palette = {
+        accentRgb: "119, 176, 255",
+        softRgb: "211, 231, 255",
+        hotRgb: "255, 203, 126",
+      };
+      break;
+    case "confident":
+      palette = {
+        accentRgb: "124, 214, 255",
+        softRgb: "220, 246, 255",
+        hotRgb: "255, 232, 176",
+      };
+      break;
+    default:
+      break;
+  }
+
+  switch (state) {
+    case "listening":
+      return {
+        accentRgb: "86, 231, 152",
+        softRgb: "205, 255, 228",
+        hotRgb: palette.hotRgb,
+      };
+    case "thinking":
+      return {
+        accentRgb: "255, 186, 95",
+        softRgb: "255, 233, 170",
+        hotRgb: "150, 224, 255",
+      };
+    case "speaking":
+      return {
+        accentRgb: "102, 214, 255",
+        softRgb: "220, 246, 255",
+        hotRgb: mood === "alert" ? "255, 150, 132" : palette.hotRgb,
+      };
+    default:
+      return palette;
+  }
+}
+
+function resolveAvatarClip(state, _mood) {
+  if (state === "thinking") {
+    return "reflective";
+  }
+  if (state === "speaking") {
+    return "expressive";
+  }
+  // En écoute ou au repos, on ne veut aucune vidéo (bouche fermée statique)
+  return "none";
+}
+
+function resolveFallbackFrame(state, mood) {
+  if (state === "thinking") {
+    return "thinking";
+  }
+
+  if (state === "speaking") {
+    if (mood === "warm" || mood === "joy") {
+      return "smile";
+    }
+    if (mood === "alert") {
+      return "alert";
+    }
+    if (mood === "serious") {
+      return "serious";
+    }
+    return "speak-open";
+  }
+
+  if (state === "listening") {
+    if (mood === "warm" || mood === "joy") {
+      return "smile";
+    }
+    if (mood === "serious") {
+      return "serious";
+    }
+    return "alert";
+  }
+
+  if (mood === "warm" || mood === "joy") {
+    return "smile";
+  }
+  if (mood === "alert") {
+    return "alert";
+  }
+  if (mood === "serious") {
+    return "serious";
+  }
+  return "neutral";
+}
+
+class FaceAvatar {
+  constructor(media) {
+    this.media = media;
+    this.state = "idle";
+    this.mood = "neutral";
+    this.activeClip = "reflective";
+    this.readyClips = new Set(["none"]);
+    this.failedClips = new Set();
+
+    this.configureVideo("reflective", media.reflectiveVideoEl);
+    this.configureVideo("expressive", media.expressiveVideoEl);
+    this.updateMedia();
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        this.ensurePlayback();
+      }
+    });
+    window.addEventListener("pointerdown", () => {
+      this.ensurePlayback();
+    }, { once: true, passive: true });
+  }
+
+  setState(state) {
+    this.state = state;
+    this.updateMedia();
+  }
+
+  setMood(mood) {
+    this.mood = mood;
+    this.updateMedia();
+  }
+
+  setVolume(_volume) {
+    this.ensurePlayback();
+  }
+
+  configureVideo(clip, videoEl) {
+    videoEl.muted = true;
+    videoEl.defaultMuted = true;
+    videoEl.autoplay = true;
+    videoEl.loop = true;
+    videoEl.playsInline = true;
+    videoEl.preload = "auto";
+    videoEl.tabIndex = -1;
+    videoEl.poster = AVATAR_POSTER_URLS[clip];
+    videoEl.setAttribute("playsinline", "");
+    videoEl.setAttribute("webkit-playsinline", "");
+    videoEl.setAttribute("muted", "");
+    videoEl.setAttribute("loop", "");
+    videoEl.setAttribute("autoplay", "");
+    if (!videoEl.getAttribute("src")) {
+      videoEl.src = AVATAR_CLIP_URLS[clip];
+    }
+
+    const markReady = () => {
+      this.readyClips.add(clip);
+      this.failedClips.delete(clip);
+      if (this.activeClip === clip) {
+        this.updateMedia();
+      }
+      this.ensurePlayback();
+    };
+
+    videoEl.addEventListener("loadeddata", markReady);
+    videoEl.addEventListener("canplay", markReady);
+    videoEl.addEventListener("playing", markReady);
+    videoEl.addEventListener("error", () => {
+      this.failedClips.add(clip);
+      this.readyClips.delete(clip);
+      if (this.activeClip === clip) {
+        this.updateMedia();
+      }
+    });
+
+    videoEl.load();
+  }
+
+  getVideoEl(clip) {
+    if (clip === "expressive") return this.media.expressiveVideoEl;
+    return this.media.reflectiveVideoEl; // Fallback pour none/reflective
+  }
+
+  ensurePlayback() {
+    AVATAR_CLIP_KEYS.forEach((clip) => {
+      if (clip === "none") return;
+      const playPromise = this.getVideoEl(clip).play();
+      if (playPromise) {
+        playPromise.catch(() => {});
+      }
+    });
+  }
+
+  updateMedia() {
+    const nextClip = resolveAvatarClip(this.state, this.mood);
+    const fallbackFrame = resolveFallbackFrame(this.state, this.mood);
+    const showFallback =
+      this.failedClips.has(nextClip) || !this.readyClips.has(nextClip);
+
+    this.activeClip = nextClip;
+    this.media.coreEl.dataset.jarvisClip = nextClip;
+    this.media.coreEl.dataset.videoFallback = showFallback ? "true" : "false";
+    document.body.dataset.jarvisClip = nextClip;
+
+    this.media.fallbackEl.src = AVATAR_FALLBACK_URLS[fallbackFrame];
+    this.media.fallbackEl.dataset.fallbackFrame = fallbackFrame;
+    this.media.reflectiveVideoEl.dataset.active = String(nextClip === "reflective");
+    this.media.expressiveVideoEl.dataset.active = String(nextClip === "expressive");
+
+    if (!showFallback && nextClip !== "none") {
+      this.ensurePlayback();
+    }
+  }
+}
+let currentMood = "neutral";
+let currentVoiceLevel = 0;
+let currentGaze = { x: 0, y: 0 };
+let currentViseme = { open: 0.01, width: 1, skew: 0, lift: 0 };
+let gazeTimer = null;
+let visemeTimer = null;
+let moodResetTimer = null;
+let pendingExpressionTimer = null;
+let timedLipsyncTimers = [];
+let pendingExpressionId = "";
+let pendingLipsyncById = new Map();
+let activeSpeechId = "";
+let lastExpressionText = "";
+let lastExpressionAt = 0;
+let lastExpressionId = "";
+const faceAvatar = new FaceAvatar({
+  coreEl: avatarCoreEl,
+  fallbackEl: avatarFallbackEl,
+  reflectiveVideoEl: avatarReflectiveVideoEl,
+  expressiveVideoEl: avatarExpressiveVideoEl,
+});
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function rand(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function cleanSpeechText(text) {
+  return String(text || "")
+    .replace(/\{[^}]*\}/gs, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeSpeech(text) {
+  return cleanSpeechText(text)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function inferMood(text) {
+  const normalized = normalizeSpeech(text);
+
+  if (/\b(alerte|attention|urgence|urgent|alarme|fuite|fumee|intrusion|erreur|impossible|probleme|danger)\b/.test(normalized)) {
+    return "alert";
+  }
+  if (/\b(parfait|excellent|super|felicitations|bravo|bonne nouvelle)\b/.test(normalized)) {
+    return "joy";
+  }
+  if (/\b(bien sur|pas de souci|pas d inquietude|ne t inquiete pas|je m en occupe|avec plaisir)\b/.test(normalized)) {
+    return "warm";
+  }
+  if (/\b(c est fait|termine|effectue|active|desactive|regle|configure|pret)\b/.test(normalized)) {
+    return "confident";
+  }
+  if (/\b(analyse|verification|resume|diagnostic|securite|architecture|hypothese|risque)\b/.test(normalized)) {
+    return "serious";
+  }
+  return "neutral";
+}
+
+function getRestViseme() {
+  return currentState === "speaking"
+    ? { open: 0.07, width: 1, skew: 0, lift: 0 }
+    : { open: 0.01, width: 1, skew: 0, lift: 0 };
+}
+
+function renderFace() {
+  const preset = MOOD_PRESETS[currentMood];
+  const palette = resolveAvatarPalette(currentState, currentMood);
+  const eyeOpen = clamp(
+    preset.eyeOpen +
+      (currentState === "listening" ? 0.06 : 0) +
+      (currentState === "thinking" ? -0.04 : 0),
+    0.72,
+    1.24
+  );
+  const eyeWide = clamp(
+    preset.eyeWide +
+      (currentState === "listening" ? 0.08 : 0) +
+      (currentState === "thinking" ? 0.03 : 0),
+    -0.05,
+    0.34
+  );
+  const mouthOpen = clamp(
+    preset.mouthBase +
+      currentViseme.open +
+      (currentState === "speaking" ? currentVoiceLevel * 0.14 : 0),
+    0,
+    0.58
+  );
+  const mouthWidth = clamp(preset.mouthWidth * currentViseme.width, 0.84, 1.22);
+  const mouthSkew = clamp(preset.mouthSkew + currentViseme.skew, -0.18, 0.18);
+  const mouthLift = clamp(preset.mouthLift + currentViseme.lift, -0.08, 0.18);
+  const stateEnergy =
+    currentState === "speaking"
+      ? 0.9
+      : currentState === "thinking"
+        ? 0.72
+        : currentState === "listening"
+          ? 0.62
+          : 0.38;
+  const moodEnergy =
+    currentMood === "joy"
+      ? 0.2
+      : currentMood === "warm"
+        ? 0.14
+        : currentMood === "alert"
+          ? 0.24
+          : currentMood === "serious"
+            ? 0.1
+            : currentMood === "confident"
+              ? 0.08
+              : 0;
+  const voiceEnergy = currentState === "speaking" ? currentVoiceLevel : 0;
+  const avatarEnergy = clamp(stateEnergy + moodEnergy + voiceEnergy * 0.42, 0.24, 1.2);
+  const avatarPresence = clamp(0.92 + avatarEnergy * 0.12, 0.92, 1.04);
+  const shellShiftX = currentGaze.x * (currentState === "thinking" ? 1.45 : 1.05);
+  const shellShiftY = currentGaze.y * (currentState === "thinking" ? 1.2 : 0.82);
+  const shellScale = clamp(1 + avatarEnergy * 0.04 + voiceEnergy * 0.05, 1.01, 1.09);
+  const shellTilt = clamp(
+    currentGaze.x * (currentState === "thinking" ? 0.72 : 0.48),
+    -4.2,
+    4.2
+  );
+  const saturation = clamp(
+    1.08 + avatarEnergy * 0.24 + (currentMood === "joy" ? 0.05 : 0),
+    1.08,
+    1.44
+  );
+  const contrast = clamp(1.08 + avatarEnergy * 0.16, 1.08, 1.3);
+  const brightness = clamp(1.02 + avatarEnergy * 0.16 + voiceEnergy * 0.06, 1.02, 1.28);
+  const haloOpacity = clamp(0.56 + avatarEnergy * 0.26, 0.56, 0.92);
+  const scanOpacity = clamp(0.34 + avatarEnergy * 0.32, 0.34, 0.84);
+  const neuralOpacity = clamp(0.28 + avatarEnergy * 0.44, 0.28, 0.92);
+  const ringOpacity = clamp(0.16 + avatarEnergy * 0.34, 0.16, 0.78);
+  const opacity = clamp(0.86 + avatarPresence * 0.16, 0.9, 1);
+  const neuralSpeed =
+    currentState === "speaking"
+      ? 3.8
+      : currentState === "thinking"
+        ? 4.6
+        : currentState === "listening"
+          ? 5.2
+          : 6.8;
+
+  faceRoot.style.setProperty("--jarvis-gaze-x", `${currentGaze.x.toFixed(2)}px`);
+  faceRoot.style.setProperty("--jarvis-gaze-y", `${currentGaze.y.toFixed(2)}px`);
+  faceRoot.style.setProperty("--jarvis-eye-open", eyeOpen.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-eye-wide", eyeWide.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-open", mouthOpen.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-width", mouthWidth.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-skew", mouthSkew.toFixed(3));
+  faceRoot.style.setProperty("--jarvis-mouth-lift", mouthLift.toFixed(3));
+  faceRoot.style.setProperty("--avatar-energy", avatarEnergy.toFixed(3));
+  faceRoot.style.setProperty("--avatar-presence", avatarPresence.toFixed(3));
+  faceRoot.style.setProperty("--avatar-shift-x", `${shellShiftX.toFixed(2)}px`);
+  faceRoot.style.setProperty("--avatar-shift-y", `${shellShiftY.toFixed(2)}px`);
+  faceRoot.style.setProperty("--avatar-scale", shellScale.toFixed(3));
+  faceRoot.style.setProperty("--avatar-tilt", `${shellTilt.toFixed(2)}deg`);
+  faceRoot.style.setProperty("--avatar-opacity", opacity.toFixed(3));
+  faceRoot.style.setProperty("--avatar-saturation", saturation.toFixed(3));
+  faceRoot.style.setProperty("--avatar-contrast", contrast.toFixed(3));
+  faceRoot.style.setProperty("--avatar-brightness", brightness.toFixed(3));
+  faceRoot.style.setProperty("--avatar-halo-opacity", haloOpacity.toFixed(3));
+  faceRoot.style.setProperty("--avatar-scan-opacity", scanOpacity.toFixed(3));
+  faceRoot.style.setProperty("--avatar-neural-opacity", neuralOpacity.toFixed(3));
+  faceRoot.style.setProperty("--avatar-ring-opacity", ringOpacity.toFixed(3));
+  faceRoot.style.setProperty("--avatar-neural-speed", `${neuralSpeed.toFixed(2)}s`);
+  faceRoot.style.setProperty("--avatar-accent-rgb", palette.accentRgb);
+  faceRoot.style.setProperty("--avatar-soft-rgb", palette.softRgb);
+  faceRoot.style.setProperty("--avatar-hot-rgb", palette.hotRgb);
+  document.body.dataset.jarvisMood = currentMood;
+}
+
+function scheduleMoodReset(ms = 3600) {
+  if (moodResetTimer) {
+    clearTimeout(moodResetTimer);
+  }
+  moodResetTimer = setTimeout(() => {
+    currentMood = currentState === "thinking" ? "serious" : "neutral";
+    faceAvatar.setMood(currentMood);
+    renderFace();
+  }, ms);
+}
+
+function cancelPendingExpressionFallback() {
+  if (pendingExpressionTimer) {
+    clearTimeout(pendingExpressionTimer);
+    pendingExpressionTimer = null;
+  }
+  pendingExpressionId = "";
+}
+
+function cancelTimedLipsync() {
+  for (const timer of timedLipsyncTimers) {
+    clearTimeout(timer);
+  }
+  timedLipsyncTimers = [];
+}
+
+function setCurrentViseme(state) {
+  currentViseme = state;
+  renderFace();
+}
+
+function stopVisemeSequence() {
+  cancelPendingExpressionFallback();
+  cancelTimedLipsync();
+  if (visemeTimer) {
+    clearTimeout(visemeTimer);
+    visemeTimer = null;
+  }
+  setCurrentViseme(getRestViseme());
+}
+
+function tokenizeSpeech(text) {
+  const normalized = normalizeSpeech(text).replace(/[^a-z\s]/g, " ");
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const tokens = [];
+
+  for (const word of words) {
+    let index = 0;
+    while (index < word.length) {
+      const cluster = PHONEME_CLUSTERS.find((item) => word.startsWith(item, index));
+      if (cluster) {
+        tokens.push(cluster);
+        index += cluster.length;
+      } else {
+        tokens.push(word[index]);
+        index += 1;
+      }
+    }
+    tokens.push(" ");
+  }
+
+  return tokens;
+}
+
+function visemeForToken(token) {
+  if (token === " ") {
+    return { ...getRestViseme(), hold: 60 };
+  }
+  if (/^[mbp]$/.test(token)) {
+    return { open: 0, width: 0.98, skew: 0, lift: 0.02, hold: 70 };
+  }
+  if (/^(f|v|ph)$/.test(token)) {
+    return { open: 0.12, width: 1.01, skew: 0.02, lift: 0.01, hold: 78 };
+  }
+  if (/^(ou|o|on|au|eu|u)$/.test(token)) {
+    return { open: 0.24, width: 0.88, skew: 0, lift: 0, hold: 105 };
+  }
+  if (/^(a|an|en|eau|ain|ein)$/.test(token)) {
+    return { open: 0.36, width: 1.14, skew: 0, lift: 0.02, hold: 96 };
+  }
+  if (/^(e|i|y|ai|ei|ui|ien|oi)$/.test(token)) {
+    return { open: 0.2, width: 1.12, skew: 0.02, lift: 0.05, hold: 86 };
+  }
+  return { open: 0.16, width: 1.02, skew: 0, lift: 0, hold: 72 };
+}
+
+function buildVisemeFrames(text) {
+  return tokenizeSpeech(text)
+    .slice(0, 72)
+    .map((token) => visemeForToken(token));
+}
+
+function startVisemeSequence(text) {
+  const frames = buildVisemeFrames(text);
+  stopVisemeSequence();
+
+  if (!frames.length) {
+    return;
+  }
+
+  let index = 0;
+  const step = () => {
+    const frame = frames[index];
+    setCurrentViseme({
+      open: frame.open,
+      width: frame.width,
+      skew: frame.skew,
+      lift: frame.lift,
+    });
+    index += 1;
+
+    if (index < frames.length) {
+      visemeTimer = setTimeout(step, frame.hold);
+      return;
+    }
+
+    visemeTimer = setTimeout(() => {
+      visemeTimer = null;
+      setCurrentViseme(getRestViseme());
+    }, 90);
+  };
+
+  step();
+}
+
+function scheduleExpressionFallback(text, utteranceId) {
+  cancelPendingExpressionFallback();
+  pendingExpressionId = utteranceId || "";
+  pendingExpressionTimer = setTimeout(() => {
+    pendingExpressionTimer = null;
+    pendingExpressionId = "";
+    startVisemeSequence(text);
+  }, 180);
+}
+
+function startTimedLipsync(frames, utteranceId) {
+  if (!Array.isArray(frames) || !frames.length) {
+    return;
+  }
+
+  if (utteranceId && pendingExpressionId && pendingExpressionId !== utteranceId) {
+    return;
+  }
+
+  stopVisemeSequence();
+  const sortedFrames = [...frames].sort((a, b) => a.time_ms - b.time_ms);
+
+  for (const frame of sortedFrames) {
+    const timer = setTimeout(() => {
+      setCurrentViseme({
+        open: frame.open,
+        width: frame.width,
+        skew: frame.skew,
+        lift: frame.lift,
+      });
+    }, Math.max(0, frame.time_ms));
+    timedLipsyncTimers.push(timer);
+  }
+
+  const lastFrame = sortedFrames[sortedFrames.length - 1];
+  const resetTimer = setTimeout(() => {
+    timedLipsyncTimers = timedLipsyncTimers.filter((timer) => timer !== resetTimer);
+    setCurrentViseme(getRestViseme());
+  }, Math.max(0, lastFrame.time_ms + lastFrame.duration_ms + 40));
+  timedLipsyncTimers.push(resetTimer);
+}
+
+function rememberPendingLipsync(frames, utteranceId) {
+  if (!utteranceId || !Array.isArray(frames) || !frames.length) {
+    return;
+  }
+  pendingLipsyncById.set(utteranceId, frames);
+  if (pendingLipsyncById.size > 8) {
+    const oldestKey = pendingLipsyncById.keys().next().value;
+    pendingLipsyncById.delete(oldestKey);
+  }
+}
+
+function consumePendingLipsync(utteranceId) {
+  if (!utteranceId || !pendingLipsyncById.has(utteranceId)) {
+    return null;
+  }
+  const frames = pendingLipsyncById.get(utteranceId);
+  pendingLipsyncById.delete(utteranceId);
+  return frames || null;
+}
+
+function startSpeechAnimation(speechMeta = {}) {
+  const utteranceId = speechMeta.id || "";
+  const text = cleanSpeechText(speechMeta.text || "");
+
+  activeSpeechId = utteranceId;
+  if (text) {
+    consumeExpressionText(text, { id: utteranceId });
+  }
+
+  const frames = consumePendingLipsync(utteranceId);
+  if (frames && frames.length) {
+    startTimedLipsync(frames, utteranceId);
+    return;
+  }
+  if (text) {
+    startVisemeSequence(text);
+  }
+}
+
+function consumeExpressionText(text, options = {}) {
+  const cleaned = cleanSpeechText(text);
+  if (!cleaned) {
+    return;
+  }
+
+  const now = Date.now();
+  if (options.id && options.id === lastExpressionId) {
+    return;
+  }
+  if (!options.id && cleaned === lastExpressionText && now - lastExpressionAt < 1500) {
+    return;
+  }
+  lastExpressionText = cleaned;
+  lastExpressionAt = now;
+  lastExpressionId = options.id || "";
+
+  currentMood = inferMood(cleaned);
+  faceAvatar.setMood(currentMood);
+  renderFace();
+  if (options.animateMouth) {
+    startVisemeSequence(cleaned);
+  } else if (options.scheduleFallback) {
+    scheduleExpressionFallback(cleaned, options.id);
+  }
+  scheduleMoodReset(clamp(cleaned.length * 38, 2800, 6400));
+}
+
+function scheduleGazeLoop() {
+  if (gazeTimer) {
+    clearTimeout(gazeTimer);
+    gazeTimer = null;
+  }
+
+  const tick = () => {
+    let maxX = 3.4;
+    let maxY = 1.8;
+    let minDelay = 1500;
+    let maxDelay = 2800;
+
+    if (currentState === "thinking") {
+      maxX = 6;
+      maxY = 3.2;
+      minDelay = 800;
+      maxDelay = 1500;
+    } else if (currentState === "listening") {
+      maxX = 4.4;
+      maxY = 2.3;
+      minDelay = 1000;
+      maxDelay = 1800;
+    } else if (currentState === "speaking") {
+      maxX = 3.6;
+      maxY = 2;
+      minDelay = 700;
+      maxDelay = 1300;
+    }
+
+    currentGaze = {
+      x: rand(-maxX, maxX),
+      y: rand(-maxY, maxY),
+    };
+    renderFace();
+    gazeTimer = setTimeout(tick, rand(minDelay, maxDelay));
+  };
+
+  gazeTimer = setTimeout(tick, 450);
+}
+
+function setVoiceLevel(level) {
+  const baseline = currentState === "speaking" ? 0.08 : 0;
+  currentVoiceLevel = Math.max(baseline, Math.min(1, level || 0));
+  faceAvatar.setVolume(Math.max(0, Math.min(1, level || 0)));
+  faceRoot.style.setProperty("--jarvis-voice", currentVoiceLevel.toFixed(3));
+  renderFace();
+}
 
 // ── Gestion des états ───────────────────────────────────────────────────────
 const STATE_LABELS = {
@@ -89,8 +882,30 @@ function applyState(state) {
     "state-idle", "state-listening", "state-thinking", "state-speaking"
   );
   document.body.classList.add(`state-${state}`);
+  document.body.dataset.jarvisState = state;
   currentState = state;
   statusEl.textContent = STATE_LABELS[state] || state;
+  if (state === "listening") {
+    currentMood = "alert";
+  } else if (state === "thinking") {
+    currentMood = "serious";
+  } else if (state === "idle" && currentMood !== "warm" && currentMood !== "joy") {
+    currentMood = "neutral";
+  }
+
+  faceAvatar.setMood(currentMood);
+  faceAvatar.setState(state);
+
+  if (state !== "speaking") {
+    activeSpeechId = "";
+    stopVisemeSequence();
+  } else {
+    currentViseme = getRestViseme();
+    renderFace();
+  }
+
+  setVoiceLevel(0);
+  scheduleGazeLoop();
 
   // Affichage du bouton Stop global seulement si ca parle
   if (state === "speaking") {
@@ -116,6 +931,7 @@ function applyState(state) {
   }
 }
 
+renderFace();
 applyState("idle");
 
 let currentAudio = null;
@@ -143,6 +959,67 @@ function setConnected(ok) {
 setConnected(false);
 
 // ── WebSocket ───────────────────────────────────────────────────────────────
+// ── Streaming Audio Player ────────────────────────────────────────────────
+class StreamingAudioPlayer {
+  constructor() {
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    this.nextStartTime = 0;
+    this.activeId = null;
+    this.sources = new Set();
+  }
+
+  async playChunk(base64Data, utteranceId) {
+    if (this.activeId !== utteranceId) {
+      this.stop(); // On arrête le flux précédent
+      this.activeId = utteranceId;
+      this.nextStartTime = this.audioCtx.currentTime + 0.05;
+      applyState("speaking");
+    }
+
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    try {
+      const audioBuffer = await this.audioCtx.decodeAudioData(bytes.buffer);
+      const source = this.audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(this.audioCtx.destination);
+
+      const startTime = Math.max(this.audioCtx.currentTime, this.nextStartTime);
+      source.start(startTime);
+      this.nextStartTime = startTime + audioBuffer.duration;
+
+      this.sources.add(source);
+      source.onended = () => {
+        this.sources.delete(source);
+        if (this.audioCtx.currentTime >= this.nextStartTime - 0.1 && this.sources.size === 0) {
+          applyState("idle");
+          setVoiceLevel(0);
+        }
+      };
+
+      // Animation bouche simplifiée
+      const vol = 0.4 + 0.3 * Math.sin(Date.now() / 50);
+      setVoiceLevel(vol);
+
+    } catch (e) {
+      console.error("[STREAM] Erreur décodage chunk :", e);
+    }
+  }
+
+  stop() {
+    this.sources.forEach(s => {
+      try { s.stop(); } catch(e) {}
+    });
+    this.sources.clear();
+    this.activeId = null;
+    this.nextStartTime = 0;
+  }
+}
+
+const streamingPlayer = new StreamingAudioPlayer();
+
 function connectWS() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
@@ -196,6 +1073,22 @@ function connectWS() {
         return;
       }
 
+      if (data.action === "jarvis_expression" && data.text) {
+        consumeExpressionText(data.text, { id: data.id });
+        return;
+      }
+
+      if (data.action === "jarvis_lipsync" && Array.isArray(data.frames)) {
+        rememberPendingLipsync(data.frames, data.id);
+        if (data.id && data.id === activeSpeechId && currentState === "speaking") {
+          const activeFrames = consumePendingLipsync(data.id);
+          if (activeFrames && activeFrames.length) {
+            startTimedLipsync(activeFrames, data.id);
+          }
+        }
+        return;
+      }
+
       // État de l'orbe (envoyé par le backend lors de ses propres actions)
       if (data.action === "set_state" && data.state) {
         // Ignorer les états de microphone local du PC ("listening", "active") car le mobile gère son propre micro
@@ -210,15 +1103,20 @@ function connectWS() {
         }
       }
 
+      if (data.action === "jarvis_audio_chunk" && data.audio_b64) {
+        streamingPlayer.playChunk(data.audio_b64, data.id);
+        return;
+      }
+
       // Réponse textuelle de JARVIS destinée au mobile avec audio distant (même voix que web)
       if (data.action === "jarvis_audio" && data.audio_b64) {
         afficherReponseJarvis(data.text);
-        jouerAudioBase64(data.audio_b64);
+        jouerAudioBase64(data.audio_b64, { id: data.id, text: data.text });
       }
       // Fallback ancienne méthode (sans audio)
       else if (data.action === "jarvis_response" && data.text) {
         afficherReponseJarvis(data.text);
-        parleSynthese(data.text);
+        parleSynthese(data.text, { id: data.id, text: data.text });
       }
     } catch (e) {
       console.error("[WS] Erreur parsing message :", e);
@@ -261,11 +1159,7 @@ function afficherTexteUtilisateur(text) {
 }
 
 function afficherReponseJarvis(text) {
-  // Nettoyer les éventuels blocs JSON de la réponse pour l'affichage
-  const textePropre = text
-    .replace(/\{[^}]*\}/gs, "")        // supprimer blocs JSON
-    .replace(/\s{2,}/g, " ")           // normaliser espaces
-    .trim();
+  const textePropre = cleanSpeechText(text);
   jarvisTextEl.textContent = textePropre || text;
 }
 
@@ -283,11 +1177,12 @@ function jouerAudioBase64(base64) {
   // Fake volume for ORB
   if (fakeVolumeInterval) clearInterval(fakeVolumeInterval);
   fakeVolumeInterval = setInterval(() => {
+    const t = Date.now() / 50;
+    const vol = Math.max(0.1, Math.min(1.0, 0.4 + 0.3 * Math.sin(t) + 0.2 * Math.sin(t * 0.5) + (Math.random() * 0.2 - 0.1)));
     if (orb) {
-      const t = Date.now() / 50;
-      const vol = 0.4 + 0.3 * Math.sin(t) + 0.2 * Math.sin(t * 0.5);
-      orb.setVolume(Math.max(0.1, Math.min(1.0, vol + (Math.random() * 0.2 - 0.1))));
+      orb.setVolume(vol);
     }
+    setVoiceLevel(vol);
   }, 50);
 
   currentAudio.addEventListener("ended", () => {
@@ -297,6 +1192,7 @@ function jouerAudioBase64(base64) {
       fakeVolumeInterval = null;
     }
     if (orb) orb.setVolume(0);
+    setVoiceLevel(0);
     currentAudio = null;
   });
   
@@ -309,6 +1205,7 @@ function jouerAudioBase64(base64) {
       fakeVolumeInterval = null;
     }
     if (orb) orb.setVolume(0);
+    setVoiceLevel(0);
   });
 }
 
@@ -333,15 +1230,13 @@ function parleSynthese(texte) {
   // Annuler toute synthèse en cours
   window.speechSynthesis.cancel();
 
-  // Nettoyer le texte (enlever JSON pour ne lire que la partie conversationnelle)
-  const textePropre = texte
-    .replace(/\{[^}]*\}/gs, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  const textePropre = cleanSpeechText(texte);
 
   if (!textePropre) return;
 
   applyState("speaking");
+  consumeExpressionText(textePropre);
+  setVoiceLevel(0.12);
 
   const utterance = new SpeechSynthesisUtterance(textePropre);
   utterance.lang = SPEECH_LANG;
@@ -355,11 +1250,13 @@ function parleSynthese(texte) {
 
   utterance.addEventListener("end", () => {
     applyState("idle");
+    setVoiceLevel(0);
   });
 
   utterance.addEventListener("error", (e) => {
     console.warn("[TTS] Erreur synthèse :", e.error);
     applyState("idle");
+    setVoiceLevel(0);
   });
 
   window.speechSynthesis.speak(utterance);
@@ -380,6 +1277,10 @@ if (SpeechRecognition) {
 
   recognition.addEventListener("start", () => {
     isListening = true;
+    // Interruption : si on commence à parler, Jarvis se tait
+    streamingPlayer.stop();
+    cancelTimedLipsync();
+    
     applyState("listening");
     userTextEl.textContent  = "";
     jarvisTextEl.textContent = "";

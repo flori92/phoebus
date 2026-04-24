@@ -24,7 +24,7 @@ from jarvis.desktop import (
 )
 from jarvis.google_services import (
     creer_google_doc, modifier_google_doc, lire_emails, lister_evenements_calendar,
-    creer_google_sheet
+    creer_google_sheet, envoyer_email
 )
 from jarvis.vision import jarvis_vision_cliquer, jarvis_vision_ecrire
 from jarvis.agent import orchestrer_agent_autonome
@@ -65,11 +65,11 @@ async def executer_une_action(d):
     # ── AGENT NATIF ── (tourne en tâche de fond : la conversation continue) ──
     if action == "agent_natif":
         instruction = d.get("instruction", "")
-        await parler(f"Je m'en occupe en parallèle : {instruction}")
+        await parler(f"J'initie l'agent autonome pour : {instruction}")
 
         async def _run_agent():
             res = await orchestrer_agent_autonome(instruction)
-            await parler(f"Agent natif terminé. {res}")
+            await parler(f"Tâche autonome terminée : {res}")
 
         task = asyncio.create_task(_run_agent())
         state.register_background_task(task, label=f"agent_natif: {instruction[:60]}")
@@ -270,6 +270,36 @@ async def executer_une_action(d):
             await parler(recherche_web_serpapi(q))
         return
 
+    elif action == "youtube":
+        q = d.get("query", "")
+        if q:
+            from jarvis.home import chercher_youtube
+            from jarvis.utils import open_uri
+            url = chercher_youtube(q)
+            if url:
+                await parler(f"Je lance la vidéo sur YouTube pour : {q}.")
+                open_uri(url)
+            else:
+                await parler("Je n'ai pas trouvé de vidéo correspondante sur YouTube.")
+        return
+
+    elif action == "volume_control":
+        val = d.get("value", "up").lower()
+        from jarvis.config import pyautogui
+        if not pyautogui:
+            await parler("Le contrôle du volume n'est pas disponible sur cette machine.")
+            return
+        if val == "up":
+            for _ in range(5): pyautogui.press('volumeup')
+            await parler("Volume augmenté.")
+        elif val == "down":
+            for _ in range(5): pyautogui.press('volumedown')
+            await parler("Volume baissé.")
+        elif val == "mute":
+            pyautogui.press('volumemute')
+            await parler("Son coupé.")
+        return
+
     # ── SPORT ────────────────────────────────────────────────────────────────
     elif action == "sport_resultats":
         eq = d.get("equipe")
@@ -332,6 +362,16 @@ async def executer_une_action(d):
     elif action == "read_emails":
         await parler(lire_emails())
         return
+
+    elif action == "write_email":
+        dest = d.get("recipient")
+        subj = d.get("subject", "Message de Jarvis")
+        body = d.get("body", "")
+        if dest and body:
+            await parler(envoyer_email(dest, subj, body))
+        else:
+            await parler("Il me manque le destinataire ou le corps du message pour envoyer l'email.")
+        return
         
     elif action == "read_calendar":
         await parler(lister_evenements_calendar())
@@ -367,6 +407,10 @@ async def executer_une_action(d):
 
 
 async def traiter_reponse_ia(reponse):
+    if reponse is None:
+        print("[JARVIS] Réponse IA vide (None).")
+        return False
+
     try:
         if state.PENDING_CONFIRMATION:
             from jarvis.security import is_confirmation_text, is_cancellation_text

@@ -286,6 +286,8 @@ def ha_appeler_service(domaine, service, entity_id, donnees=None):
 
 
 def ha_get_etat(entity_id, attribut=None):
+    if not HA_URL or "url-home-assitant" in HA_URL.lower() or "url-home-assistant" in HA_URL.lower():
+        return "inconnu"
     try:
         r    = requests.get(f"{HA_URL}/api/states/{entity_id}", headers=HA_HEADERS, timeout=5)
         data = r.json()

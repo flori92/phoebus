@@ -97,8 +97,7 @@ if OpenAI and GROQ_API_KEY and GROQ_API_KEY != "VOTRE_CLE_ICI":
     groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
 # ── Modèles ─────────────────────────────────────────────────────────────────
-MODELS_LIST  = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro",
-                "gemini-2.0-flash-exp", "gemini-1.5-flash"]
+MODELS_LIST  = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
 CHOSEN_MODEL = MODELS_LIST[0]
 OLLAMA_URL    = "http://127.0.0.1:11434"
 OLLAMA_MODELS = ["mistral:instruct", "mistral", "llama3:8b", "llama3", "gemma4"]

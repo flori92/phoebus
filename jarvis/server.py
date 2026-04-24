@@ -64,7 +64,8 @@ async def ws_handler(websocket):
         async for message in websocket:
             try:
                 data = json.loads(message)
-                action = data.get("action")
+                # On accepte 'action' ou 'type' pour la compatibilité
+                action = data.get("action") or data.get("type")
                 
                 # --- Authentification ---
                 if action == "auth":
@@ -103,10 +104,10 @@ async def ws_handler(websocket):
                     txt = data.get("text", "")
                     if txt: await parler(txt)
                     
-                elif action == "stop_parler":
+                elif action == "stop_parler" or action == "stop_audio":
                     state.STOP_PARLER = True
                     
-                elif action == "demander_ia":
+                elif action == "demander_ia" or action == "mobile_command":
                     question = data.get("text", "")
                     if question:
                         state.extend_conversation()
@@ -262,22 +263,22 @@ def listen_and_process(main_loop):
             r.adjust_for_ambient_noise(source, duration=1)
             print("[MIC] Prêt à écouter localement...")
             while True:
-                if state.is_speaking or state.is_thinking:
-                    time.sleep(0.5)
-                    continue
+                # Suppression du bloc 'if state.is_speaking or state.is_thinking: continue'
+                # pour permettre l'interruption (Barge-in).
                 try:
                     state.is_listening = True
                     asyncio.run_coroutine_threadsafe(state.send_web_state("listening"), main_loop)
-                    audio = r.listen(source, timeout=5, phrase_time_limit=10)
-                    
-                    if state.is_speaking or state.is_thinking:
-                        state.is_listening = False
-                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
-                        continue
+                    # On écoute. Le Recognizer de SpeechRecognition gère l'énergie de manière dynamique par défaut.
+                    audio = r.listen(source, timeout=10, phrase_time_limit=10)
+
+                    # Si on est en train de parler et qu'une parole est détectée,
+                    # on signale au moteur TTS de s'arrêter.
+                    if state.is_speaking:
+                        print("[MIC] Parole détectée pendant que Jarvis parle. Interruption...")
+                        state.STOP_PARLER = True
 
                     state.is_listening = False
                     asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
-                    
                     try:
                         texte = stt_recognize(audio)
                     except sr.UnknownValueError:
@@ -300,17 +301,25 @@ def listen_and_process(main_loop):
 
                     state.mark_user_activity()
                     texte_l = texte.lower()
-                    wake = "jarvis" in texte_l
+                    # Liste élargie pour pallier les erreurs de transcription (phonétique proche)
+                    WAKE_WORDS = ["jarvis", "jarv", " jar", "service", "j'arrive", "charvis", "darvis"]
+                    wake = any(w in texte_l for w in WAKE_WORDS)
                     en_conversation = state.is_in_conversation()
 
-                    # On traite si : wake-word entendu, OU on est dans la fenêtre
-                    # de conversation naturelle ouverte par un tour précédent.
                     if not (wake or en_conversation):
                         # Trop de bruit ambiant ? On réinitialise l'état et on continue.
                         state.is_listening = False
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
+                    # On nettoie le texte pour l'IA (enlever le mot d'appel s'il est au début)
+                    cleaned_texte = texte
+                    if wake and not en_conversation:
+                        for w in WAKE_WORDS:
+                            if texte_l.startswith(w):
+                                cleaned_texte = texte[len(w):].strip(", ").strip()
+                                break
+                    
                     # "Mode iron man active" : raccourci direct.
                     if "mode iron man" in texte_l and "active" in texte_l:
                         state.MODE_IRON_MAN = True
@@ -344,12 +353,20 @@ def listen_and_process(main_loop):
                         elif not spoken["v"] and rep:
                             if not await traiter_reponse_ia(rep):
                                 await parler(rep)
+                        rep = await demander_ia(q)
+                        print(f"[JARVIS] Réponse IA : {rep}")
+                        if not await traiter_reponse_ia(rep):
+                            await parler(rep)
+                        # Après chaque tour, on reste à l'écoute naturellement.
                         state.extend_conversation()
 
                     state.extend_conversation()
-                    asyncio.run_coroutine_threadsafe(process_ia(texte), main_loop)
+                    asyncio.run_coroutine_threadsafe(process_ia(cleaned_texte), main_loop)
                             
                 except sr.WaitTimeoutError:
+                    if state.is_in_conversation():
+                        print("[MIC] Silence détecté, Jarvis se remet en veille.")
+                        state.end_conversation()
                     state.is_listening = False
                     asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                 except sr.UnknownValueError:
@@ -375,7 +392,7 @@ async def main():
     # Threads annexes
     threading.Thread(target=run_mobile_server, daemon=True).start()
     threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
-    threading.Thread(target=monitor_claps, daemon=True).start()
+    # threading.Thread(target=monitor_claps, daemon=True).start()
 
     from jarvis.utils import launch_app, get_lan_ip
     lan_ip = get_lan_ip()
@@ -410,6 +427,9 @@ async def main():
 
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
     asyncio.create_task(proactive.loop(parler))
+
+    # Salutation initiale
+    await parler("Bonjour Floriace. Tous les systèmes sont opérationnels.")
 
     print("\n[INIT] Démarrage du serveur WebSocket...")
     await asyncio.gather(

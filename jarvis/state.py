@@ -37,7 +37,7 @@ VIDEO_LANCEE  = False
 # ── Mode Conversation Naturelle ────────────────────────────────────────────
 # Pendant cette fenêtre, le mot-clé "jarvis" n'est plus requis : on enchaîne
 # naturellement avec des échanges suivis, comme avec un humain.
-CONVERSATION_WINDOW_SECONDS = 45
+CONVERSATION_WINDOW_SECONDS = 10
 conversation_deadline_ts = 0.0
 
 # ── Activité utilisateur / silence ─────────────────────────────────────────
@@ -168,5 +168,29 @@ async def send_web_volume(volume):
     recipients = get_authenticated_clients()
     if recipients:
         message = json.dumps({"action": "set_volume", "volume": round(volume, 3)})
+        await asyncio.gather(*[ws.send(message) for ws in recipients],
+                             return_exceptions=True)
+
+
+async def send_web_expression(text, utterance_id=None):
+    recipients = get_authenticated_clients()
+    if recipients and text:
+        payload = {"action": "jarvis_expression", "text": text}
+        if utterance_id:
+            payload["id"] = utterance_id
+        message = json.dumps(payload, ensure_ascii=False)
+        await asyncio.gather(*[ws.send(message) for ws in recipients],
+                             return_exceptions=True)
+
+
+async def send_web_lipsync(frames, utterance_id=None, backend=None):
+    recipients = get_authenticated_clients()
+    if recipients and frames:
+        payload = {"action": "jarvis_lipsync", "frames": frames}
+        if utterance_id:
+            payload["id"] = utterance_id
+        if backend:
+            payload["backend"] = backend
+        message = json.dumps(payload, ensure_ascii=False)
         await asyncio.gather(*[ws.send(message) for ws in recipients],
                              return_exceptions=True)
