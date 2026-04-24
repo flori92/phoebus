@@ -16,7 +16,7 @@ from jarvis.config import (
 import jarvis.state as state
 from jarvis.security import audit_log, sanitize_action_data
 from jarvis.desktop import executer_action_pc
-from jarvis.ai import demander_ia, demander_ia_vision
+from jarvis.ai import demander_ia, demander_ia_vision, demander_ia_stream
 from jarvis.actions import traiter_reponse_ia
 from jarvis.voice import parler, monitor_claps
 from jarvis.stt_backends import get_backend as get_stt_backend
@@ -111,9 +111,25 @@ async def ws_handler(websocket):
                     if question:
                         state.extend_conversation()
                         state.mark_user_activity()
-                        rep = await demander_ia(question)
-                        if not await traiter_reponse_ia(rep):
-                            await parler(rep)
+
+                        # Streaming : on parle phrase par phrase dès que le LLM
+                        # produit. Si la réponse est une commande JSON, on
+                        # supprime le streaming voix et on traite à la fin.
+                        spoken = {"v": False}
+
+                        async def _on_sentence(s):
+                            spoken["v"] = True
+                            await parler(s)
+
+                        rep = await demander_ia_stream(question, on_sentence=_on_sentence)
+
+                        if "{" in (rep or "") and "}" in (rep or ""):
+                            await traiter_reponse_ia(rep)
+                        elif not spoken["v"] and rep:
+                            # Aucune phrase n'a été streamée (ex: fast-path texte) :
+                            # on gère comme avant.
+                            if not await traiter_reponse_ia(rep):
+                                await parler(rep)
                         state.extend_conversation()
 
                 elif action == "demander_ia_vision":
@@ -315,10 +331,19 @@ def listen_and_process(main_loop):
                         continue
 
                     async def process_ia(q):
-                        rep = await demander_ia(q)
-                        if not await traiter_reponse_ia(rep):
-                            await parler(rep)
-                        # Après chaque tour, on reste à l'écoute naturellement.
+                        spoken = {"v": False}
+
+                        async def _on_sentence(s):
+                            spoken["v"] = True
+                            await parler(s)
+
+                        rep = await demander_ia_stream(q, on_sentence=_on_sentence)
+
+                        if "{" in (rep or "") and "}" in (rep or ""):
+                            await traiter_reponse_ia(rep)
+                        elif not spoken["v"] and rep:
+                            if not await traiter_reponse_ia(rep):
+                                await parler(rep)
                         state.extend_conversation()
 
                     state.extend_conversation()

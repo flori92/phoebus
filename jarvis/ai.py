@@ -343,6 +343,130 @@ async def demander_ia(texte):
         await state.send_web_state("idle")
 
 
+async def demander_ia_stream(texte, on_sentence=None):
+    """Variante streaming de `demander_ia`. Appelle `on_sentence(phrase)` pour
+    chaque phrase complète au fur et à mesure qu'elle arrive, permettant de
+    lancer la TTS avant même que le LLM n'ait fini de générer. Suspend
+    automatiquement les appels `on_sentence` dès qu'un `{` apparaît dans
+    le flux (c'est alors une commande JSON : le dispatcher d'actions prendra
+    le relais à la fin).
+
+    Renvoie le texte complet accumulé. En cas d'échec du streaming, fallback
+    silencieux sur `demander_ia` classique.
+    """
+    from jarvis.sentence_splitter import split_streaming
+
+    state.is_thinking = True
+    state.mark_user_activity()
+    reg = detecter_registre(texte)
+    if reg:
+        noter_registre(reg)
+    await state.send_web_state("thinking")
+
+    try:
+        # ── Fast-path intent local ────────────────────────────────────────
+        from jarvis.intent import detect as detect_intent
+        intent = detect_intent(texte)
+        if intent is not None:
+            print(f"[INTENT-STREAM] fast-path : {intent.name}")
+            state.ajouter_historique("user", texte)
+            state.ajouter_historique("model", intent.reply)
+            if on_sentence and "{" not in intent.reply:
+                await on_sentence(intent.reply)
+            return intent.reply
+
+        # Gemini absent → on retombe sur le non-streaming unifié.
+        if not client or not types:
+            rep = await demander_ia(texte)
+            if on_sentence and rep and "{" not in rep:
+                for s in split_streaming(rep + " ")[0]:
+                    await on_sentence(s)
+            return rep
+
+        prompt_actuel = construire_system_prompt(texte)
+        temp_hist = state.historique + [
+            types.Content(role="user", parts=[types.Part(text=texte)])
+        ]
+
+        buffer = ""
+        full = ""
+        json_detected = False
+        last_err = None
+
+        for model_name in MODELS_LIST:
+            try:
+                def _start_stream():
+                    return client.models.generate_content_stream(
+                        model=model_name,
+                        config=types.GenerateContentConfig(
+                            system_instruction=prompt_actuel,
+                            temperature=0.7,
+                            tools=[types.Tool(google_search=types.GoogleSearch())],
+                        ),
+                        contents=temp_hist,
+                    )
+
+                stream = await asyncio.wait_for(
+                    asyncio.to_thread(_start_stream), timeout=8.0
+                )
+
+                def _next(it=stream):
+                    try:
+                        return next(it)
+                    except StopIteration:
+                        return None
+
+                while True:
+                    chunk = await asyncio.wait_for(
+                        asyncio.to_thread(_next), timeout=12.0
+                    )
+                    if chunk is None:
+                        break
+                    delta = getattr(chunk, "text", None) or ""
+                    if not delta:
+                        continue
+                    full += delta
+
+                    if json_detected:
+                        continue
+                    buffer += delta
+                    if "{" in buffer:
+                        json_detected = True
+                        continue
+                    sentences, buffer = split_streaming(buffer)
+                    for s in sentences:
+                        if on_sentence:
+                            try:
+                                await on_sentence(s)
+                            except Exception as e:
+                                print(f"[STREAM] on_sentence : {e}")
+
+                # Flush du reliquat éventuel (phrase finale sans espace après).
+                if not json_detected and buffer.strip() and on_sentence:
+                    try:
+                        await on_sentence(buffer.strip())
+                    except Exception as e:
+                        print(f"[STREAM] on_sentence flush : {e}")
+
+                state.ajouter_historique("user", texte)
+                state.ajouter_historique("model", full)
+                return full
+            except Exception as e:
+                last_err = e
+                continue
+
+        # Tous les modèles Gemini ont raté le streaming : repli non-streaming.
+        print(f"[STREAM] Gemini KO ({last_err}) — repli non-streaming.")
+        rep = await demander_ia(texte)
+        if on_sentence and rep and "{" not in rep:
+            for s in split_streaming(rep + " ")[0]:
+                await on_sentence(s)
+        return rep
+    finally:
+        state.is_thinking = False
+        await state.send_web_state("idle")
+
+
 async def demander_ia_vision(texte, img_b64):
     state.is_thinking = True
     await state.send_web_state("thinking")
