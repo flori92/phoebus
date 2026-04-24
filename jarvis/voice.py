@@ -105,19 +105,29 @@ class BargeInMonitor(threading.Thread):
 
     def run(self):
         if not pyaudio: return
+        self.running = True
         pa = pyaudio.PyAudio()
+        stream = None
         try:
+            # Sur Mac, on essaie d'abord la fréquence native du système pour éviter l'erreur -50
+            try:
+                default_info = pa.get_default_input_device_info()
+                rate = int(default_info.get('defaultSampleRate', 16000))
+            except:
+                rate = 16000
+
             stream = pa.open(
                 format=pyaudio.paInt16,
                 channels=1,
-                rate=16000,
+                rate=rate,
                 input=True,
                 frames_per_buffer=self.chunk_size
             )
             count = 0
-            while not self.stop_requested:
+            while not self.stop_requested and not state.STOP_PARLER:
                 try:
                     data = stream.read(self.chunk_size, exception_on_overflow=False)
+                    if not data: break
                     rms = audioop.rms(data, 2)
                     if rms > self.threshold:
                         count += 1
@@ -129,10 +139,18 @@ class BargeInMonitor(threading.Thread):
                         count = 0
                 except:
                     break
-            stream.stop_stream()
-            stream.close()
+        except Exception as e:
+            # On reste silencieux en cas d'erreur de micro (souvent conflit sur Mac)
+            # print(f"[MIC] Note: Moniteur d'interruption indisponible ({e})")
+            pass
         finally:
+            if stream:
+                try:
+                    stream.stop_stream()
+                    stream.close()
+                except: pass
             pa.terminate()
+            self.running = False
 
 def start_barge_in_monitor():
     if not pyaudio: return None
