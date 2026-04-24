@@ -68,7 +68,9 @@ try:
     from google_auth_oauthlib.flow import InstalledAppFlow
     from google.auth.transport.requests import Request as GoogleRequest
     from googleapiclient.discovery import build as google_build
-except ImportError:
+except Exception as e:
+    # On affiche l'erreur une seule fois au boot si besoin
+    # print(f"[CONFIG] Erreur chargement Google : {e}")
     InstalledAppFlow = None
     GoogleRequest = None
     google_build = None

@@ -159,7 +159,7 @@ def main() -> int:
 
     ensure_env_template()
     ensure_devices_template()
-    for d in ["logs", "models", "temp", "output", "jarvis_speaker_profiles"]:
+    for d in ["logs", "models", "temp", "output", "jarvis_speaker_profiles", "jarvis_tts_cache"]:
         (ROOT / d).mkdir(exist_ok=True)
 
     install_system_deps()
