@@ -868,9 +868,9 @@ const orb = createOrb(canvas);
 // ── State labels (French) ────────────────────────────────────────────────────
 const STATE_LABELS: Record<OrbState, string> = {
   idle: "",
-  listening: "ecoute...",
-  thinking: "reflexion...",
-  speaking: "",
+  listening: "écoute...",
+  thinking: "phébus réfléchit...",
+  speaking: "phébus répond...",
 };
 let currentState: OrbState = "idle";
 let currentMood: JarvisMood = "neutral";

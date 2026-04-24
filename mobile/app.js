@@ -873,7 +873,7 @@ const STATE_LABELS = {
   idle:      "en attente",
   listening: "je vous écoute...",
   thinking:  "en réflexion...",
-  speaking:  "jarvis répond...",
+  speaking:  "phoebus répond...",
 };
 
 function applyState(state) {

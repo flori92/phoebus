@@ -24,7 +24,7 @@ from jarvis.sentence_splitter import split as split_sentences
 def reponse_locale(texte):
     t = texte.lower().strip()
     if any(m in t for m in ["qui es-tu", "ton nom", "quelle es ton identité"]):
-        return "Je suis JARVIS. Mes serveurs sont actuellement en maintenance, mais je reste opérationnel localement."
+        return "Je suis PHOEBUS. Mes serveurs sont actuellement en maintenance, mais je reste opérationnel localement."
     if any(m in t for m in ["ton créateur", "t'as créé", "qui est floriace"]):
         return "Floriace est mon créateur."
     if any(m in t for m in ["ça va", "tu vas bien"]):
@@ -92,8 +92,8 @@ def resoudre_traduction_localement(texte):
 # ── Interruption vocale (Barge-in Monitor) ──────────────────────────────────
 
 class BargeInMonitor(threading.Thread):
-    """Surveille le micro en tâche de fond PENDANT que Jarvis parle.
-    Si un niveau sonore élevé (voix humaine) est détecté, il stoppe Jarvis.
+    """Surveille le micro en tâche de fond PENDANT que Phoebus parle.
+    Si un niveau sonore élevé (voix humaine) est détecté, il stoppe Phoebus.
     """
     def __init__(self, threshold=2200, consecutive=3):
         super().__init__(daemon=True)

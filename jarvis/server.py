@@ -532,7 +532,7 @@ def listen_and_process(main_loop):
                     state.mark_user_activity()
                     texte_l = texte.lower()
                     # Liste élargie pour pallier les erreurs de transcription (phonétique proche)
-                    WAKE_WORDS = ["jarvis", "jarv", " jar", "service", "j'arrive", "charvis", "darvis"]
+                    WAKE_WORDS = ["phoebus", "phébus", "fébus", "febus", "feubus", "rebus"]
                     wake = any(w in texte_l for w in WAKE_WORDS)
                     en_conversation = state.is_in_conversation()
 
@@ -640,7 +640,7 @@ async def run_telegram_bot(main_loop):
 async def main():
     global main_loop
     print("="*60)
-    print(" JARVIS CORE - DEMARRAGE (MODULARISÉ)".center(60))
+    print(" PHOEBUS CORE - DEMARRAGE (MODULARISÉ)".center(60))
     print("="*60)
 
     main_loop = asyncio.get_running_loop()
@@ -724,4 +724,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n[JARVIS] Arrêt demandé. Au revoir Floriace.")
+        print("\n[PHOEBUS] Arrêt demandé. Au revoir Floriace.")

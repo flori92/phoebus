@@ -73,6 +73,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n[JARVIS] Arrêt du système. Au revoir Floriace.")
+        print("\n[PHOEBUS] Arrêt du système. Au revoir Floriace.")
     except Exception as e:
-        print(f"\n[JARVIS] Erreur critique inattendue : {e}")
+        print(f"\n[PHOEBUS] Erreur critique inattendue : {e}")

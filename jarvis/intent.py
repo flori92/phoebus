@@ -62,21 +62,21 @@ _PIECE_PATTERN = "(?:" + "|".join(sorted(PIECES_ALIAS.keys(), key=len, reverse=T
 # ── Patterns ──────────────────────────────────────────────────────────────
 
 _RE_ALLUME = re.compile(
-    rf"^(?:jarvis[, ]*)?(?:allume|éclaire|eclaire|lumiere|lumière)"
+    rf"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:allume|éclaire|eclaire|lumiere|lumière)"
     rf"(?:\s+(?:la lumière|la lumiere|les lumières|les lumieres))?"
     rf"(?:\s+(?:du|de la|de l'|dans le|dans la|dans l'|au|à la|la|le|l'|les))?"
     rf"\s+(?P<piece>{_PIECE_PATTERN})$"
 )
 
 _RE_ETEINS = re.compile(
-    rf"^(?:jarvis[, ]*)?(?:éteins|eteins|coupe)"
+    rf"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:éteins|eteins|coupe)"
     rf"(?:\s+(?:la lumière|la lumiere|les lumières|les lumieres))?"
     rf"(?:\s+(?:du|de la|de l'|dans le|dans la|dans l'|au|à la|la|le|l'|les))?"
     rf"\s+(?P<piece>{_PIECE_PATTERN})$"
 )
 
 _RE_HEURE = re.compile(
-    r"^(?:jarvis[, ]*)?(?:quelle heure est[- ]il"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:quelle heure est[- ]il"
     r"|il est quelle heure"
     r"|tu as l[' ]heure"
     r"|donne(?:-| )moi l[' ]heure"
@@ -84,39 +84,39 @@ _RE_HEURE = re.compile(
 )
 
 _RE_DATE = re.compile(
-    r"^(?:jarvis[, ]*)?(?:quel jour (?:sommes|on est|est)(?:[- ]nous)?"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:quel jour (?:sommes|on est|est)(?:[- ]nous)?"
     r"|on est quel jour"
     r"|quelle (?:est la )?date"
     r"|la date du jour)$"
 )
 
 _RE_METEO = re.compile(
-    r"^(?:jarvis[, ]*)?(?:(?:quel temps|quelle météo|la météo|le temps|il fait quoi)"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:(?:quel temps|quelle météo|la météo|le temps|il fait quoi)"
     r"(?:\s+(?:fait[- ]il|est[- ]il))?"
     r"(?:\s+(?:à|a|en|sur|au|aux)\s+(?P<ville>[a-zà-ÿ' -]+))?)$"
 )
 
 _RE_THERMOSTAT = re.compile(
-    r"^(?:jarvis[, ]*)?(?:mets|règle|regle|passe)\s+(?:le\s+)?thermostat\s+(?:à|a|sur)\s+(?P<t>\d{1,2})(?:\s*degrés?)?$"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:mets|règle|regle|passe)\s+(?:le\s+)?thermostat\s+(?:à|a|sur)\s+(?P<t>\d{1,2})(?:\s*degrés?)?$"
 )
 
 _RE_SCENE = re.compile(
-    r"^(?:jarvis[, ]*)?(?:lance|active|démarre|demarre)\s+(?:la\s+)?(?:scène|scene|mode)\s+(?P<nom>[a-zà-ÿ' -]+)$"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:lance|active|démarre|demarre)\s+(?:la\s+)?(?:scène|scene|mode)\s+(?P<nom>[a-zà-ÿ' -]+)$"
 )
 
 _RE_MEMORISER = re.compile(
-    r"^(?:jarvis[, ]*)?(?:retiens|note|mémorise|memorise|souviens[- ]toi)\s+(?:que\s+)?(?P<contenu>.+)$"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:retiens|note|mémorise|memorise|souviens[- ]toi)\s+(?:que\s+)?(?P<contenu>.+)$"
 )
 
 _RE_LISTER_MEM = re.compile(
-    r"^(?:jarvis[, ]*)?(?:liste|montre|donne[- ]moi)\s+(?:ta|la)\s+(?:mémoire|memoire|liste)$"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:liste|montre|donne[- ]moi)\s+(?:ta|la)\s+(?:mémoire|memoire|liste)$"
 )
 
 _RE_MODE_IRON_MAN_ON = re.compile(
-    r"^(?:jarvis[, ]*)?(?:active|lance|démarre|demarre)\s+(?:le\s+)?mode\s+iron\s*man$"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:active|lance|démarre|demarre)\s+(?:le\s+)?mode\s+iron\s*man$"
 )
 _RE_MODE_IRON_MAN_OFF = re.compile(
-    r"^(?:jarvis[, ]*)?(?:désactive|desactive|coupe|arrête|arrete|stop)\s+(?:le\s+)?mode\s+iron\s*man$"
+    r"^(?:phoebus|phébus|fébus|febus|feubus|rebus|jarvis[, ]*)?(?:désactive|desactive|coupe|arrête|arrete|stop)\s+(?:le\s+)?mode\s+iron\s*man$"
 )
 
 

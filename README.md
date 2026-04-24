@@ -1,4 +1,4 @@
-# J.A.R.V.I.S
+# P.H.O.E.B.U.S
 
 Assistant vocal local avec interface web Three.js, interface mobile, Home Assistant,
 Google APIs, recherche web, vision ecran et fallback LLM.
@@ -28,7 +28,7 @@ avec npm, cree `.env` si besoin et prepare `jarvis_devices.json` a partir du mod
 
 ## Cerveau multi-provider
 
-Jarvis route maintenant chaque requete vers le meilleur cerveau disponible:
+Phoebus route maintenant chaque requete vers le meilleur cerveau disponible:
 
 - fast-path local pour les commandes evidentes (domotique, heure, date)
 - Gemini pour les requetes complexes, la recherche outillee et la vision
@@ -42,17 +42,17 @@ Jarvis route maintenant chaque requete vers le meilleur cerveau disponible:
 ## iPhone & Telegram Integration
 
 ### Raccourcis iPhone (Siri / Texte)
-Jarvis expose un Webhook pour recevoir des commandes directement depuis votre iPhone.
+Phoebus expose un Webhook pour recevoir des commandes directement depuis votre iPhone.
 - **URL** : `http://VOTRE_IP_LAN:8090/webhook/command`
 - **Méthode** : `POST`
 - **Headers** : `Authorization: Bearer VOTRE_WS_TOKEN` (si configuré)
 - **Body (JSON)** : `{"text": "votre commande ici"}`
 
 ### Bot Telegram
-Vous pouvez piloter Jarvis par message via un bot privé.
+Vous pouvez piloter Phoebus par message via un bot privé.
 1. Créez un bot via [@BotFather](https://t.me/botfather).
 2. Ajoutez `TELEGRAM_TOKEN=votre_token` dans `.env`.
-3. (Optionnel) Ajoutez `TELEGRAM_CHAT_ID=votre_id` pour que Jarvis ne réponde qu'à vous.
+3. (Optionnel) Ajoutez `TELEGRAM_CHAT_ID=votre_id` pour que Phoebus ne réponde qu'à vous.
 
 Configurez le comportement dans `.env`:
 
@@ -62,7 +62,7 @@ JARVIS_BRAIN_ORDER=gemini,groq,mistral,grok,ollama
 ```
 
 Les metriques de latence/echec sont stockees dans `logs/ai_router_metrics.json`.
-Si un fournisseur tombe en erreur, Jarvis le met temporairement en retrait et
+Si un fournisseur tombe en erreur, Phoebus le met temporairement en retrait et
 bascule sur le suivant sans casser la conversation.
 
 ## Lancement

@@ -35,7 +35,7 @@ MODE_IRON_MAN = False
 VIDEO_LANCEE  = False
 
 # ── Mode Conversation Naturelle ────────────────────────────────────────────
-# Pendant cette fenêtre, le mot-clé "jarvis" n'est plus requis : on enchaîne
+# Pendant cette fenêtre, le mot-clé "phoebus" n'est plus requis : on enchaîne
 # naturellement avec des échanges suivis, comme avec un humain.
 CONVERSATION_WINDOW_SECONDS = 10
 conversation_deadline_ts = 0.0
@@ -45,11 +45,11 @@ conversation_deadline_ts = 0.0
 last_user_activity_ts = 0.0
 silence_ping_sent = False  # Évite de repinger en boucle après un long silence.
 
-# ── Barge-in (interruption de Jarvis par la voix) ─────────────────────────
+# ── Barge-in (interruption de Phoebus par la voix) ─────────────────────────
 BARGE_IN_THRESHOLD = 3000  # RMS au-dessus duquel on considère que l'utilisateur parle.
 BARGE_IN_CONSECUTIVE_CHUNKS = 3  # Nb de chunks consécutifs au-dessus du seuil.
 
-# ── Anti-Écho (Jarvis ne se parle pas à lui-même) ─────────────────────────
+# ── Anti-Écho (Phoebus ne se parle pas à lui-même) ─────────────────────────
 last_jarvis_speech = ""    # Texte exact du dernier bloc prononcé
 last_speech_timestamp = 0.0 # Heure de fin de parole
 current_jarvis_speech = ""  # Texte en cours de prononciation
@@ -77,7 +77,7 @@ def ajouter_historique(role, texte):
 
 def extend_conversation(seconds=None):
     """Ouvre ou prolonge la fenêtre "on est en train de discuter".
-    Tant qu'elle est active, le STT traite la parole sans exiger "jarvis"."""
+    Tant qu'elle est active, le STT traite la parole sans exiger "phoebus"."""
     global conversation_deadline_ts
     dur = seconds if seconds is not None else CONVERSATION_WINDOW_SECONDS
     conversation_deadline_ts = _time.time() + dur
