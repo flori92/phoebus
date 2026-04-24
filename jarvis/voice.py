@@ -246,7 +246,7 @@ async def _play_file(path, is_cache, texte_tts):
             except: pass
 
 
-async def parler(texte):
+async def parler(texte, keep_conversation=True):
     """Synthétise et joue un texte avec pipeline phrase-par-phrase.
 
     La phrase N+1 est synthétisée EN PARALLÈLE de la lecture de la phrase N,
@@ -260,13 +260,16 @@ async def parler(texte):
         if state.historique[-1].parts[0].text != texte:
             state.ajouter_historique("model", f"[Info retournée par l'action et énoncée à voix haute]: {texte}")
 
-    state.extend_conversation()
+    if keep_conversation:
+        state.extend_conversation()
 
     sentences = split_sentences(texte_tts)
     if not sentences:
         return
 
     state.is_speaking = True
+    state.current_jarvis_speech = texte_tts
+    state.speech_started_timestamp = time.time()
     await state.send_web_state("speaking")
     await state.send_web_expression(texte_tts, utterance_id=str(int(time.time() * 1000)))
     state.speak_volume = 0.0
@@ -308,8 +311,9 @@ async def parler(texte):
         state.speak_volume = 0.0
         state.is_speaking = False
         state.STOP_PARLER = False
-        state.last_jarvis_speech = texte
+        state.last_jarvis_speech = texte_tts
         state.last_speech_timestamp = time.time()
+        state.current_jarvis_speech = ""
         await asyncio.sleep(0.05)
         await state.send_web_state("idle")
 

@@ -84,7 +84,7 @@ async def ws_handler(websocket):
         state.register_authenticated_client(websocket, {"client_type": "unknown", "client_name": "auto-auth"})
         await state.send_ws_json(websocket, {"action": "auth_ok"})
         if not state.interface_deja_connectee:
-            await parler("Interface connectée.")
+            await parler("Interface connectée.", keep_conversation=False)
             state.interface_deja_connectee = True
 
     try:
@@ -103,10 +103,10 @@ async def ws_handler(websocket):
                         await state.send_ws_json(websocket, {"action": "auth_ok"})
                         audit_log("ws_auth_success", ip=client_ip, client_type=client_type)
                         if client_type == "web_dashboard" and not state.interface_deja_connectee:
-                            await parler("Interface web authentifiée.")
+                            await parler("Interface web authentifiée.", keep_conversation=False)
                             state.interface_deja_connectee = True
                         elif client_type == "mobile_app":
-                            await parler("Satellite mobile authentifié.")
+                            await parler("Satellite mobile authentifié.", keep_conversation=False)
                     else:
                         await state.send_ws_json(websocket, {"action": "auth_failed"})
                         audit_log("ws_auth_failed", ip=client_ip, client_type=client_type)
@@ -313,7 +313,7 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 message = data.get("message", "")
                 if message:
                     if main_loop:
-                        asyncio.run_coroutine_threadsafe(parler(message), main_loop)
+                        asyncio.run_coroutine_threadsafe(parler(message, keep_conversation=False), main_loop)
                 self.send_response(200)
                 self.end_headers()
             except:
@@ -446,16 +446,28 @@ def listen_and_process(main_loop):
                         maintenant = time.time()
                         # 1. Si le texte est très proche de ce qu'il vient de dire
                         from jarvis.utils import normalize_text
-                        last_clean = normalize_text(state.last_jarvis_speech)
                         this_clean = normalize_text(texte)
                         
                         is_echo = False
-                        if last_clean and (last_clean in this_clean or this_clean in last_clean):
-                            if maintenant - state.last_speech_timestamp < 4.0:
-                                is_echo = True
+                        recent_speech = (
+                            state.is_speaking
+                            or maintenant - state.last_speech_timestamp < 6.0
+                            or maintenant - state.speech_started_timestamp < 10.0
+                        )
+                        echo_candidates = [
+                            normalize_text(state.current_jarvis_speech),
+                            normalize_text(state.last_jarvis_speech),
+                        ]
+                        for spoken_clean in echo_candidates:
+                            if not spoken_clean:
+                                continue
+                            if spoken_clean in this_clean or this_clean in spoken_clean:
+                                if recent_speech:
+                                    is_echo = True
+                                    break
                         
                         # 2. Si le texte est court et arrive juste après la fin de parole
-                        if not is_echo and maintenant - state.last_speech_timestamp < 1.0:
+                        if not is_echo and recent_speech:
                             if len(texte.split()) < 4:
                                 is_echo = True
                                 
@@ -663,7 +675,7 @@ async def main():
                 return  # Déjà en mode conversation, inutile de réactiver
             state.extend_conversation(seconds=30)
             asyncio.run_coroutine_threadsafe(
-                parler("Oui, je vous écoute."),
+                parler("Oui, je vous écoute.", keep_conversation=False),
                 main_loop
             )
         _wake_word_module.start(_on_wake_word)
@@ -678,7 +690,7 @@ async def main():
     asyncio.create_task(proactive.loop(parler))
 
     # Salutation initiale
-    await parler("Bonjour Floriace. Tous les systèmes sont opérationnels.")
+    await parler("Bonjour Floriace. Tous les systèmes sont opérationnels.", keep_conversation=False)
 
     print("\n[INIT] Démarrage du serveur WebSocket...")
     await asyncio.gather(
