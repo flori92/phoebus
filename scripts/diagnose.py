@@ -51,6 +51,7 @@ ENV_RULES = {
     "JARVIS_BRAIN_ORDER": lambda value: True,
     "JARVIS_GEMINI_MODELS": lambda value: True,
     "JARVIS_OLLAMA_MODELS": lambda value: True,
+    "JARVIS_WAKE_ENABLED": lambda value: (value or "0").lower() in {"0", "1", "true", "false", "yes", "no", "on", "off"},
 }
 
 

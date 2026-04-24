@@ -91,6 +91,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 JARVIS_WS_TOKEN = os.getenv("JARVIS_WS_TOKEN", "").strip()
 JARVIS_DEVICES_FILE = os.getenv("JARVIS_DEVICES_FILE", "jarvis_devices.json").strip()
 JARVIS_AUDIT_FILE   = os.getenv("JARVIS_AUDIT_FILE", "logs/audit.jsonl").strip()
+JARVIS_WAKE_ENABLED = os.getenv("JARVIS_WAKE_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 # ── Clients IA ──────────────────────────────────────────────────────────────
 client = genai.Client(api_key=GEMINI_API_KEY) if genai and GEMINI_API_KEY else None

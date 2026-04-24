@@ -11,7 +11,8 @@ import hashlib
 
 from jarvis.config import (
     websockets, sr, DEFAULT_WS_PORT, DEFAULT_MOBILE_PORT, MOBILE_DIR,
-    JARVIS_WS_TOKEN, WS_AUTH_REQUIRED, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+    JARVIS_WS_TOKEN, WS_AUTH_REQUIRED, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
+    JARVIS_WAKE_ENABLED,
 )
 import jarvis.state as state
 from jarvis.security import audit_log, sanitize_action_data
@@ -655,7 +656,7 @@ async def main():
     asyncio.create_task(_warmup_ha())
 
     # ── Wake Word ─────────────────────────────────────────────
-    if _WAKE_WORD_AVAILABLE:
+    if JARVIS_WAKE_ENABLED and _WAKE_WORD_AVAILABLE:
         def _on_wake_word():
             """Appelée par le thread wake word quand 'Hey Jarvis' est détecté."""
             if state.is_in_conversation():
@@ -667,8 +668,10 @@ async def main():
             )
         _wake_word_module.start(_on_wake_word)
         print("[WAKE] Détection wake word démarrée.")
-    else:
+    elif JARVIS_WAKE_ENABLED:
         print("[WAKE] Module wake_word non disponible, détection désactivée.")
+    else:
+        print("[WAKE] Détection séparée désactivée (micro réservé au STT principal).")
     # ──────────────────────────────────────────────────────────
 
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.

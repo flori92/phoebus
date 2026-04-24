@@ -169,6 +169,14 @@ def init_mixer():
     if not pygame.mixer.get_init(): pygame.mixer.init()
     return True
 
+
+async def _send_text_fallback(text):
+    recipients = state.get_authenticated_clients()
+    if recipients and text:
+        msg = json.dumps({"action": "jarvis_response", "text": text}, ensure_ascii=False)
+        await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
+
+
 async def _prepare_tts(sentence):
     """Prépare le fichier audio d'une phrase. Renvoie (path, is_cache).
 
@@ -184,10 +192,11 @@ async def _prepare_tts(sentence):
         cache_register(sentence, EDGE_VOICE, "auto", tmp)
         return (tmp, False)
     except TtsUnavailable:
-        recipients = state.get_authenticated_clients()
-        if recipients:
-            msg = json.dumps({"action": "jarvis_response", "text": sentence})
-            await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
+        await _send_text_fallback(sentence)
+        return (None, False)
+    except Exception as e:
+        print(f"[TTS] synthèse indisponible : {e}")
+        await _send_text_fallback(sentence)
         return (None, False)
 
 
@@ -245,6 +254,7 @@ async def parler(texte):
     La phrase 1 bénéficie en plus du cache pré-chauffé au démarrage.
     """
     texte_tts = naturaliser(texte)
+    print(f"[JARVIS] {texte_tts}")
 
     if state.historique and len(state.historique) > 0:
         if state.historique[-1].parts[0].text != texte:
@@ -258,6 +268,7 @@ async def parler(texte):
 
     state.is_speaking = True
     await state.send_web_state("speaking")
+    await state.send_web_expression(texte_tts, utterance_id=str(int(time.time() * 1000)))
     state.speak_volume = 0.0
 
     monitor = start_barge_in_monitor()

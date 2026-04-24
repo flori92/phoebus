@@ -642,14 +642,30 @@ async def demander_ia_stream(texte, on_sentence=None):
                 await on_sentence(intent.reply)
             return intent.reply
 
-        # Gemini absent OU en cooldown → on retombe sur le non-streaming unifié.
+        profile = build_profile(
+            texte,
+            streaming=True,
+            in_conversation=state.is_in_conversation(),
+        )
+        order = rank_provider_names(profile, available=available_provider_names())
+
+        # Gemini absent, en cooldown, ou pas prioritaire → routeur non-streaming.
+        # On garde le streaming Gemini seulement quand il est réellement le
+        # meilleur choix disponible, sinon Groq/Mistral répondent souvent plus vite.
         if not client or not types:
             rep = await demander_ia(texte)
             if on_sentence and rep and "{" not in rep:
                 for s in split_streaming(rep + " ")[0]:
                     await on_sentence(s)
             return rep
-        
+
+        if not order or order[0] != "gemini":
+            rep = await demander_ia(texte)
+            if on_sentence and rep and "{" not in rep:
+                for s in split_streaming(rep + " ")[0]:
+                    await on_sentence(s)
+            return rep
+
         # Vérifier si Gemini est en cooldown
         metrics = _load_metrics()
         gemini_item = metrics.get("gemini", {})
@@ -662,11 +678,6 @@ async def demander_ia_stream(texte, on_sentence=None):
                     await on_sentence(s)
             return rep
 
-        profile = build_profile(
-            texte,
-            streaming=True,
-            in_conversation=state.is_in_conversation(),
-        )
         prompt_actuel = construire_system_prompt(texte)
         temp_hist = state.historique + [
             types.Content(role="user", parts=[types.Part(text=texte)])

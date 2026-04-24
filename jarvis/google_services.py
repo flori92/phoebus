@@ -16,8 +16,10 @@ import jarvis.state as state
 import threading
 
 _google_creds_lock = threading.Lock()
+_last_noninteractive_auth_warning = 0.0
 
-def get_google_creds():
+def get_google_creds(interactive=True):
+    global _last_noninteractive_auth_warning
     if not InstalledAppFlow or not GoogleRequest:
         print("[GOOGLE] Dependances Google absentes - fonctions Google desactivees.")
         return None
@@ -39,10 +41,19 @@ def get_google_creds():
                 if not os.path.exists("credentials.json"):
                     print("[GOOGLE] Pas de credentials.json - fonctions Google desactivees.")
                     return None
+                if not interactive:
+                    # Les tâches proactives ne doivent jamais lancer un serveur OAuth
+                    # en arrière-plan. Elles réessaieront plus tard.
+                    import time
+                    now = time.time()
+                    if now - _last_noninteractive_auth_warning > 300:
+                        print("[GOOGLE] Auth requise : lancez une action Google manuelle pour reconnecter Calendar.")
+                        _last_noninteractive_auth_warning = now
+                    return None
                 flow  = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
                 # On force le mode 'offline' pour obtenir un Refresh Token longue durée.
                 creds = flow.run_local_server(
-                    port=8085, 
+                    port=0,
                     access_type='offline', 
                     prompt='consent'
                 )
@@ -71,8 +82,8 @@ def get_sheets_service():
     return google_build("sheets", "v4", credentials=creds) if creds and google_build else None
 
 
-def get_calendar_service():
-    creds = get_google_creds()
+def get_calendar_service(interactive=True):
+    creds = get_google_creds(interactive=interactive)
     return google_build("calendar", "v3", credentials=creds) if creds and google_build else None
 
 
@@ -190,7 +201,7 @@ def lister_evenements_prochains(minutes_avant: int = 15) -> list:
     """
     try:
         from datetime import timedelta
-        service = get_calendar_service()
+        service = get_calendar_service(interactive=False)
         if not service:
             return []
         now      = datetime.now(timezone.utc)
@@ -230,4 +241,3 @@ def lister_evenements_prochains(minutes_avant: int = 15) -> list:
     except Exception as e:
         print(f"[CALENDAR] Erreur lister_evenements_prochains : {e}")
         return []
-
