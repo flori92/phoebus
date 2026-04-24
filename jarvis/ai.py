@@ -21,6 +21,14 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
     maintenant = datetime.now()
     horodatage = maintenant.strftime("%A %d %B %Y, %H:%M:%S")
 
+    # --- Contexte Home Assistant dynamique (découverte live des entités) ---
+    try:
+        from jarvis.home import resume_ha_context
+        contexte_ha = resume_ha_context()
+    except Exception:
+        contexte_ha = ""
+
+    # --- RAG : Mémoire à Long Terme ---
     # --- RAG : Mémoire à Long Terme (Désactivé en minimal pour la vitesse) ---
     souvenirs_rag = ""
     if texte_utilisateur and not minimal:
@@ -147,6 +155,9 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
     if profil_appris:
         base += "\n" + profil_appris + "\n"
 
+    if contexte_ha:
+        base += "\n\n" + contexte_ha + "\n"
+
     if souvenirs_rag:
         base += "\n\nSOUVENIRS DU PASSE (RAG) pertinents pour la requête actuelle :\n"
         base += souvenirs_rag + "\n"
@@ -172,9 +183,13 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { \"action\": \"ha_lumiere\", ... } { \"action\": \"meteo\", ... }).\n"
         "REGLE ABSOLUE : Si la demande n est PAS une commande JSON, reponds TOUJOURS en texte naturel, sans JSON, "
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"
-        "REGLE DE CONVERSATION CONTINUE : on est probablement au milieu d'un échange. "
-        "Tiens compte des derniers tours, ne redemande pas ce qui a déjà été dit, et n'ouvre pas "
-        "chaque réponse par \"Bonjour\" ou \"Monsieur\" à répétition. Enchaîne naturellement.\n"
+        "REGLE DE SALUTATIONS ET CONTINUITÉ :\n"
+        "- Si l'historique est vide OU si Floriace te dit bonjour en premier, "
+        "salue-le normalement et chaleureusement ('Bonjour Floriace', 'Bonsoir Monsieur'…). "
+        "C'est important — ne zappe pas la salutation d'ouverture.\n"
+        "- Dans un échange clairement en cours (plusieurs tours récents), n'ouvre "
+        "pas chaque réponse par 'Bonjour' ou 'Monsieur' — enchaîne naturellement "
+        "en tenant compte des derniers tours.\n"
         "REGLE D'AMBIGUITE : si la demande est floue, incomplète, ou pourrait viser plusieurs "
         "cibles (ex. \"allume\" sans pièce, \"ouvre\" sans fichier), NE DEVINE PAS : pose une "
         "question courte et précise pour lever le doute. Tu peux proposer deux options si c'est utile.\n"
@@ -183,6 +198,27 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "d'inventer une réponse."
     )
     return base
+
+
+def _capture_correction_if_any(texte: str) -> None:
+    """Si l'utilisateur vient de corriger la dernière réponse de Jarvis,
+    on enregistre cet échange dans le RAG avec importance haute. Jarvis
+    en tiendra compte aux prompts futurs."""
+    try:
+        from jarvis.memory_unified import looks_like_correction, note_correction
+        if not looks_like_correction(texte):
+            return
+        # Dernière chose que Jarvis a dite (si disponible dans l'historique).
+        last_model = None
+        for entry in reversed(state.historique):
+            if entry.role == "model":
+                last_model = entry.parts[0].text
+                break
+        if last_model:
+            note_correction(last_model, texte)
+            print("[MEMOIRE] correction capturée → RAG importance 3.")
+    except Exception as e:
+        print(f"[MEMOIRE] détection correction : {e}")
 
 
 def detecter_cerveau(texte):
@@ -196,6 +232,14 @@ async def demander_grok(texte):
     if not grok_client:
         return None
     try:
+        # Prompt système UNIFIÉ : Grok reçoit exactement la même personnalité,
+        # mémoire, profil et règles que Gemini — Jarvis reste cohérent quel
+        # que soit le cerveau qui répond.
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises ton module Grok pour cette réponse "
+            "(infos temps réel X). Ne le mentionne pas à Floriace."
+        )
+        messages = [{"role": "system", "content": system_prompt}]
         messages = [{"role": "system", "content": construire_system_prompt(texte)}]
         for h in state.historique[-16:]:
             role = "user" if h.role == "user" else "assistant"
@@ -213,7 +257,11 @@ async def demander_grok(texte):
 
 async def demander_ollama(texte):
     try:
-        messages = [{"role": "system", "content": "Tu es JARVIS, l'IA de Floriace. Tu utilises actuellement ton module local Ollama. Réponds en français, en phrases courtes, de manière chaleureuse et naturelle."}]
+        # Prompt système UNIFIÉ (même que Gemini).
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu tournes en local sur Ollama. Ne le mentionne pas."
+        )
+        messages = [{"role": "system", "content": system_prompt}]
         for h in state.historique[-12:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
@@ -246,6 +294,12 @@ async def demander_groq(texte):
     if not groq_client:
         return None
     try:
+        # Prompt système UNIFIÉ (même que Gemini).
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises Llama 3.3 via Groq pour cette réponse. "
+            "Ne le mentionne pas à Floriace."
+        )
+        messages = [{"role": "system", "content": system_prompt}]
         messages = [{"role": "system", "content": construire_system_prompt(texte)}]
         for h in state.historique[-16:]:
             role = "user" if h.role == "user" else "assistant"
@@ -267,8 +321,24 @@ async def demander_ia(texte):
     reg = detecter_registre(texte)
     if reg:
         noter_registre(reg)
+
+    # ── Détection de correction : si l'utilisateur corrige, on capture
+    # l'échange précédent pour apprentissage à long terme (RAG).
+    _capture_correction_if_any(texte)
+
     await state.send_web_state("thinking")
     try:
+        # ── FAST-PATH : dispatcher d'intention local ──────────────────────
+        # Latence ~50 ms au lieu d'un round-trip cloud de 1–2 s pour les
+        # commandes évidentes (allume X, éteins Y, heure, date, thermostat...).
+        from jarvis.intent import detect as detect_intent
+        intent = detect_intent(texte)
+        if intent is not None:
+            print(f"[INTENT] fast-path : {intent.name}")
+            state.ajouter_historique("user", texte)
+            state.ajouter_historique("model", intent.reply)
+            return intent.reply
+
         from jarvis.voice import reponse_locale
         # 1. Priorité absolue aux réponses locales (Heure, Date, Nom) pour la rapidité
         rep_loc = reponse_locale(texte)
@@ -342,6 +412,9 @@ async def demander_ia(texte):
                 if res: return res
             except Exception: pass
         
+        try: return await _call_gemini()
+        except Exception as e:
+            print(f"[IA] Gemini KO : {e} — repli sur Groq/Grok/Ollama (même prompt complet).")
         try: 
             res = await _call_gemini()
             if res: return res
@@ -353,10 +426,16 @@ async def demander_ia(texte):
             if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
                 return "Voici ce que j'ai trouvé sur le web : " + res_serp
 
+        # Repli sur les LLM concurrents AVEC le prompt unifié — ils gardent la
+        # personnalité de Jarvis. SerpAPI en tout dernier recours (réponse
+        # générique) plutôt qu'avant Groq.
         rep_groq = await demander_groq(texte)
         if rep_groq: return rep_groq
-        
+
         if grok_client:
+            try:
+                rep_grok = await demander_grok(texte)
+                if rep_grok: return rep_grok
             try: 
                 res = await demander_grok(texte)
                 if res: return res
@@ -365,9 +444,16 @@ async def demander_ia(texte):
         rep_ollama = await demander_ollama(texte)
         if rep_ollama: return rep_ollama
 
+        # Ultime filet : recherche web si on a une vraie question factuelle.
+        from jarvis.home import recherche_web_serpapi
+        if len(texte.split()) > 2:
+            res_serp = recherche_web_serpapi(texte)
+            if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
+                return "Voici ce que j'ai trouvé sur le web : " + res_serp
+
         rep_loc = reponse_locale(texte)
         if rep_loc: return rep_loc
-        
+
         return "Desole Floriace, mes serveurs sont surchargés. Je reste disponible pour vos commandes domestiques locales."
     except Exception as e:
         print(f"[IA] Erreur fatale demander_ia : {e}")
@@ -377,6 +463,133 @@ async def demander_ia(texte):
         state.is_thinking = False
         # On ne force PAS l'état 'idle' ici car parler() va prendre le relais 
         # ou le timeout naturel de l'UI s'en chargera.
+
+
+async def demander_ia_stream(texte, on_sentence=None):
+    """Variante streaming de `demander_ia`. Appelle `on_sentence(phrase)` pour
+    chaque phrase complète au fur et à mesure qu'elle arrive, permettant de
+    lancer la TTS avant même que le LLM n'ait fini de générer. Suspend
+    automatiquement les appels `on_sentence` dès qu'un `{` apparaît dans
+    le flux (c'est alors une commande JSON : le dispatcher d'actions prendra
+    le relais à la fin).
+
+    Renvoie le texte complet accumulé. En cas d'échec du streaming, fallback
+    silencieux sur `demander_ia` classique.
+    """
+    from jarvis.sentence_splitter import split_streaming
+
+    state.is_thinking = True
+    state.mark_user_activity()
+    reg = detecter_registre(texte)
+    if reg:
+        noter_registre(reg)
+
+    _capture_correction_if_any(texte)
+
+    await state.send_web_state("thinking")
+
+    try:
+        # ── Fast-path intent local ────────────────────────────────────────
+        from jarvis.intent import detect as detect_intent
+        intent = detect_intent(texte)
+        if intent is not None:
+            print(f"[INTENT-STREAM] fast-path : {intent.name}")
+            state.ajouter_historique("user", texte)
+            state.ajouter_historique("model", intent.reply)
+            if on_sentence and "{" not in intent.reply:
+                await on_sentence(intent.reply)
+            return intent.reply
+
+        # Gemini absent → on retombe sur le non-streaming unifié.
+        if not client or not types:
+            rep = await demander_ia(texte)
+            if on_sentence and rep and "{" not in rep:
+                for s in split_streaming(rep + " ")[0]:
+                    await on_sentence(s)
+            return rep
+
+        prompt_actuel = construire_system_prompt(texte)
+        temp_hist = state.historique + [
+            types.Content(role="user", parts=[types.Part(text=texte)])
+        ]
+
+        buffer = ""
+        full = ""
+        json_detected = False
+        last_err = None
+
+        for model_name in MODELS_LIST:
+            try:
+                def _start_stream():
+                    return client.models.generate_content_stream(
+                        model=model_name,
+                        config=types.GenerateContentConfig(
+                            system_instruction=prompt_actuel,
+                            temperature=0.7,
+                            tools=[types.Tool(google_search=types.GoogleSearch())],
+                        ),
+                        contents=temp_hist,
+                    )
+
+                stream = await asyncio.wait_for(
+                    asyncio.to_thread(_start_stream), timeout=8.0
+                )
+
+                def _next(it=stream):
+                    try:
+                        return next(it)
+                    except StopIteration:
+                        return None
+
+                while True:
+                    chunk = await asyncio.wait_for(
+                        asyncio.to_thread(_next), timeout=12.0
+                    )
+                    if chunk is None:
+                        break
+                    delta = getattr(chunk, "text", None) or ""
+                    if not delta:
+                        continue
+                    full += delta
+
+                    if json_detected:
+                        continue
+                    buffer += delta
+                    if "{" in buffer:
+                        json_detected = True
+                        continue
+                    sentences, buffer = split_streaming(buffer)
+                    for s in sentences:
+                        if on_sentence:
+                            try:
+                                await on_sentence(s)
+                            except Exception as e:
+                                print(f"[STREAM] on_sentence : {e}")
+
+                # Flush du reliquat éventuel (phrase finale sans espace après).
+                if not json_detected and buffer.strip() and on_sentence:
+                    try:
+                        await on_sentence(buffer.strip())
+                    except Exception as e:
+                        print(f"[STREAM] on_sentence flush : {e}")
+
+                state.ajouter_historique("user", texte)
+                state.ajouter_historique("model", full)
+                return full
+            except Exception as e:
+                last_err = e
+                continue
+
+        # Tous les modèles Gemini ont raté le streaming : repli non-streaming.
+        print(f"[STREAM] Gemini KO ({last_err}) — repli non-streaming.")
+        rep = await demander_ia(texte)
+        if on_sentence and rep and "{" not in rep:
+            for s in split_streaming(rep + " ")[0]:
+                await on_sentence(s)
+        return rep
+    finally:
+        state.is_thinking = False
+        await state.send_web_state("idle")
 
 
 async def demander_ia_vision(texte, img_b64):

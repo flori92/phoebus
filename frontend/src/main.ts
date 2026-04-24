@@ -8,6 +8,7 @@
  */
 
 import { createOrb, type OrbState } from "./orb";
+import { createFaceAvatar } from "./face-avatar";
 import "./style.css";
 
 type JarvisMood =
@@ -864,6 +865,15 @@ const faceAvatar = new FaceAvatar({
 // ── Orb ───────────────────────────────────────────────────────────────────────
 const orb = createOrb(canvas);
 
+// ── Face avatar — activé par défaut, désactivable via ?avatar=orb ────────
+const urlParams = new URLSearchParams(window.location.search);
+const avatarMode = (urlParams.get("avatar") ?? "face").toLowerCase();
+const faceAvatar =
+  avatarMode === "orb" ? null : createFaceAvatar(document.body);
+if (faceAvatar) {
+  document.body.classList.add("has-face-avatar");
+}
+
 // ── State labels (French) ────────────────────────────────────────────────────
 const STATE_LABELS: Record<OrbState, string> = {
   idle: "",
@@ -900,6 +910,10 @@ function setVoiceLevel(level: number): void {
 function applyState(state: OrbState): void {
   currentState = state;
   orb.setState(state);
+  if (faceAvatar) faceAvatar.setState(state);
+  // On expose l'état sur body pour que la CSS puisse teinter l'orbe
+  // et l'aura sans JS additionnel.
+  document.body.dataset.state = state;
   statusEl.textContent = STATE_LABELS[state];
   document.body.dataset.jarvisState = state;
 
@@ -1087,6 +1101,7 @@ function connect(): void {
       }
       if (data.action === "set_volume" && typeof data.volume === "number") {
         orb.setVolume(data.volume);
+        if (faceAvatar) faceAvatar.setVolume(data.volume);
         setVoiceLevel(data.volume);
         return;
       }
@@ -1095,6 +1110,7 @@ function connect(): void {
       }
       if (typeof data.volume === "number") {
         orb.setVolume(data.volume);
+        if (faceAvatar) faceAvatar.setVolume(data.volume);
         setVoiceLevel(data.volume);
       }
     } catch {

@@ -16,7 +16,7 @@ from jarvis.config import (
 import jarvis.state as state
 from jarvis.security import audit_log, sanitize_action_data
 from jarvis.desktop import executer_action_pc
-from jarvis.ai import demander_ia, demander_ia_vision
+from jarvis.ai import demander_ia, demander_ia_vision, demander_ia_stream
 from jarvis.actions import traiter_reponse_ia
 from jarvis.voice import parler, monitor_claps
 from jarvis.stt_backends import get_backend as get_stt_backend
@@ -112,9 +112,25 @@ async def ws_handler(websocket):
                     if question:
                         state.extend_conversation()
                         state.mark_user_activity()
-                        rep = await demander_ia(question)
-                        if not await traiter_reponse_ia(rep):
-                            await parler(rep)
+
+                        # Streaming : on parle phrase par phrase dès que le LLM
+                        # produit. Si la réponse est une commande JSON, on
+                        # supprime le streaming voix et on traite à la fin.
+                        spoken = {"v": False}
+
+                        async def _on_sentence(s):
+                            spoken["v"] = True
+                            await parler(s)
+
+                        rep = await demander_ia_stream(question, on_sentence=_on_sentence)
+
+                        if "{" in (rep or "") and "}" in (rep or ""):
+                            await traiter_reponse_ia(rep)
+                        elif not spoken["v"] and rep:
+                            # Aucune phrase n'a été streamée (ex: fast-path texte) :
+                            # on gère comme avant.
+                            if not await traiter_reponse_ia(rep):
+                                await parler(rep)
                         state.extend_conversation()
 
                 elif action == "demander_ia_vision":
@@ -324,6 +340,19 @@ def listen_and_process(main_loop):
                         continue
 
                     async def process_ia(q):
+                        spoken = {"v": False}
+
+                        async def _on_sentence(s):
+                            spoken["v"] = True
+                            await parler(s)
+
+                        rep = await demander_ia_stream(q, on_sentence=_on_sentence)
+
+                        if "{" in (rep or "") and "}" in (rep or ""):
+                            await traiter_reponse_ia(rep)
+                        elif not spoken["v"] and rep:
+                            if not await traiter_reponse_ia(rep):
+                                await parler(rep)
                         rep = await demander_ia(q)
                         print(f"[JARVIS] Réponse IA : {rep}")
                         if not await traiter_reponse_ia(rep):
@@ -373,6 +402,28 @@ async def main():
 
     from jarvis.automation import demarrer_moteur_automatisation
     demarrer_moteur_automatisation()
+
+    # Pré-chauffage du cache TTS : on synthétise les 30 phrases les plus
+    # fréquentes en arrière-plan pour qu'elles soient "instantanées" dès
+    # la première utilisation. N'attend pas la fin pour démarrer le reste.
+    async def _warmup_tts():
+        try:
+            from jarvis.response_cache import prewarm
+            from jarvis.tts_backends import synthesize_to_file, EDGE_VOICE
+            await prewarm(synthesize_to_file, EDGE_VOICE, "auto")
+        except Exception as e:
+            print(f"[CACHE-TTS] warmup a échoué : {e}")
+    asyncio.create_task(_warmup_tts())
+
+    # Pré-chauffage Home Assistant : peuple le cache d'entités pour que le
+    # premier prompt système contienne déjà la liste fraîche.
+    async def _warmup_ha():
+        try:
+            from jarvis.home import prewarm_ha_context
+            await asyncio.to_thread(prewarm_ha_context)
+        except Exception as e:
+            print(f"[HA] prewarm échoué : {e}")
+    asyncio.create_task(_warmup_ha())
 
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
     asyncio.create_task(proactive.loop(parler))

@@ -205,6 +205,69 @@ def resolve_vacuum_entity(name="bob"):
             "vacuum.bob")
 
 
+# ── Résumé contextuel HA pour injection dans le prompt ─────────────────────
+
+# Domaines qu'on expose au LLM. Les autres (sensor, binary_sensor...) sont
+# nombreux et rarement utilisés en commande directe → on les masque.
+_HA_EXPOSED_DOMAINS = (
+    "light", "switch", "scene", "climate", "vacuum",
+    "media_player", "cover", "lock", "fan",
+    "alarm_control_panel", "script", "input_boolean",
+)
+
+
+def resume_ha_context(max_per_domain=18):
+    """Produit un résumé compact des entités HA disponibles, à injecter
+    dans le prompt système. Renvoie '' si HA indisponible ou vide.
+
+    Format :
+        ENTITÉS HOME ASSISTANT :
+        - light : Plafond salon, Cuisine, Bureau, Chambre parentale (+3 autres)
+        - switch : Prise salon, Prise bureau
+        - scene : Cinéma, Soirée, Lecture
+        ...
+    """
+    states = ha_get_states_cached()
+    if not states:
+        return ""
+
+    by_domain = {}
+    for s in states:
+        eid = s.get("entity_id", "")
+        if "." not in eid:
+            continue
+        dom = eid.split(".", 1)[0]
+        if dom not in _HA_EXPOSED_DOMAINS:
+            continue
+        friendly = (s.get("attributes", {}) or {}).get("friendly_name") or eid
+        by_domain.setdefault(dom, []).append(friendly)
+
+    if not by_domain:
+        return ""
+
+    lignes = [
+        "ENTITÉS HOME ASSISTANT DISPONIBLES (réfère-toi à ces noms exacts dans tes commandes JSON) :"
+    ]
+    for dom in _HA_EXPOSED_DOMAINS:
+        if dom not in by_domain:
+            continue
+        items = sorted(set(by_domain[dom]))
+        extra = max(0, len(items) - max_per_domain)
+        shown = items[:max_per_domain]
+        suffix = f" (+{extra} autres)" if extra else ""
+        lignes.append(f"- {dom} : {', '.join(shown)}{suffix}")
+
+    return "\n".join(lignes)
+
+
+def prewarm_ha_context():
+    """Force un appel HA au démarrage pour peupler le cache, sans bloquer."""
+    try:
+        ha_get_states_cached(max_age=0)
+    except Exception as e:
+        print(f"[HA] prewarm échoué : {e}")
+
+
 # ── Services HA ────────────────────────────────────────────────────────────
 
 def ha_appeler_service(domaine, service, entity_id, donnees=None):

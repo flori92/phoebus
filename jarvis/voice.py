@@ -12,8 +12,11 @@ import webbrowser
 from jarvis.config import edge_tts, pygame, pyaudio, sr, CLAP_THRESHOLD, pyautogui
 import jarvis.state as state
 from jarvis.home import resolve_ha_entity, PIECES_LUMIERES, ha_get_etat, ha_lumiere
+from jarvis.tts_backends import synthesize_to_file, TtsUnavailable, EDGE_VOICE
 from jarvis.tts_backends import synthesize_to_file, TtsUnavailable, stream_to_queue
 from jarvis.text_shaping import naturaliser
+from jarvis.response_cache import lookup as cache_lookup, register as cache_register
+from jarvis.sentence_splitter import split as split_sentences
 
 # ── Résolution locale (Math, Fr, Conversions, Trad) ──────────────────────
 
@@ -92,19 +95,60 @@ def init_mixer():
     if not pygame.mixer.get_init(): pygame.mixer.init()
     return True
 
-async def parler(texte):
-    # Naturalisation : abréviations, unités, respirations, ponctuation orale.
-    # Le texte en mémoire reste tel quel (pour le LLM), seul le flux TTS est retravaillé.
-    texte_tts = naturaliser(texte)
+async def _prepare_tts(sentence):
+    """Prépare le fichier audio d'une phrase. Renvoie (path, is_cache).
 
-    if state.historique and len(state.historique) > 0:
-        if state.historique[-1].parts[0].text != texte:
-            state.ajouter_historique("model", f"[Info retournée par l'action et énoncée à voix haute]: {texte}")
+    Consulte le cache avant tout. Si miss, synthétise puis archive. Si
+    aucun back-end TTS n'est disponible, émet un fallback WS et renvoie
+    (None, False)."""
+    cached = cache_lookup(sentence, EDGE_VOICE, "auto")
+    if cached is not None:
+        return (str(cached), True)
+    tmp = f"jarvis_tts_{int(time.time()*1_000_000)}.mp3"
+    try:
+        await synthesize_to_file(sentence, tmp)
+        cache_register(sentence, EDGE_VOICE, "auto", tmp)
+        return (tmp, False)
+    except TtsUnavailable:
+        recipients = state.get_authenticated_clients()
+        if recipients:
+            msg = json.dumps({"action": "jarvis_response", "text": sentence})
+            await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
+        return (None, False)
 
-    # Tant que Jarvis parle, on reste en mode conversation : le prochain tour
-    # n'exigera pas le mot-clé "jarvis".
-    state.extend_conversation()
 
+async def _play_file(path, is_cache, texte_tts):
+    """Joue un fichier audio via pygame (PC) ou via WebSocket (mobile web)."""
+    try:
+        if state._skip_pc_audio:
+            recipients = state.get_authenticated_clients()
+            if recipients:
+                try:
+                    with open(path, "rb") as f:
+                        audio_b64 = base64.b64encode(f.read()).decode('utf-8')
+                    msg = json.dumps({"action": "jarvis_audio", "text": texte_tts, "audio_b64": audio_b64})
+                    await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
+                except Exception as e:
+                    print(f"[MOBILE] Erreur envoi audio : {e}")
+        else:
+            if not init_mixer():
+                recipients = state.get_authenticated_clients()
+                if recipients:
+                    msg = json.dumps({"action": "jarvis_response", "text": texte_tts})
+                    await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
+                return
+
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                if state.STOP_PARLER:
+                    pygame.mixer.music.stop()
+                    break
+                t_audio = time.time() * 20
+                base_vol = 0.4 + 0.3 * math.sin(t_audio) + 0.2 * math.sin(t_audio * 0.5)
+                state.speak_volume = max(0.1, min(1.0, base_vol + 0.1))
+                await state.send_web_volume(state.speak_volume)
+                await asyncio.sleep(0.05)
     state.is_speaking = True
     await state.send_web_state("speaking")
     state.speak_volume = 0.0
@@ -177,18 +221,77 @@ async def parler(texte):
     except Exception as e:
         print(f"Erreur TTS : {e}")
     finally:
-        state.speak_volume = 0.0
-        state.is_speaking  = False
-        state.STOP_PARLER  = False
         try:
             if pygame and pygame.mixer.get_init():
                 pygame.mixer.music.unload()
         except: pass
-        await asyncio.sleep(0.1)
-        try:
-            import os
-            if os.path.exists(tmp): os.remove(tmp)
-        except: pass
+        if not is_cache:
+            try:
+                import os
+                if os.path.exists(path): os.remove(path)
+            except: pass
+
+
+async def parler(texte):
+    """Synthétise et joue un texte avec pipeline phrase-par-phrase.
+
+    La phrase N+1 est synthétisée EN PARALLÈLE de la lecture de la phrase N,
+    ce qui divise la latence totale d'un gros paragraphe par ~2.
+    La phrase 1 bénéficie en plus du cache pré-chauffé au démarrage.
+    """
+    texte_tts = naturaliser(texte)
+
+    if state.historique and len(state.historique) > 0:
+        if state.historique[-1].parts[0].text != texte:
+            state.ajouter_historique("model", f"[Info retournée par l'action et énoncée à voix haute]: {texte}")
+
+    state.extend_conversation()
+
+    sentences = split_sentences(texte_tts)
+    if not sentences:
+        return
+
+    state.is_speaking = True
+    await state.send_web_state("speaking")
+    state.speak_volume = 0.0
+
+    try:
+        # ── Pipeline : pendant qu'on joue N, on synthétise N+1. ───────────
+        prep_task = asyncio.create_task(_prepare_tts(sentences[0]))
+        for i, s in enumerate(sentences):
+            try:
+                result = await prep_task
+            except Exception as e:
+                print(f"[TTS] prep '{s[:40]}...' : {e}")
+                result = (None, False)
+
+            # Lance tout de suite la préparation de la phrase suivante.
+            next_task = None
+            if i + 1 < len(sentences):
+                next_task = asyncio.create_task(_prepare_tts(sentences[i + 1]))
+
+            if state.STOP_PARLER:
+                if next_task:
+                    next_task.cancel()
+                break
+
+            path, is_cache = result
+            if path is not None:
+                await _play_file(path, is_cache, s)
+
+            if state.STOP_PARLER:
+                if next_task:
+                    next_task.cancel()
+                break
+
+            prep_task = next_task
+    except Exception as e:
+        print(f"Erreur TTS : {e}")
+    finally:
+        state.speak_volume = 0.0
+        state.is_speaking = False
+        state.STOP_PARLER = False
+        await asyncio.sleep(0.05)
         await state.send_web_state("idle")
 
 
