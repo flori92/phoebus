@@ -2,6 +2,7 @@
 """Agent natif d'administration complète de la machine."""
 import os
 import time
+import asyncio
 import subprocess
 import json
 import base64

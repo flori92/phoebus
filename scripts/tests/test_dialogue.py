@@ -46,13 +46,19 @@ def test_clarify_demande_ambigue():
 
 
 def test_risk_levels():
-    from jarvis.security import risk_level_for
-    assert risk_level_for("ha_lumiere") == "low"
-    assert risk_level_for("ha_thermostat") == "medium"
-    assert risk_level_for("ha_alarme") == "high"
-    assert risk_level_for("agent_natif") == "high"
-    # Fallback pour action inconnue.
-    assert risk_level_for("un_truc_inexistant") == "low"
+    import jarvis.security as security
+
+    original_config = security.DEVICE_CONFIG
+    try:
+        security.DEVICE_CONFIG = {}
+        assert security.risk_level_for("ha_lumiere") == "low"
+        assert security.risk_level_for("ha_thermostat") == "medium"
+        assert security.risk_level_for("ha_alarme") == "high"
+        assert security.risk_level_for("agent_natif") == "high"
+        # Fallback pour action inconnue.
+        assert security.risk_level_for("un_truc_inexistant") == "low"
+    finally:
+        security.DEVICE_CONFIG = original_config
 
 
 def test_conversation_window():

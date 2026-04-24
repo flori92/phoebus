@@ -436,9 +436,6 @@ async def demander_ia(texte):
             try:
                 rep_grok = await demander_grok(texte)
                 if rep_grok: return rep_grok
-            try: 
-                res = await demander_grok(texte)
-                if res: return res
             except Exception: pass
 
         rep_ollama = await demander_ollama(texte)

@@ -9,6 +9,7 @@ from jarvis.home import (
     resolve_ha_entity, ha_lumiere, ha_interrupteur, ha_thermostat, ha_scene,
     resolve_temperature_sensor, resolve_humidity_sensor, resolve_battery_sensor,
     resolve_energy_sensor, resolve_alarm_entity, resolve_vacuum_entity,
+    resolve_scene_entity,
     ha_get_etat, ha_appeler_service, ha_get_calendrier, get_meteo_actuelle,
     get_alertes_meteo, get_resultats_football, get_classement_football, get_resultats_sport_gemini,
     recherche_web_serpapi, PIECES_LUMIERES, PIECES_PRISES,

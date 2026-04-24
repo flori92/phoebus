@@ -8,7 +8,6 @@
  */
 
 import { createOrb, type OrbState } from "./orb";
-import { createFaceAvatar } from "./face-avatar";
 import "./style.css";
 
 type JarvisMood =
@@ -861,18 +860,10 @@ const faceAvatar = new FaceAvatar({
   reflectiveVideoEl: avatarReflectiveVideoEl,
   expressiveVideoEl: avatarExpressiveVideoEl,
 });
+document.body.classList.add("has-face-avatar");
 
 // ── Orb ───────────────────────────────────────────────────────────────────────
 const orb = createOrb(canvas);
-
-// ── Face avatar — activé par défaut, désactivable via ?avatar=orb ────────
-const urlParams = new URLSearchParams(window.location.search);
-const avatarMode = (urlParams.get("avatar") ?? "face").toLowerCase();
-const faceAvatar =
-  avatarMode === "orb" ? null : createFaceAvatar(document.body);
-if (faceAvatar) {
-  document.body.classList.add("has-face-avatar");
-}
 
 // ── State labels (French) ────────────────────────────────────────────────────
 const STATE_LABELS: Record<OrbState, string> = {

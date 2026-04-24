@@ -353,10 +353,6 @@ def listen_and_process(main_loop):
                         elif not spoken["v"] and rep:
                             if not await traiter_reponse_ia(rep):
                                 await parler(rep)
-                        rep = await demander_ia(q)
-                        print(f"[JARVIS] Réponse IA : {rep}")
-                        if not await traiter_reponse_ia(rep):
-                            await parler(rep)
                         # Après chaque tour, on reste à l'écoute naturellement.
                         state.extend_conversation()
 

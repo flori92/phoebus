@@ -13,7 +13,6 @@ from jarvis.config import edge_tts, pygame, pyaudio, sr, CLAP_THRESHOLD, pyautog
 import jarvis.state as state
 from jarvis.home import resolve_ha_entity, PIECES_LUMIERES, ha_get_etat, ha_lumiere
 from jarvis.tts_backends import synthesize_to_file, TtsUnavailable, EDGE_VOICE
-from jarvis.tts_backends import synthesize_to_file, TtsUnavailable, stream_to_queue
 from jarvis.text_shaping import naturaliser
 from jarvis.response_cache import lookup as cache_lookup, register as cache_register
 from jarvis.sentence_splitter import split as split_sentences
@@ -149,75 +148,6 @@ async def _play_file(path, is_cache, texte_tts):
                 state.speak_volume = max(0.1, min(1.0, base_vol + 0.1))
                 await state.send_web_volume(state.speak_volume)
                 await asyncio.sleep(0.05)
-    state.is_speaking = True
-    await state.send_web_state("speaking")
-    state.speak_volume = 0.0
-    utterance_id = str(int(time.time() * 1000))
-    tmp = f"jarvis_tts_{int(time.time()*1000)}.mp3"
-    
-    try:
-        # 1. Si on est en mode "skip PC audio" (ex: mobile), on utilise le streaming
-        if state._skip_pc_audio:
-            await state.send_web_expression(texte_tts, utterance_id=utterance_id)
-            recipients = state.get_authenticated_clients()
-            if recipients:
-                queue = asyncio.Queue()
-                # On lance la synthèse en tâche de fond
-                synth_task = asyncio.create_task(stream_to_queue(texte_tts, queue))
-                
-                # On consomme les chunks et on les envoie immédiatement
-                while True:
-                    chunk = await queue.get()
-                    if chunk is None: break # Fin
-                    audio_b64 = base64.b64encode(chunk).decode('utf-8')
-                    msg = json.dumps({
-                        "action": "jarvis_audio_chunk",
-                        "id": utterance_id,
-                        "audio_b64": audio_b64
-                    })
-                    await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
-                
-                # Récupération des visèmes (lipsync) à la fin du flux
-                synth_result = await synth_task
-                if isinstance(synth_result, dict):
-                    lipsync = synth_result.get("lipsync") or {}
-                    frames = lipsync.get("frames")
-                    if frames:
-                        await state.send_web_lipsync(frames, utterance_id=utterance_id)
-            return
-
-        # 2. Chemin classique (PC / Pygame) : Synthèse complète puis lecture
-        try:
-            synth_result = await synthesize_to_file(texte_tts, tmp)
-        except TtsUnavailable:
-            await state.send_web_expression(texte_tts, utterance_id=utterance_id)
-            recipients = state.get_authenticated_clients()
-            if recipients:
-                msg = json.dumps({"action": "jarvis_response", "id": utterance_id, "text": texte_tts})
-                await asyncio.gather(*[ws.send(msg) for ws in recipients], return_exceptions=True)
-            return
-
-        await state.send_web_expression(texte_tts, utterance_id=utterance_id)
-        if isinstance(synth_result, dict):
-            lipsync = synth_result.get("lipsync") or {}
-            frames = lipsync.get("frames")
-            if frames:
-                await state.send_web_lipsync(frames, utterance_id=utterance_id)
-        
-        if not init_mixer():
-            return
-            
-        pygame.mixer.music.load(tmp)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            if state.STOP_PARLER:
-                pygame.mixer.music.stop()
-                break
-            t_audio = time.time() * 20
-            base_vol = 0.4 + 0.3 * math.sin(t_audio) + 0.2 * math.sin(t_audio * 0.5)
-            state.speak_volume = max(0.1, min(1.0, base_vol + 0.1))
-            await state.send_web_volume(state.speak_volume)
-            await asyncio.sleep(0.05)
     except Exception as e:
         print(f"Erreur TTS : {e}")
     finally:
