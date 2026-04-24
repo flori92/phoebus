@@ -10,10 +10,10 @@ Le choix du back-end se fait une seule fois au démarrage via `get_backend()`.
 """
 import os
 
-from jarvis.config import sr
+from jarvis.config import sr, groq_client
 
 
-JARVIS_STT_BACKEND = os.getenv("JARVIS_STT_BACKEND", "auto").strip().lower()  # auto | google | whisper
+JARVIS_STT_BACKEND = os.getenv("JARVIS_STT_BACKEND", "auto").strip().lower()  # auto | groq | google | whisper
 JARVIS_WHISPER_MODEL = os.getenv("JARVIS_WHISPER_MODEL", "base").strip()
 
 
@@ -80,6 +80,38 @@ def _google_recognize_factory():
     return recognize
 
 
+def _groq_recognize_factory():
+    if not groq_client:
+        return None
+
+    import tempfile
+    def recognize(audio_data):
+        wav_bytes = audio_data.get_wav_data()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(wav_bytes)
+            path = f.name
+        try:
+            with open(path, "rb") as file:
+                # Groq API demande un tuple (nom_fichier, bytes) ou un file-like object
+                transcription = groq_client.audio.transcriptions.create(
+                    file=(os.path.basename(path), file.read()),
+                    model="whisper-large-v3",
+                    language="fr",
+                    response_format="text"
+                )
+            return transcription.strip()
+        except Exception as e:
+            print(f"[STT] Erreur Groq : {e}")
+            return ""
+        finally:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+    return recognize
+
+
 def get_backend():
     """Renvoie (nom, fonction recognize). None si rien de disponible."""
     global _backend_cache
@@ -89,19 +121,27 @@ def get_backend():
     name = None
     fn = None
 
-    if JARVIS_STT_BACKEND == "whisper":
+    if JARVIS_STT_BACKEND == "groq":
+        fn = _groq_recognize_factory()
+        name = "groq" if fn else None
+    elif JARVIS_STT_BACKEND == "whisper":
         fn = _try_whisper()
         name = "whisper" if fn else None
     elif JARVIS_STT_BACKEND == "google":
         fn = _google_recognize_factory()
         name = "google" if fn else None
     else:  # auto
-        fn = _try_whisper()
+        # Ordre de préférence : groq (si clé dispo) -> whisper (si installé) -> google
+        fn = _groq_recognize_factory()
         if fn:
-            name = "whisper"
+            name = "groq"
         else:
-            fn = _google_recognize_factory()
-            name = "google" if fn else None
+            fn = _try_whisper()
+            if fn:
+                name = "whisper"
+            else:
+                fn = _google_recognize_factory()
+                name = "google" if fn else None
 
     _backend_cache = (name, fn)
     return _backend_cache
