@@ -102,9 +102,28 @@ if OpenAI and OPENAI_API_KEY and OPENAI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_
 
 arena_client = None
 ARENA_URL = os.getenv("ARENA_URL", "http://localhost:8000/api/v1").strip()
+ARENA_API_KEY = os.getenv("ARENA_API_KEY", "arena").strip() or "arena"
+ARENA_MODEL_CANDIDATES = [
+    m.strip() for m in os.getenv(
+        "ARENA_MODEL_CANDIDATES",
+        "gemini-2.5-flash,gemini-3-flash,gemini-2.0-flash-001,Max",
+    ).split(",") if m.strip()
+]
+ARENA_DEEP_MODEL_CANDIDATES = [
+    m.strip() for m in os.getenv(
+        "ARENA_DEEP_MODEL_CANDIDATES",
+        "claude-sonnet-4-5-20250929,claude-3-5-sonnet-20241022,gemini-2.5-pro,gemini-3.1-pro-preview",
+    ).split(",") if m.strip()
+]
+ARENA_MODEL = os.getenv("ARENA_MODEL", ARENA_MODEL_CANDIDATES[0]).strip()
+ARENA_DEEP_MODEL = os.getenv("ARENA_DEEP_MODEL", ARENA_DEEP_MODEL_CANDIDATES[0]).strip()
+try:
+    ARENA_TIMEOUT = float(os.getenv("ARENA_TIMEOUT", "30"))
+except ValueError:
+    ARENA_TIMEOUT = 30.0
 if OpenAI:
     # Le bridge n'a pas besoin de clé API réelle mais d'une instance OpenAI
-    arena_client = OpenAI(api_key="arena", base_url=ARENA_URL)
+    arena_client = OpenAI(api_key=ARENA_API_KEY, base_url=ARENA_URL)
 
 grok_client = None
 if OpenAI and XAI_API_KEY and XAI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:

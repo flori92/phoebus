@@ -15,6 +15,7 @@ PHOEBUS_vision_temp.png
 logs/
 phoebus_tts_cache/
 phoebus_vector_db/
+external/
 backups/
 output/
 

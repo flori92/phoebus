@@ -57,26 +57,27 @@ PIECES_ALIAS = {
 }
 
 _PIECE_PATTERN = "(?:" + "|".join(sorted(PIECES_ALIAS.keys(), key=len, reverse=True)) + ")"
+_WAKE_PREFIX = r"(?:(?:phoebus|phébus|fébus|febus|feubus|rebus)[, ]*)?"
 
 
 # ── Patterns ──────────────────────────────────────────────────────────────
 
 _RE_ALLUME = re.compile(
-    rf"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:allume|éclaire|eclaire|lumiere|lumière)"
+    rf"^{_WAKE_PREFIX}(?:allume|éclaire|eclaire|lumiere|lumière)"
     rf"(?:\s+(?:la lumière|la lumiere|les lumières|les lumieres))?"
     rf"(?:\s+(?:du|de la|de l'|dans le|dans la|dans l'|au|à la|la|le|l'|les))?"
     rf"\s+(?P<piece>{_PIECE_PATTERN})$"
 )
 
 _RE_ETEINS = re.compile(
-    rf"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:éteins|eteins|coupe)"
+    rf"^{_WAKE_PREFIX}(?:éteins|eteins|coupe)"
     rf"(?:\s+(?:la lumière|la lumiere|les lumières|les lumieres))?"
     rf"(?:\s+(?:du|de la|de l'|dans le|dans la|dans l'|au|à la|la|le|l'|les))?"
     rf"\s+(?P<piece>{_PIECE_PATTERN})$"
 )
 
 _RE_HEURE = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:quelle heure est[- ]il"
+    rf"^{_WAKE_PREFIX}(?:quelle heure est[- ]il"
     r"|il est quelle heure"
     r"|tu as l[' ]heure"
     r"|donne(?:-| )moi l[' ]heure"
@@ -84,39 +85,39 @@ _RE_HEURE = re.compile(
 )
 
 _RE_DATE = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:quel jour (?:sommes|on est|est)(?:[- ]nous)?"
+    rf"^{_WAKE_PREFIX}(?:quel jour (?:sommes|on est|est)(?:[- ]nous)?"
     r"|on est quel jour"
     r"|quelle (?:est la )?date"
     r"|la date du jour)$"
 )
 
 _RE_METEO = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:(?:quel temps|quelle météo|la météo|le temps|il fait quoi)"
+    rf"^{_WAKE_PREFIX}(?:(?:quel temps|quelle météo|la météo|le temps|il fait quoi)"
     r"(?:\s+(?:fait[- ]il|est[- ]il))?"
     r"(?:\s+(?:à|a|en|sur|au|aux)\s+(?P<ville>[a-zà-ÿ' -]+))?)$"
 )
 
 _RE_THERMOSTAT = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:mets|règle|regle|passe)\s+(?:le\s+)?thermostat\s+(?:à|a|sur)\s+(?P<t>\d{1,2})(?:\s*degrés?)?$"
+    rf"^{_WAKE_PREFIX}(?:mets|règle|regle|passe)\s+(?:le\s+)?thermostat\s+(?:à|a|sur)\s+(?P<t>\d{{1,2}})(?:\s*degrés?)?$"
 )
 
 _RE_SCENE = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:lance|active|démarre|demarre)\s+(?:la\s+)?(?:scène|scene|mode)\s+(?P<nom>[a-zà-ÿ' -]+)$"
+    rf"^{_WAKE_PREFIX}(?:lance|active|démarre|demarre)\s+(?:la\s+)?(?:scène|scene|mode)\s+(?P<nom>[a-zà-ÿ' -]+)$"
 )
 
 _RE_MEMORISER = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:retiens|note|mémorise|memorise|souviens[- ]toi)\s+(?:que\s+)?(?P<contenu>.+)$"
+    rf"^{_WAKE_PREFIX}(?:retiens|note|mémorise|memorise|souviens[- ]toi)\s+(?:que\s+)?(?P<contenu>.+)$"
 )
 
 _RE_LISTER_MEM = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:liste|montre|donne[- ]moi)\s+(?:ta|la)\s+(?:mémoire|memoire|liste)$"
+    rf"^{_WAKE_PREFIX}(?:liste|montre|donne[- ]moi)\s+(?:ta|la)\s+(?:mémoire|memoire|liste)$"
 )
 
 _RE_MODE_IRON_MAN_ON = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:active|lance|démarre|demarre)\s+(?:le\s+)?mode\s+iron\s*man$"
+    rf"^{_WAKE_PREFIX}(?:active|lance|démarre|demarre)\s+(?:le\s+)?mode\s+iron\s*man$"
 )
 _RE_MODE_IRON_MAN_OFF = re.compile(
-    r"^(?:(?i)PHOEBUS|phébus|fébus|febus|feubus|rebus|PHOEBUS[, ]*)?(?:désactive|desactive|coupe|arrête|arrete|stop)\s+(?:le\s+)?mode\s+iron\s*man$"
+    rf"^{_WAKE_PREFIX}(?:désactive|desactive|coupe|arrête|arrete|stop)\s+(?:le\s+)?mode\s+iron\s*man$"
 )
 
 

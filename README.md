@@ -33,6 +33,7 @@ PHOEBUS route maintenant chaque requete vers le meilleur cerveau disponible:
 - fast-path local pour les commandes evidentes (domotique, heure, date)
 - Gemini pour les requetes complexes, la recherche outillee et la vision
 - Groq pour les reponses texte tres rapides
+- Arena via LMArenaBridge local pour acceder aux modeles gratuits exposes par LM Arena
 - Mistral comme cerveau francophone/europeen secondaire
 - Grok pour les sujets X/Twitter si `XAI_API_KEY` est configuree
 - Kimi (Moonshot AI) comme modele chinois alternatif puissant
@@ -64,6 +65,28 @@ PHOEBUS_BRAIN_ORDER=gemini,groq,mistral,grok,ollama
 Les metriques de latence/echec sont stockees dans `logs/ai_router_metrics.json`.
 Si un fournisseur tombe en erreur, PHOEBUS le met temporairement en retrait et
 bascule sur le suivant sans casser la conversation.
+
+## Bridge Arena gratuit
+
+PHOEBUS sait utiliser un bridge OpenAI-compatible local vers LM Arena. Le code du
+bridge reste dans `external/LMArenaBridge` et ses cookies restent hors Git.
+
+1. Ajoutez dans `.env` le cookie `arena-auth-prod-v1` complet si vous en avez un:
+   `ARENA_AUTH_PROD_V1=base64-...`
+2. Lancez l'installation du bridge:
+   `.venv/bin/python scripts/arena_bridge.py setup --install`
+3. Demarrez PHOEBUS normalement. Avec `PHOEBUS_ARENA_BRIDGE_AUTO_START=auto`,
+   `main2.py` lance le bridge quand un token Arena ou un `config.json` local existe.
+
+`ARENA_URL` doit pointer vers `http://localhost:8000/api/v1` et `ARENA_API_KEY`
+doit rester identique a la cle configuree dans le bridge, par defaut `arena`.
+Sans cookie, `PHOEBUS_ARENA_BRIDGE_ALLOW_ANONYMOUS=1` autorise le bridge a tenter
+la session anonyme geree par LMArenaBridge.
+PHOEBUS interroge `/api/v1/models` et choisit automatiquement le premier modele
+Arena disponible dans `ARENA_MODEL_CANDIDATES` ou `ARENA_DEEP_MODEL_CANDIDATES`.
+Les appels Arena utilisent le streaming pour permettre au bridge de basculer sur
+son transport navigateur quand aucun token n'est configure.
+Les logs du bridge lance par `main2.py` vont dans `logs/arena_bridge.log`.
 
 ## Lancement
 

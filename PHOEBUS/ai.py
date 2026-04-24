@@ -10,7 +10,9 @@ from datetime import datetime
 from PHOEBUS.config import (
     client, grok_client, groq_client, mistral_client, openai_client, kimi_client,
     arena_client, CHOSEN_MODEL, MODELS_LIST, OLLAMA_MODELS, OLLAMA_URL, types,
-    GROQ_MODEL, GROK_MODEL, MISTRAL_MODEL, OPENAI_MODEL, KIMI_MODEL, ARENA_URL
+    GROQ_MODEL, GROK_MODEL, MISTRAL_MODEL, OPENAI_MODEL, KIMI_MODEL, ARENA_URL,
+    ARENA_MODEL, ARENA_DEEP_MODEL, ARENA_MODEL_CANDIDATES, ARENA_DEEP_MODEL_CANDIDATES,
+    ARENA_TIMEOUT,
 )
 import PHOEBUS.state as state
 from PHOEBUS.memory import construire_contexte_memoire, resumer_profil, noter_registre, detecter_registre
@@ -25,6 +27,8 @@ try:
     from PHOEBUS.memory_timeline import enrichir_contexte_system_prompt as _timeline_ctx
 except ImportError:
     _timeline_ctx = None
+
+_ARENA_MODELS_CACHE = {"ts": 0.0, "ids": []}
 
 def construire_system_prompt(texte_utilisateur="", minimal=False):
     contexte_memoire = construire_contexte_memoire()
@@ -398,31 +402,93 @@ async def demander_arena(texte, profile=None):
     if not arena_client:
         return None
     try:
-        # Sélection du modèle de l'arène en fonction du besoin
-        # Identifiants typiques de l'Arena Bridge
-        model = "gpt-4o"
-        if profile and profile.kind in ("deep", "realtime"):
-            model = "claude-3-5-sonnet-20240620"
+        model = await _resolve_arena_model(profile)
 
         system_prompt = construire_system_prompt(texte) + (
             f"\n\n[NOTE INTERNE] Requête routée via LMArenaBridge vers {model}. "
             "Ne mentionne pas l'Arène ni le nom du modèle à Floriace."
         )
         messages = _messages_openai(system_prompt, texte)
-        
-        completion = await asyncio.to_thread(
-            arena_client.chat.completions.create,
-            model=model,
-            messages=messages,
-            temperature=0.8,
+
+        timeout_s = ARENA_TIMEOUT
+        if profile:
+            timeout_s = min(ARENA_TIMEOUT, max(float(profile.timeout_s), 10.0))
+        rep = await asyncio.wait_for(
+            asyncio.to_thread(_arena_stream_completion, model, messages),
+            timeout=timeout_s,
         )
-        rep = completion.choices[0].message.content
         state.ajouter_historique("user", texte)
         state.ajouter_historique("model", rep)
         return rep
     except Exception as e:
         print(f"[ERREUR ARENA] {e}")
         return None
+
+
+def _arena_stream_completion(model, messages):
+    """Use streaming because LMArenaBridge can fallback to browser transport without auth tokens."""
+    stream = arena_client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0.8,
+        stream=True,
+    )
+    chunks = []
+    for event in stream:
+        choices = getattr(event, "choices", None) or []
+        if not choices:
+            continue
+        delta = getattr(choices[0], "delta", None)
+        content = getattr(delta, "content", None) if delta is not None else None
+        if content:
+            chunks.append(content)
+    return "".join(chunks).strip()
+
+
+async def _arena_model_ids():
+    if not arena_client:
+        return []
+    now = time.monotonic()
+    cached_ids = _ARENA_MODELS_CACHE.get("ids") or []
+    if cached_ids and now - float(_ARENA_MODELS_CACHE.get("ts", 0.0)) < 1800:
+        return cached_ids
+    try:
+        models = await asyncio.to_thread(arena_client.models.list)
+        ids = [m.id for m in getattr(models, "data", []) if getattr(m, "id", None)]
+        if ids:
+            _ARENA_MODELS_CACHE["ids"] = ids
+            _ARENA_MODELS_CACHE["ts"] = now
+        return ids
+    except Exception as e:
+        print(f"[ARENA] Liste des modeles indisponible, fallback statique : {e}")
+        return cached_ids
+
+
+async def _resolve_arena_model(profile=None):
+    deep = bool(profile and profile.kind in ("deep", "realtime"))
+    candidates = []
+    if deep:
+        candidates.extend([ARENA_DEEP_MODEL, *ARENA_DEEP_MODEL_CANDIDATES])
+    candidates.extend([ARENA_MODEL, *ARENA_MODEL_CANDIDATES])
+    candidates = [m for i, m in enumerate(candidates) if m and m not in candidates[:i]]
+
+    ids = await _arena_model_ids()
+    if not ids:
+        return candidates[0]
+
+    by_lower = {mid.lower(): mid for mid in ids}
+    for candidate in candidates:
+        match = by_lower.get(candidate.lower())
+        if match:
+            return match
+
+    for candidate in candidates:
+        needle = candidate.lower()
+        for mid in ids:
+            if needle in mid.lower():
+                return mid
+
+    return ids[0]
 
 
 async def demander_groq(texte):
