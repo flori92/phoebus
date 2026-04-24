@@ -285,10 +285,20 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
         
+    def do_GET(self):
+        """Page de test pour vérifier la connectivité depuis l'iPhone."""
+        if self.path == '/ping':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "Jarvis Online", "ip": self.client_address[0]}).encode())
+            return
+        super().do_GET()
+
     def do_POST(self):
         """Webhooks: Reçoit les événements HA ou les commandes iPhone."""
-        # Sécurité basique via Token
-        auth_header = self.headers.get('Authorization', '')
+        # Sécurité basique via Token (on accepte Authorization ou authorization)
+        auth_header = self.headers.get('Authorization') or self.headers.get('authorization', '')
         token_valid = True
         if WS_AUTH_REQUIRED:
             token_valid = (f"Bearer {JARVIS_WS_TOKEN}" == auth_header)

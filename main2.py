@@ -9,6 +9,21 @@ import os
 import shutil
 import subprocess
 
+# ── Auto-VENV Switch ────────────────────────────────────────────────────────
+def ensure_venv():
+    """S'assure que le script tourne dans le venv, sinon se relance lui-même."""
+    is_venv = (hasattr(sys, 'real_prefix') or 
+               (target := os.path.join(os.getcwd(), ".venv", "bin", "python")) and 
+               sys.executable == target)
+    
+    venv_py = os.path.join(os.getcwd(), ".venv", "bin", "python")
+    if not is_venv and os.path.exists(venv_py) and sys.executable != venv_py:
+        print(f"[SYSTEM] Relance du script dans l'environnement virtuel...")
+        os.execv(venv_py, [venv_py] + sys.argv)
+
+if __name__ == "__main__":
+    ensure_venv()
+
 try:
     from jarvis.server import main as jarvis_main
 except ImportError as e:
