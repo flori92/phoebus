@@ -11,7 +11,7 @@ import hashlib
 
 from jarvis.config import (
     websockets, sr, DEFAULT_WS_PORT, DEFAULT_MOBILE_PORT, MOBILE_DIR,
-    JARVIS_WS_TOKEN, WS_AUTH_REQUIRED
+    JARVIS_WS_TOKEN, WS_AUTH_REQUIRED, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 )
 import jarvis.state as state
 from jarvis.security import audit_log, sanitize_action_data
@@ -22,6 +22,14 @@ from jarvis.voice import parler, monitor_claps
 from jarvis.stt_backends import get_backend as get_stt_backend
 from jarvis.clarify import transcription_incertaine
 from jarvis import proactive
+
+# Imports optionnels
+try:
+    from telegram import Update
+    from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+    _TELEGRAM_AVAILABLE = True
+except ImportError:
+    _TELEGRAM_AVAILABLE = False
 
 # Imports optionnels des nouveaux modules
 try:
@@ -214,6 +222,31 @@ async def start_websocket_server():
         print(f"[WEB] Erreur WebSocket : {e}")
 
 
+async def executer_commande_generique(texte: str, source: str = "voix"):
+    """Exécute une commande texte provenant de n'importe quelle source."""
+    if not texte: return
+    
+    state.mark_user_activity()
+    print(f"[{source.upper()}] {texte}")
+    
+    spoken = {"v": False}
+    async def _on_sentence(s):
+        spoken["v"] = True
+        await parler(s)
+
+    # On utilise le streaming pour la réactivité
+    rep = await demander_ia_stream(texte, on_sentence=_on_sentence)
+
+    if "{" in (rep or "") and "}" in (rep or ""):
+        await traiter_reponse_ia(rep)
+    elif not spoken["v"] and rep:
+        if not await traiter_reponse_ia(rep):
+            await parler(rep)
+    
+    # On reste à l'écoute après une commande externe
+    state.extend_conversation()
+
+
 # ── Serveur Mobile (HTTP) ──────────────────────────────────────────────────
 
 class MobileHandler(http.server.SimpleHTTPRequestHandler):
@@ -224,26 +257,50 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
         pass
         
     def do_POST(self):
-        """Webhooks: Reçoit les événements instantanés de Home Assistant."""
+        """Webhooks: Reçoit les événements HA ou les commandes iPhone."""
+        # Sécurité basique via Token
+        auth_header = self.headers.get('Authorization', '')
+        token_valid = True
+        if WS_AUTH_REQUIRED:
+            token_valid = (f"Bearer {JARVIS_WS_TOKEN}" == auth_header)
+
         if self.path == '/webhook/ha_event':
+            # ... (code existant pour HA)
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
-                event = data.get("event", "inconnu")
                 message = data.get("message", "")
-                print(f"[WEBHOOK] Événement HA reçu : {event}")
-                
-                # Réaction instantanée de Jarvis
                 if message:
-                    asyncio.run(parler(message))
-                    
+                    from jarvis.server import main_loop
+                    asyncio.run_coroutine_threadsafe(parler(message), main_loop)
+                self.send_response(200)
+                self.end_headers()
+            except:
+                self.send_response(400)
+                self.end_headers()
+
+        elif self.path == '/webhook/command':
+            if not token_valid:
+                self.send_response(401)
+                self.end_headers()
+                return
+
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                texte = data.get("text", "")
+                if texte:
+                    from jarvis.server import main_loop
+                    asyncio.run_coroutine_threadsafe(executer_commande_generique(texte, source="ios"), main_loop)
+                
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
                 self.wfile.write(b'{"status": "ok"}')
             except Exception as e:
-                print(f"[WEBHOOK] Erreur : {e}")
+                print(f"[WEBHOOK] Erreur commande : {e}")
                 self.send_response(400)
                 self.end_headers()
         else:
@@ -390,25 +447,7 @@ def listen_and_process(main_loop):
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
-                    async def process_ia(q):
-                        spoken = {"v": False}
-
-                        async def _on_sentence(s):
-                            spoken["v"] = True
-                            await parler(s)
-
-                        rep = await demander_ia_stream(q, on_sentence=_on_sentence)
-
-                        if "{" in (rep or "") and "}" in (rep or ""):
-                            await traiter_reponse_ia(rep)
-                        elif not spoken["v"] and rep:
-                            if not await traiter_reponse_ia(rep):
-                                await parler(rep)
-                        # Après chaque tour, on reste à l'écoute naturellement.
-                        state.extend_conversation()
-
-                    state.extend_conversation()
-                    asyncio.run_coroutine_threadsafe(process_ia(cleaned_texte), main_loop)
+                    asyncio.run_coroutine_threadsafe(executer_commande_generique(cleaned_texte, source="voix"), main_loop)
                             
                 except sr.WaitTimeoutError:
                     if state.is_in_conversation():
@@ -428,6 +467,45 @@ def listen_and_process(main_loop):
         print(f"[MIC] Impossible d'ouvrir le micro : {e}")
 
 
+# ── Bot Telegram ───────────────────────────────────────────────────────────
+
+async def run_telegram_bot(main_loop):
+    if not _TELEGRAM_AVAILABLE or not TELEGRAM_TOKEN:
+        if TELEGRAM_TOKEN: print("[TELEGRAM] Librairie absente.")
+        return
+
+    print("[TELEGRAM] Démarrage du bot...")
+
+    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Sécurité : on ne répond qu'au propriétaire
+        if TELEGRAM_CHAT_ID and str(update.effective_chat.id) != str(TELEGRAM_CHAT_ID):
+            print(f"[TELEGRAM] Message ignoré de chat_id inconnu : {update.effective_chat.id}")
+            return
+
+        user_text = update.message.text
+        if not user_text: return
+
+        # On exécute la commande via le cœur Jarvis
+        asyncio.run_coroutine_threadsafe(
+            executer_commande_generique(user_text, source="telegram"),
+            main_loop
+        )
+        await update.message.reply_text("Commande reçue, Monsieur.")
+
+    try:
+        app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+        app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
+        print("[TELEGRAM] Bot opérationnel.")
+        # On garde la tâche en vie
+        while True:
+            await asyncio.sleep(3600)
+    except Exception as e:
+        print(f"[TELEGRAM] Erreur : {e}")
+
+
 # ── Boucle Principale ──────────────────────────────────────────────────────
 
 async def main():
@@ -439,6 +517,7 @@ async def main():
     # Threads annexes
     threading.Thread(target=run_mobile_server, daemon=True).start()
     threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
+    asyncio.create_task(run_telegram_bot(main_loop))
     # threading.Thread(target=monitor_claps, daemon=True).start()
 
     from jarvis.utils import launch_app, get_lan_ip

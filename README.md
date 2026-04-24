@@ -35,7 +35,24 @@ Jarvis route maintenant chaque requete vers le meilleur cerveau disponible:
 - Groq pour les reponses texte tres rapides
 - Mistral comme cerveau francophone/europeen secondaire
 - Grok pour les sujets X/Twitter si `XAI_API_KEY` est configuree
+- Kimi (Moonshot AI) comme modele chinois alternatif puissant
+- OpenAI (GPT-4o) comme fournisseur de secours
 - Ollama local en repli ou en mode confidentialite
+
+## iPhone & Telegram Integration
+
+### Raccourcis iPhone (Siri / Texte)
+Jarvis expose un Webhook pour recevoir des commandes directement depuis votre iPhone.
+- **URL** : `http://VOTRE_IP_LAN:8080/webhook/command`
+- **Méthode** : `POST`
+- **Headers** : `Authorization: Bearer VOTRE_WS_TOKEN` (si configuré)
+- **Body (JSON)** : `{"text": "votre commande ici"}`
+
+### Bot Telegram
+Vous pouvez piloter Jarvis par message via un bot privé.
+1. Créez un bot via [@BotFather](https://t.me/botfather).
+2. Ajoutez `TELEGRAM_TOKEN=votre_token` dans `.env`.
+3. (Optionnel) Ajoutez `TELEGRAM_CHAT_ID=votre_id` pour que Jarvis ne réponde qu'à vous.
 
 Configurez le comportement dans `.env`:
 

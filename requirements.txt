@@ -38,6 +38,7 @@ spotipy>=2.22
 
 # ── Multi-utilisateurs (embeddings vocaux) ─────────────────────────────
 resemblyzer>=0.1.1
+python-telegram-bot>=20.0
 
 # ── Windows-only helpers ───────────────────────────────────────────────
 comtypes>=1.2; platform_system == "Windows"
