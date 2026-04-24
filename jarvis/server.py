@@ -421,20 +421,37 @@ def listen_and_process(main_loop):
     print(f"[MIC] Back-end STT actif : {stt_name}")
 
     r = sr.Recognizer()
+    # On ajuste les paramètres pour être moins sensible au bruit de fond/silence
+    r.pause_threshold = 1.1  # Temps de silence avant de valider une phrase
+    r.non_speaking_duration = 0.5
+    
+    # Liste des hallucinations classiques de Whisper/Groq en cas de silence
+    HALLUCINATIONS_STT = {
+        "sous-titrage societe radio-canada",
+        "sous-titrage",
+        "societe radio-canada",
+        "merci.",
+        "merci",
+        "visionne par",
+        "veuillez vous abonner",
+        "abonnez-vous",
+        "merci d'avoir regarde",
+        "transcription by",
+        "merci beaucoup",
+    }
+
     try:
         with sr.Microphone() as source:
-            r.adjust_for_ambient_noise(source, duration=1)
+            r.adjust_for_ambient_noise(source, duration=1.5)
+            r.energy_threshold += 200 # Marge de sécurité supplémentaire
             print("[MIC] Prêt à écouter localement...")
             while True:
                 try:
                     state.is_listening = True
                     asyncio.run_coroutine_threadsafe(state.send_web_state("listening"), main_loop)
-                    # On écoute. Le Recognizer de SpeechRecognition gère l'énergie de manière dynamique par défaut.
                     audio = r.listen(source, timeout=15, phrase_time_limit=10)
                     state.is_listening = False
 
-                    # Si on vient d'interrompre Jarvis, on attend un tout petit peu
-                    # pour que le flux audio se coupe proprement avant de traiter.
                     if state.STOP_PARLER:
                         time.sleep(0.2)
 
@@ -442,11 +459,16 @@ def listen_and_process(main_loop):
                         texte = stt_recognize(audio)
                         if not texte: raise sr.UnknownValueError()
                         
-                        # ── Anti-Écho : Jarvis ne doit pas s'écouter lui-même ───
-                        maintenant = time.time()
-                        # 1. Si le texte est très proche de ce qu'il vient de dire
+                        # ── Filtre anti-hallucination (Whisper/Groq) ───────────
                         from jarvis.utils import normalize_text
                         this_clean = normalize_text(texte)
+                        
+                        if this_clean in HALLUCINATIONS_STT or len(this_clean) < 2:
+                            # print(f"[MIC] Hallucination ignorée : \"{texte}\"")
+                            asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                            continue
+
+                        # ── Anti-Écho : Jarvis ne doit pas s'écouter lui-même ───
                         
                         is_echo = False
                         recent_speech = (
