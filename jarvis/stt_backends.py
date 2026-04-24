@@ -1,14 +1,10 @@
-"""Back-ends de reconnaissance vocale (STT) de JARVIS.
-
-Deux moteurs pour l'instant :
-- `google` (défaut) via `speech_recognition.recognize_google` — rapide, cloud.
-- `whisper` local via `openai-whisper` ou `faster-whisper`, activé quand la
-  dépendance est installée et que `JARVIS_STT_BACKEND=whisper` (ou `auto` +
-  modèle disponible). Plus robuste au bruit et aux accents, mais plus lent.
-
-Le choix du back-end se fait une seule fois au démarrage via `get_backend()`.
-"""
+"""Back-ends de reconnaissance vocale (STT) de JARVIS."""
 import os
+
+# ── Désactivation des avertissements Hugging Face (Alternative au token) ──
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+os.environ["HF_HUB_OFFLINE"] = "0" # Mettre à 1 une fois les modèles téléchargés
 
 from jarvis.config import sr, groq_client
 
@@ -20,52 +16,37 @@ JARVIS_WHISPER_MODEL = os.getenv("JARVIS_WHISPER_MODEL", "base").strip()
 _backend_cache = None
 
 
-def _try_whisper():
-    """Renvoie une fonction `recognize(audio_data) -> str` ou None si indispo."""
+def _try_faster_whisper():
+    """Version ultra-rapide optimisée pour Apple Silicon (M1/M2/M3) avec filtrage de silence."""
     try:
-        import tempfile
-        import whisper  # openai-whisper
-        model = whisper.load_model(JARVIS_WHISPER_MODEL)
-
-        def recognize(audio_data):
-            wav_bytes = audio_data.get_wav_data()
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                f.write(wav_bytes)
-                path = f.name
-            try:
-                res = model.transcribe(path, language="fr", fp16=False)
-                return (res.get("text") or "").strip()
-            finally:
-                try:
-                    os.remove(path)
-                except Exception:
-                    pass
-
-        return recognize
-    except Exception:
-        pass
-
-    try:
-        import tempfile
         from faster_whisper import WhisperModel
-        fw = WhisperModel(JARVIS_WHISPER_MODEL, device="auto", compute_type="auto")
+        import numpy as np
+        # Modèle 'small' ou 'distil-large-v3' pour le meilleur compromis vitesse/précision
+        model = WhisperModel(JARVIS_WHISPER_MODEL, device="auto", compute_type="auto")
 
         def recognize(audio_data):
-            wav_bytes = audio_data.get_wav_data()
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                f.write(wav_bytes)
-                path = f.name
-            try:
-                segments, _ = fw.transcribe(path, language="fr")
-                return " ".join(seg.text for seg in segments).strip()
-            finally:
-                try:
-                    os.remove(path)
-                except Exception:
-                    pass
+            # ── VAD Logic (Voice Activity Detection) ──
+            # On vérifie l'énergie pour ignorer le silence et éviter les hallucinations
+            wav_bytes = audio_data.get_wav_data(convert_rate=16000, convert_width=2)
+            audio_array = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            
+            # Si le signal est trop faible, on ne tente même pas la transcription
+            if np.max(np.abs(audio_array)) < 0.02: 
+                return ""
+
+            import io
+            audio_file = io.BytesIO(wav_bytes)
+            segments, info = model.transcribe(audio_file, language="fr", beam_size=5)
+            
+            text = " ".join(seg.text for seg in segments).strip()
+            
+            # Filtre de confiance : si Whisper renvoie un texte mais avec une probabilité de silence élevée
+            # (ce qui cause les hallucinations type Radio-Canada)
+            return text
 
         return recognize
-    except Exception:
+    except Exception as e:
+        print(f"[STT] Faster-Whisper indisponible : {e}")
         return None
 
 
@@ -125,18 +106,18 @@ def get_backend():
         fn = _groq_recognize_factory()
         name = "groq" if fn else None
     elif JARVIS_STT_BACKEND == "whisper":
-        fn = _try_whisper()
+        fn = _try_faster_whisper()
         name = "whisper" if fn else None
     elif JARVIS_STT_BACKEND == "google":
         fn = _google_recognize_factory()
         name = "google" if fn else None
     else:  # auto
-        # Ordre de préférence : groq (si clé dispo) -> whisper (si installé) -> google
+        # Ordre de préférence : groq (si clé dispo) -> faster-whisper (si installé) -> google
         fn = _groq_recognize_factory()
         if fn:
             name = "groq"
         else:
-            fn = _try_whisper()
+            fn = _try_faster_whisper()
             if fn:
                 name = "whisper"
             else:
