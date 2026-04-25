@@ -18,6 +18,7 @@ from PHOEBUS.tts_backends import synthesize_to_file, TtsUnavailable, EDGE_VOICE
 from PHOEBUS.text_shaping import naturaliser
 from PHOEBUS.response_cache import lookup as cache_lookup, register as cache_register
 from PHOEBUS.sentence_splitter import split as split_sentences
+from PHOEBUS.observability import timed
 
 # ── Résolution locale (Math, Fr, Conversions, Trad) ──────────────────────
 
@@ -246,6 +247,7 @@ async def _play_file(path, is_cache, texte_tts):
             except: pass
 
 
+@timed("tts.parler")
 async def parler(texte, keep_conversation=True):
     """Synthétise et joue un texte avec pipeline phrase-par-phrase.
 
@@ -314,6 +316,12 @@ async def parler(texte, keep_conversation=True):
         state.last_PHOEBUS_speech = texte_tts
         state.last_speech_timestamp = time.time()
         state.current_PHOEBUS_speech = ""
+        # Anti-écho : démarre le cooldown post-parole et mémorise l'utterance
+        # pour rejeter les transcriptions qui seraient notre propre voix.
+        try:
+            state.mark_spoke(texte_tts)
+        except Exception:
+            pass
         await asyncio.sleep(0.05)
         await state.send_web_state("idle")
 

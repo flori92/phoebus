@@ -20,6 +20,10 @@ DEFAULT_RISK_BY_ACTION = {
     "vision_ecrire": "high",
     "voir_ecran": "high",
     "agent_natif": "high",
+    "agent_planifie": "high",
+    "send_email": "high",
+    "write_email": "high",
+    "playwright_run": "high",  # exécution code navigateur
     "renommer_fichier": "high",
     "deplacer_fichier": "high",
     # Medium : ça remue, c'est rattrapable.
@@ -33,6 +37,21 @@ DEFAULT_RISK_BY_ACTION = {
     "create_sheet": "medium",
     "creer_dossier": "medium",
     "oublier": "medium",
+    # Low : timers et Spotify, rattrapables et discrets.
+    "timer_set": "low",
+    "timer_list": "low",
+    "timer_cancel": "low",
+    "spotify_play": "low",
+    "spotify_pause": "low",
+    "spotify_next": "low",
+    "spotify_previous": "low",
+    "spotify_volume": "low",
+    "spotify_now_playing": "low",
+    "spotify_search_play": "low",
+    # Caméras : medium — capture image de l'environnement, vie privée.
+    "vision_camera_pc": "medium",
+    "vision_camera_phone": "medium",
+    "vision_camera_ip": "medium",
 }
 
 # Conservé pour compat descendante — dérivé du dict ci-dessus.

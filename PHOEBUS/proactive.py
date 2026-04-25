@@ -63,6 +63,17 @@ async def _silence_timeout(parler):
         state.end_conversation()
 
 
+# ── Règle : Tick des timers/rappels persistants ───────────────────────────
+@rule
+async def _timers_tick(parler):
+    """Vérifie les timers/rappels persistants et les prononce à échéance."""
+    try:
+        from PHOEBUS import timers as _timers
+        await _timers.tick(parler)
+    except Exception as e:
+        print(f"[PROACTIVE] timers tick : {e}")
+
+
 # ── Règle 3 : Briefing matinal ────────────────────────────────────────────
 
 @rule

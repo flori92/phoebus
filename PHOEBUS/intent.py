@@ -120,6 +120,71 @@ _RE_MODE_IRON_MAN_OFF = re.compile(
     rf"^{_WAKE_PREFIX}(?:désactive|desactive|coupe|arrête|arrete|stop)\s+(?:le\s+)?mode\s+iron\s*man$"
 )
 
+# ── Timers et rappels persistants ──────────────────────────────────────────
+_RE_TIMER = re.compile(
+    rf"^{_WAKE_PREFIX}(?:mets|lance|démarre|demarre|programme|active)?\s*"
+    rf"(?:un\s+)?(?:minuteur|chrono|chronomètre|chronometre|timer)\s*"
+    rf"(?:de\s+|sur\s+|à\s+|de\s*)?"
+    rf"(?P<n>\d{{1,3}})\s*"
+    rf"(?P<u>s(?:ec(?:onde)?s?)?|min(?:ute)?s?|h(?:eure)?s?)?"
+    rf"(?:\s+pour\s+(?P<label>.+))?$"
+)
+
+_RE_RAPPEL = re.compile(
+    rf"^{_WAKE_PREFIX}(?:rappelle[- ]?moi)\s+"
+    rf"(?:(?:de\s+|d['’]\s*)?(?P<label>[^,]+?)\s+)?"
+    rf"dans\s+(?P<n>\d{{1,3}})\s*"
+    rf"(?P<u>s(?:ec(?:onde)?s?)?|min(?:ute)?s?|h(?:eure)?s?)"
+    rf"(?:\s+(?:de\s+|d['’]\s*)?(?P<label2>.+))?$"
+)
+
+_RE_LISTER_TIMERS = re.compile(
+    rf"^{_WAKE_PREFIX}(?:liste|montre|affiche)\s+(?:les\s+)?"
+    rf"(?:minuteurs?|timers?|rappels?|chronom[èe]tres?)$"
+)
+
+# ── Spotify (intents fast-path) ────────────────────────────────────────────
+_RE_SPOT_PLAY = re.compile(rf"^{_WAKE_PREFIX}(?:reprends|lance|play|joue|reprise)(?:\s+la\s+musique| la playlist)?$")
+_RE_SPOT_PAUSE = re.compile(rf"^{_WAKE_PREFIX}(?:pause|met(?:s)?\s+(?:en\s+)?pause|arr[êe]te\s+la\s+musique|stop\s+la\s+musique)$")
+_RE_SPOT_NEXT = re.compile(rf"^{_WAKE_PREFIX}(?:suivante|(?:morceau|chanson|titre)\s+suivant|next)$")
+_RE_SPOT_PREV = re.compile(rf"^{_WAKE_PREFIX}(?:pr[ée]c[ée]dente|(?:morceau|chanson|titre)\s+pr[ée]c[ée]dent|previous)$")
+_RE_SPOT_NOW = re.compile(rf"^{_WAKE_PREFIX}(?:c(?:'|\s?)est quoi|qu(?:'|\s)est-ce (?:qui|que)\s+(?:\w+\s+){{0,3}})?\s*(?:ce morceau|cette (?:chanson|musique)|le (?:morceau|titre))(?:\s+qui\s+passe)?$")
+_RE_SPOT_VOL = re.compile(rf"^{_WAKE_PREFIX}(?:mets|règle|regle|passe)\s+(?:le\s+)?volume\s+(?:spotify\s+)?(?:à|a|sur)\s+(?P<v>\d{{1,3}})(?:\s*%| pour cent)?$")
+_RE_SPOT_SEARCH = re.compile(rf"^{_WAKE_PREFIX}(?:mets|joue|lance|écoute|ecoute|play)\s+(?:la (?:chanson|musique)|le morceau|le titre)?\s*(?P<q>.+)$")
+
+# ── Caméras : PC webcam / téléphone / caméra IP ────────────────────────────
+# "regarde autour de toi" / "que vois-tu" / "regarde ce que je te montre"
+_RE_CAM_PC = re.compile(
+    rf"^{_WAKE_PREFIX}(?:"
+    rf"regarde\s+(?:autour|ici|devant|ce que je te montre|ce qu(?:i|e)\s+il y a)"
+    rf"|que (?:vois|regardes)[- ]tu"
+    rf"|qu(?:'|\s)est[- ]ce qu(?:i|e)\s+il y a (?:devant|ici|autour)"
+    rf"|active\s+(?:la\s+)?(?:webcam|cam[ée]ra)(?:\s+du pc| de l'ordinateur)?"
+    rf"|prends? une photo (?:de la pi[èe]ce|de mon environnement)"
+    rf")(?:\s+(?P<question>.+))?$"
+)
+
+_RE_CAM_PHONE = re.compile(
+    rf"^{_WAKE_PREFIX}(?:"
+    rf"regarde\s+(?:avec|via|sur|depuis)\s+(?:mon\s+)?(?:t[ée]l[ée]phone|portable|mobile|iphone|smartphone)"
+    rf"|utilise\s+(?:la\s+cam[ée]ra\s+(?:de\s+)?)?(?:mon\s+)?(?:t[ée]l[ée]phone|portable|mobile|iphone|smartphone)"
+    rf"|prends? une photo (?:avec|via)\s+(?:mon\s+)?(?:t[ée]l[ée]phone|portable|mobile|iphone|smartphone)"
+    rf")(?:\s+(?P<question>.+))?$"
+)
+
+_RE_CAM_IP = re.compile(
+    rf"^{_WAKE_PREFIX}(?:regarde|montre[- ]moi)\s+(?:la\s+)?cam[ée]ra\s+(?P<lieu>[a-zà-ÿ' -]+)$"
+)
+
+
+def _unite_to_seconds(n: int, unit: str) -> int:
+    u = (unit or "min").lower()
+    if u.startswith("s"):
+        return n
+    if u.startswith("h"):
+        return n * 3600
+    return n * 60
+
 
 # ── Résultat ──────────────────────────────────────────────────────────────
 
@@ -220,5 +285,105 @@ def detect(texte: str) -> Optional[IntentResult]:
         return IntentResult(
             "mode_iron_man_off", '{"action": "mode_iron_man", "etat": "off"}'
         )
+
+    # ── Timer ─────────────────────────────────────────────────────────────
+    m = _RE_TIMER.match(t)
+    if m:
+        n = int(m.group("n"))
+        unit = m.group("u") or "min"
+        seconds = _unite_to_seconds(n, unit)
+        label = (m.group("label") or "").strip()
+        import json as _json
+        payload = {"action": "timer_set", "duration_s": seconds, "kind": "timer"}
+        if label:
+            payload["label"] = label
+        return IntentResult("timer_set", _json.dumps(payload, ensure_ascii=False))
+
+    # ── Rappel ────────────────────────────────────────────────────────────
+    m = _RE_RAPPEL.match(t)
+    if m:
+        n = int(m.group("n"))
+        unit = m.group("u") or "min"
+        seconds = _unite_to_seconds(n, unit)
+        label = (m.group("label") or m.group("label2") or "").strip().rstrip(".")
+        import json as _json
+        payload = {"action": "timer_set", "duration_s": seconds, "kind": "rappel"}
+        if label:
+            payload["label"] = label
+        return IntentResult("rappel_set", _json.dumps(payload, ensure_ascii=False))
+
+    if _RE_LISTER_TIMERS.match(t):
+        return IntentResult("timer_list", '{"action": "timer_list"}')
+
+    # ── Playwright : ouvre un site connu ─────────────────────────────────
+    try:
+        from PHOEBUS.playwright_skill import parse_open_url_intent
+        url = parse_open_url_intent(t)
+        if url:
+            import json as _json
+            return IntentResult(
+                "playwright_run",
+                _json.dumps({"action": "playwright_run", "url": url}, ensure_ascii=False),
+            )
+    except Exception:
+        pass
+
+    # ── Spotify ───────────────────────────────────────────────────────────
+    if _RE_SPOT_PAUSE.match(t):
+        return IntentResult("spotify_pause", '{"action": "spotify_pause"}')
+    if _RE_SPOT_PLAY.match(t):
+        return IntentResult("spotify_play", '{"action": "spotify_play"}')
+    if _RE_SPOT_NEXT.match(t):
+        return IntentResult("spotify_next", '{"action": "spotify_next"}')
+    if _RE_SPOT_PREV.match(t):
+        return IntentResult("spotify_previous", '{"action": "spotify_previous"}')
+    if _RE_SPOT_NOW.match(t):
+        return IntentResult("spotify_now_playing", '{"action": "spotify_now_playing"}')
+    m = _RE_SPOT_VOL.match(t)
+    if m:
+        v = int(m.group("v"))
+        if 0 <= v <= 100:
+            return IntentResult("spotify_volume", '{"action": "spotify_volume", "volume": ' + str(v) + "}")
+    m = _RE_SPOT_SEARCH.match(t)
+    if m:
+        q = m.group("q").strip()
+        # Filtre : "mets le salon" ne doit PAS déclencher Spotify. On rejette
+        # si la requête correspond à une pièce connue.
+        if q and q not in PIECES_ALIAS and len(q) >= 3:
+            import json as _json
+            return IntentResult(
+                "spotify_search_play",
+                _json.dumps({"action": "spotify_search_play", "query": q}, ensure_ascii=False),
+            )
+
+    # ── Caméras ───────────────────────────────────────────────────────────
+    m = _RE_CAM_PHONE.match(t)
+    if m:
+        question = (m.group("question") or "").strip()
+        import json as _json
+        payload = {"action": "vision_camera_phone"}
+        if question:
+            payload["question"] = question
+        return IntentResult("vision_camera_phone",
+                            _json.dumps(payload, ensure_ascii=False))
+
+    m = _RE_CAM_PC.match(t)
+    if m:
+        question = (m.group("question") or "").strip()
+        import json as _json
+        payload = {"action": "vision_camera_pc"}
+        if question:
+            payload["question"] = question
+        return IntentResult("vision_camera_pc",
+                            _json.dumps(payload, ensure_ascii=False))
+
+    m = _RE_CAM_IP.match(t)
+    if m:
+        # On laisse le LLM ou la config résoudre le nom → URL.
+        lieu = (m.group("lieu") or "").strip()
+        import json as _json
+        payload = {"action": "vision_camera_ip", "label": lieu}
+        return IntentResult("vision_camera_ip",
+                            _json.dumps(payload, ensure_ascii=False))
 
     return None

@@ -560,6 +560,132 @@ async def executer_une_action(d):
         await parler("Mode Iron Man activé." if state.MODE_IRON_MAN else "Mode Iron Man désactivé.")
         return
 
+    # ── TIMERS / RAPPELS PERSISTANTS ────────────────────────────────────────
+    elif action == "timer_set":
+        from PHOEBUS import timers as _timers
+        duration = float(d.get("duration_s") or d.get("duree_s") or 0)
+        if duration <= 0:
+            await parler("Durée invalide, Monsieur.")
+            return
+        label = (d.get("label") or "").strip()
+        kind = d.get("kind", "timer")
+        _timers.set_timer(duration, label, kind=kind)
+        fmt = _timers.format_duration(duration)
+        if kind == "rappel":
+            await parler(f"Rappel programmé dans {fmt}" + (f" : {label}." if label else "."))
+        else:
+            await parler(f"Minuteur lancé sur {fmt}" + (f" pour {label}." if label else "."))
+        return
+
+    elif action == "timer_list":
+        from PHOEBUS import timers as _timers
+        import time as _t
+        items = _timers.list_timers()
+        if not items:
+            await parler("Aucun minuteur ni rappel en cours.")
+            return
+        lignes = []
+        for it in items[:6]:
+            remaining = max(0, it.get("due_ts", 0) - _t.time())
+            fmt = _timers.format_duration(remaining)
+            label = it.get("label") or ""
+            k = it.get("kind", "timer")
+            prefix = "rappel" if k == "rappel" else "minuteur"
+            lignes.append(f"un {prefix} dans {fmt}" + (f" : {label}" if label else ""))
+        await parler("Il vous reste " + ", et ".join(lignes) + ".")
+        return
+
+    elif action == "timer_cancel":
+        from PHOEBUS import timers as _timers
+        tid = d.get("id")
+        if tid and _timers.cancel_timer(int(tid)):
+            await parler("Annulé.")
+        else:
+            await parler("Je ne trouve pas ce minuteur.")
+        return
+
+    # ── PLANIFICATEUR (ReAct + auto-critique, tâche de fond) ────────────────
+    elif action == "agent_planifie":
+        instruction = d.get("instruction", "")
+        if not instruction:
+            await parler("Je n'ai pas reçu d'instruction claire à planifier.")
+            return
+        from PHOEBUS.planner import orchestrer_agent_planifie
+
+        async def _run_planner():
+            try:
+                res = await orchestrer_agent_planifie(instruction, parler=parler)
+                await parler(res)
+            except Exception as e:
+                await parler(f"Le planificateur a rencontré un souci : {e}")
+
+        task = asyncio.create_task(_run_planner())
+        state.register_background_task(task, label=f"planner: {instruction[:60]}")
+        return
+
+    # ── ENVOI EMAIL (alias send_email avec grammaire LLM standard) ──────────
+    elif action == "send_email":
+        to = d.get("to") or d.get("destinataire") or d.get("recipient", "")
+        subject = d.get("subject") or d.get("sujet", "Message de PHOEBUS")
+        body = d.get("body") or d.get("message") or d.get("contenu", "")
+        if not to or not body:
+            await parler("Il me faut au moins un destinataire et un corps de message.")
+            return
+        msg = await asyncio.to_thread(envoyer_email, to, subject, body)
+        await parler(msg)
+        return
+
+    # ── CAMÉRAS (PC webcam, téléphone via WS, caméra IP réseau) ──────────────
+    elif action == "vision_camera_pc":
+        from PHOEBUS import camera as _cam
+        question = d.get("question") or d.get("instruction") or "Décris ce que tu vois en une phrase."
+        img = await _cam.capturer_pc_webcam()
+        if not img:
+            await parler("Je n'arrive pas à accéder à la webcam.")
+            return
+        rep = await _cam.analyser_image(img, question=question,
+                                         use_arena_for_complex=bool(d.get("deep")))
+        await parler(rep)
+        return
+
+    elif action == "vision_camera_phone":
+        from PHOEBUS import camera as _cam
+        question = d.get("question") or d.get("instruction") or "Décris ce que tu vois en une phrase."
+        facing = d.get("facing", "environment")
+        img = await _cam.capturer_telephone(facing=facing)
+        if not img:
+            await parler("Aucun téléphone n'a répondu pour me prêter sa caméra.")
+            return
+        rep = await _cam.analyser_image(img, question=question,
+                                         use_arena_for_complex=bool(d.get("deep")))
+        await parler(rep)
+        return
+
+    elif action == "vision_camera_ip":
+        from PHOEBUS import camera as _cam
+        question = d.get("question") or d.get("instruction") or "Décris ce que tu vois en une phrase."
+        url = d.get("url", "")
+        img = await _cam.capturer_ip_camera(url=url)
+        if not img:
+            await parler("La caméra réseau n'a pas répondu.")
+            return
+        rep = await _cam.analyser_image(img, question=question,
+                                         use_arena_for_complex=bool(d.get("deep")))
+        await parler(rep)
+        return
+
+    # ── PLAYWRIGHT (automatisation navigateur) ───────────────────────────────
+    elif action == "playwright_run":
+        from PHOEBUS import playwright_skill as _pw
+        script = d.get("script", "")
+        url = d.get("url", "")
+        try:
+            msg = await _pw.run(script=script, url=url)
+            await parler(msg)
+        except Exception as e:
+            await parler(f"Le navigateur a eu un souci : {e}")
+        return
+
     elif action == "brain_status":
         from PHOEBUS.brain_router import router_status
         status = router_status()

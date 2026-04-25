@@ -22,6 +22,13 @@ from PHOEBUS.brain_router import (
     record_provider_result, _load_metrics,
 )
 from PHOEBUS.rag_memory import rechercher_souvenirs, stocker_souvenir
+from PHOEBUS.observability import timed
+from PHOEBUS.llm_health import (
+    skip as llm_skip,
+    record_failure as llm_fail,
+    record_success as llm_ok,
+    _short_reason as llm_reason,
+)
 
 try:
     from PHOEBUS.memory_timeline import enrichir_contexte_system_prompt as _timeline_ctx
@@ -243,6 +250,16 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "VISION WEBSOCKET (Interactions basiques depuis navigateur):\n"
         '{"action": "voir_ecran", "instruction": "ou cliquer EXACTEMENT"}\n'
         '{"action": "vision_ecrire", "instruction": "ou cliquer", "texte": "texte"}\n\n'
+        "VISION CAMÉRA — utilise une vraie caméra physique pour observer le monde réel.\n"
+        "Choisis intelligemment la source selon ce qui est demandé :\n"
+        "- vision_camera_pc : webcam du Mac/PC. Idéal pour ce qui est devant Floriace.\n"
+        "- vision_camera_phone : caméra du téléphone via WebSocket. Idéal quand Floriace\n"
+        "  veut te montrer un objet précis, lire une étiquette, regarder ailleurs dans la pièce.\n"
+        "- vision_camera_ip : caméra réseau (URL HTTP/RTSP). Surveillance, doorbell.\n"
+        '{"action": "vision_camera_pc", "question": "que vois-tu", "deep": false}\n'
+        '{"action": "vision_camera_phone", "question": "que dit cette étiquette", "facing": "environment", "deep": true}\n'
+        '{"action": "vision_camera_ip", "url": "http://192.168.1.20/snapshot", "question": "qui est devant la porte"}\n'
+        '  → "deep": true bascule sur LMArena Claude pour les analyses fines (OCR, détails subtils).\n\n'
         "VISION CAMERA (Utiliser la webcam ou caméra téléphone) :\n"
         '{"action": "voir_camera", "instruction": "ce que tu dois observer", "source": "pc/telephone"}\n'
         '{"action": "identifier_objet", "source": "pc/telephone"}  (Plus rapide pour nommer un truc)\n'
@@ -314,6 +331,13 @@ def _messages_openai(system_prompt, texte, history_limit=24):
 async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0, use_search=True):
     if not client or not types:
         return None
+    # Circuit breaker : si Gemini vient d'envoyer un 429 (quota free épuisé),
+    # on court-circuite l'appel pendant la fenêtre de cooldown (souvent
+    # respectée à la seconde via le retryDelay du payload). Évite de
+    # saturer les logs et de gaspiller la latence sur des appels voués
+    # à échouer.
+    if llm_skip("gemini"):
+        return None
     prompt_actuel = construire_system_prompt(texte, minimal=minimal)
     
     # On limite l'historique pour éviter de saturer le contexte sur le long terme
@@ -347,11 +371,16 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
             if rep:
                 state.ajouter_historique("user", texte)
                 state.ajouter_historique("model", rep)
+                llm_ok("gemini")
                 return rep
         except Exception as e:
             last_err = e
             continue
     if last_err:
+        # Toute panne Gemini (429 quota, 503 surcharge, timeout...) ouvre
+        # le circuit breaker. Log compact via _short_reason.
+        llm_fail("gemini", last_err)
+        print(f"[GEMINI] KO ({llm_reason(str(last_err))})")
         raise last_err
     return None
 
@@ -612,6 +641,7 @@ async def demander_kimi(texte):
         return None
 
 
+@timed("ia.demander")
 async def traduire_live(texte, langue_cible="anglais"):
     """Traduction directe sans personnalité pour minimiser la latence."""
     if not client: return texte
@@ -780,6 +810,7 @@ async def demander_ia(texte):
         # ou le timeout naturel de l'UI s'en chargera.
 
 
+@timed("ia.demander_stream")
 async def demander_ia_stream(texte, on_sentence=None):
     """Variante streaming de `demander_ia`. Appelle `on_sentence(phrase)` pour
     chaque phrase complète au fur et à mesure qu'elle arrive, permettant de
@@ -839,11 +870,14 @@ async def demander_ia_stream(texte, on_sentence=None):
                     await on_sentence(s)
             return rep
 
-        # Vérifier si Gemini est en cooldown
+        # Vérifier si Gemini est en cooldown — deux sources :
+        #   1. brain_router metrics (cooldown_until) — historique persistant
+        #   2. llm_health.skip — circuit breaker en mémoire qui parse le
+        #      retryDelay des payloads 429 Google.
         metrics = _load_metrics()
         gemini_item = metrics.get("gemini", {})
         cooldown_until = float(gemini_item.get("cooldown_until", 0) or 0)
-        if cooldown_until > time.time():
+        if cooldown_until > time.time() or llm_skip("gemini"):
             # Gemini est en cooldown (quota exhausted, etc.) : skip au non-streaming
             rep = await demander_ia(texte)
             if on_sentence and rep and "{" not in rep:
@@ -923,6 +957,7 @@ async def demander_ia_stream(texte, on_sentence=None):
                 record_provider_result(
                     "gemini", True, (time.perf_counter() - started) * 1000
                 )
+                llm_ok("gemini")
                 return full
             except Exception as e:
                 last_err = e
@@ -932,7 +967,9 @@ async def demander_ia_stream(texte, on_sentence=None):
         record_provider_result(
             "gemini", False, (time.perf_counter() - started) * 1000, str(last_err)
         )
-        print(f"[STREAM] Gemini KO ({last_err}) — repli non-streaming.")
+        if last_err is not None:
+            llm_fail("gemini", last_err)
+        print(f"[STREAM] Gemini KO ({llm_reason(str(last_err))}) — repli non-streaming.")
         rep = await demander_ia(texte)
         if on_sentence and rep and "{" not in rep:
             for s in split_streaming(rep + " ")[0]:
