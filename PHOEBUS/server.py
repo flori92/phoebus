@@ -8,6 +8,8 @@ import http.server
 import socketserver
 import hmac
 import hashlib
+import os
+import sys
 
 from PHOEBUS.config import (
     websockets, sr, DEFAULT_WS_PORT, DEFAULT_MOBILE_PORT, MOBILE_DIR,
@@ -660,8 +662,17 @@ async def main():
 
     main_loop = asyncio.get_running_loop()
     # Threads annexes
-    threading.Thread(target=run_mobile_server, daemon=True).start()
-    threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
+    # On masque les erreurs SDL/AUHAL polluantes sur macOS au boot
+    devnull = open(os.devnull, 'w')
+    old_stderr = os.dup(sys.stderr.fileno())
+    try:
+        os.dup2(devnull.fileno(), sys.stderr.fileno())
+        threading.Thread(target=run_mobile_server, daemon=True).start()
+        threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
+    finally:
+        os.dup2(old_stderr, sys.stderr.fileno())
+        devnull.close()
+
     asyncio.create_task(run_telegram_bot(main_loop))
     # threading.Thread(target=monitor_claps, daemon=True).start()
 

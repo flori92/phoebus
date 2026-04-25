@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import socket
+from datetime import datetime
 from urllib.parse import urlparse
 
 # Dossier racine du projet
@@ -51,13 +52,13 @@ async def run_zeroconf_broadcast():
     if not local_ip or local_ip == "127.0.0.1":
         return
 
-    print(f"[NETWORK] Diffusion de l'alias PHOEBUS.local vers {local_ip}...")
-    
+    print(f"[NETWORK] Diffusion de l'alias PHOEBUS.local (mDNS) vers {local_ip}...")
+
     desc = {'version': '1.0', 'assistant': 'PHOEBUS'}
     # Nom du service mDNS
     info = ServiceInfo(
         "_http._tcp.local.",
-        "PHOEBUS._http._tcp.local.",
+        "PHOEBUS-Web._http._tcp.local.",
         addresses=[socket.inet_aton(local_ip)],
         port=8080,
         properties=desc,
@@ -70,7 +71,8 @@ async def run_zeroconf_broadcast():
         while True:
             await asyncio.sleep(3600)
     except Exception as e:
-        print(f"[NETWORK] Erreur Zeroconf : {e}")
+        if str(e).strip():
+            print(f"[NETWORK] Erreur Zeroconf : {e}")
     finally:
         try:
             zeroconf.unregister_service(info)
@@ -80,16 +82,12 @@ async def run_zeroconf_broadcast():
 async def open_browser():
     """Ouvre automatiquement le navigateur vers l'interface PHOEBUS."""
     # On attend que le frontend ait eu le temps de démarrer
-    await asyncio.sleep(4)
+    await asyncio.sleep(5)
     from PHOEBUS.utils import open_uri
-    
-    # On privilégie phoebus.local si possible, sinon localhost
-    # Note: .local nécessite mDNS fonctionnel sur la machine
-    url = "http://localhost:8080"
-    if _ZEROCONF_AVAILABLE:
-        # On tente phoebus.local (mDNS)
-        url = "http://phoebus.local:8080"
-        
+
+    # On utilise l'alias demandé
+    url = "http://phoebus.local:8080"
+
     print(f"[SYSTEM] Ouverture de l'interface : {url}")
     open_uri(url)
 
@@ -105,25 +103,24 @@ async def run_frontend():
         print("[FRONTEND] npm non trouvé, impossible de lancer l'interface web.")
         return
 
-    print("[FRONTEND] Démarrage de l'interface PHOEBUS (Vite) sur le port 8080...")
+    print("[FRONTEND] Démarrage de l'interface PHOEBUS (Vite) sur http://phoebus.local:8080 ...")
     try:
         # On crée le dossier logs s'il n'existe pas
         logs_dir = os.path.join(ROOT_DIR, "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        log_file = open(os.path.join(logs_dir, "frontend.log"), "w")
 
-        # On lance npm run dev sur le port 8080
-        process = await asyncio.create_subprocess_exec(
-            npm, "run", "dev", "--", "--port", "8080", "--host", "0.0.0.0",
-            cwd=frontend_dir,
-            stdout=log_file,
-            stderr=log_file
-        )
-        await process.wait()
+        with open(os.path.join(logs_dir, "frontend.log"), "a") as log_file:
+            log_file.write(f"\n--- Démarrage le {datetime.now().isoformat()} ---\n")
+            # On force le port 8080 pour correspondre à l'alias
+            process = await asyncio.create_subprocess_exec(
+                npm, "run", "dev", "--", "--port", "8080", "--host", "0.0.0.0",
+                cwd=frontend_dir,
+                stdout=log_file,
+                stderr=log_file
+            )
+            await process.wait()
     except Exception as e:
         print(f"[FRONTEND] Erreur lors du lancement : {e}")
-
-
 def _env_mode(value, default="auto"):
     return (value if value is not None else default).strip().lower()
 

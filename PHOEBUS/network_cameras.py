@@ -68,14 +68,21 @@ from PHOEBUS.config import BASE_DIR
 
 # ── Configuration ─────────────────────────────────────────────────────────
 
+logger = logging.getLogger("PHOEBUS.network_cameras")
+logger.setLevel(logging.INFO)
+# Éviter de créer un handler si le logger parent en a déjà un
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter("[NETWORK_CAMERAS] %(message)s"))
+    logger.addHandler(ch)
+
+
 ENABLE_NETWORK_CAMERAS = os.getenv("PHOEBUS_ENABLE_NETWORK_CAMERAS", "1").strip() == "1"
 CAMERA_SCAN_TIMEOUT = float(os.getenv("PHOEBUS_CAMERA_SCAN_TIMEOUT", "5.0"))
 CAMERA_STORAGE = os.getenv("PHOEBUS_CAMERA_STORAGE", "phoebus_cameras.json")
 PHONE_IP = os.getenv("PHOEBUS_PHONE_IP", "").strip()
 NVR_IP = os.getenv("PHOEBUS_NVR_IP", "").strip()
 ENABLE_FACE_RECOGNITION = os.getenv("PHOEBUS_ENABLE_FACE_RECOGNITION", "1").strip() == "1"
-
-logging.basicConfig(level=logging.INFO, format="[NETWORK_CAMERAS] %(message)s")
 
 
 # ── Détection caméras du réseau ────────────────────────────────────────
@@ -119,7 +126,7 @@ def discover_cameras_on_network(timeout: float = CAMERA_SCAN_TIMEOUT) -> List[Di
     cameras_found = []
     ports_to_scan = {554: "rtsp", 8080: "http", 8000: "http", 8001: "http", 8002: "http"}
     
-    logging.info(f"[SCAN] Réseau {subnet}0/24 pour caméras (timeout={timeout}s)...")
+    logger.info(f"[SCAN] Réseau {subnet}0/24 pour caméras (timeout={timeout}s)...")
     
     # Scanner les adresses 1-254 en parallèle
     threads = []
@@ -138,7 +145,7 @@ def discover_cameras_on_network(timeout: float = CAMERA_SCAN_TIMEOUT) -> List[Di
                         "name": f"camera_{ip.split('.')[-1]}_{port}"
                     }
                     cameras_found.append(camera_info)
-                    logging.info(f"✓ Caméra trouvée: {camera_info['url']}")
+                    logger.info(f"✓ Caméra trouvée: {camera_info['url']}")
     
     # Lancer les scans en parallèle (mais limité pour éviter trop de connexions)
     start_time = time.time()
@@ -224,7 +231,7 @@ class CameraManager:
                 with open(self.storage_file, "r") as f:
                     return json.load(f)
             except Exception as e:
-                logging.warning(f"Erreur chargement caméras : {e}")
+                logger.warning(f"Erreur chargement caméras : {e}")
         return {}
     
     def _save_cameras(self) -> None:
@@ -237,7 +244,7 @@ class CameraManager:
         with self.lock:
             self.cameras[name] = camera_info
             self._save_cameras()
-            logging.info(f"✓ Caméra enregistrée: {name} → {camera_info.get('url')}")
+            logger.info(f"✓ Caméra enregistrée: {name} → {camera_info.get('url')}")
     
     def list_cameras(self) -> List[str]:
         """Retourne la liste des caméras disponibles."""
@@ -251,7 +258,7 @@ class CameraManager:
         Returns: PIL.Image ou np.ndarray selon disponibilité
         """
         if not OPENCV_AVAILABLE:
-            logging.error("OpenCV non disponible")
+            logger.error("OpenCV non disponible")
             return None
         
         try:
@@ -259,14 +266,14 @@ class CameraManager:
                 return self._capture_local_webcam()
             
             if camera_name not in self.cameras:
-                logging.error(f"Caméra inconnue: {camera_name}")
+                logger.error(f"Caméra inconnue: {camera_name}")
                 return None
             
             camera = self.cameras[camera_name]
             return await self._capture_remote(camera, timeout)
         
         except Exception as e:
-            logging.error(f"Erreur capture {camera_name}: {e}")
+            logger.error(f"Erreur capture {camera_name}: {e}")
             return None
     
     def _capture_local_webcam(self):
@@ -274,14 +281,14 @@ class CameraManager:
         try:
             cap = cv2.VideoCapture(0)
             if not cap.isOpened():
-                logging.error("Impossible d'ouvrir la webcam")
+                logger.error("Impossible d'ouvrir la webcam")
                 return None
             
             ret, frame = cap.read()
             cap.release()
             
             if not ret:
-                logging.error("Impossible de capturer la webcam")
+                logger.error("Impossible de capturer la webcam")
                 return None
             
             # Convertir BGR → RGB
@@ -292,7 +299,7 @@ class CameraManager:
             return frame
         
         except Exception as e:
-            logging.error(f"Erreur webcam: {e}")
+            logger.error(f"Erreur webcam: {e}")
             return None
     
     async def _capture_remote(self, camera: Dict, timeout: float = 5.0):
@@ -319,11 +326,11 @@ class CameraManager:
                     return frame
             
             cap.release()
-            logging.warning(f"Timeout capture depuis {camera.get('name')}")
+            logger.warning(f"Timeout capture depuis {camera.get('name')}")
             return None
         
         except Exception as e:
-            logging.error(f"Erreur capture {protocol}://{camera.get('ip')}: {e}")
+            logger.error(f"Erreur capture {protocol}://{camera.get('ip')}: {e}")
             return None
     
     async def capture_all(self, include_local: bool = True) -> Dict[str, Any]:
@@ -374,7 +381,7 @@ def discover_cameras(scan_network: bool = True, include_phone: bool = True) -> L
             found = discover_cameras_on_network(timeout=CAMERA_SCAN_TIMEOUT)
             cameras.extend(found)
         except Exception as e:
-            logging.error(f"Erreur scan réseau: {e}")
+            logger.error(f"Erreur scan réseau: {e}")
     
     # Téléphone
     if include_phone and PHONE_IP:
@@ -394,7 +401,7 @@ def discover_cameras(scan_network: bool = True, include_phone: bool = True) -> L
         if camera.get("name") != "pc":
             manager.register_camera(camera.get("name"), camera)
     
-    logging.info(f"✓ {len(cameras)} caméra(s) disponible(s): {[c.get('name') for c in cameras]}")
+    logger.info(f"✓ {len(cameras)} caméra(s) disponible(s): {[c.get('name') for c in cameras]}")
     
     return cameras
 
