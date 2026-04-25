@@ -287,12 +287,46 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
         pass
         
     def do_GET(self):
-        """Page de test pour vérifier la connectivité depuis l'iPhone."""
+        """Page de test + endpoints d'observabilité."""
         if self.path == '/ping':
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"status": "PHOEBUS Online", "ip": self.client_address[0]}).encode())
+            return
+        # ── Observabilité ────────────────────────────────────────────────
+        if self.path == '/metrics' or self.path.startswith('/metrics?'):
+            from PHOEBUS.observability import render_json
+            body = render_json().encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == '/dashboard' or self.path.startswith('/dashboard?'):
+            from PHOEBUS.observability import render_html
+            body = render_html().encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == '/health' or self.path.startswith('/health?'):
+            from PHOEBUS.llm_health import status as llm_status
+            body = json.dumps({
+                "llm_cooldowns": llm_status(),
+                "is_speaking": state.is_speaking,
+                "is_thinking": state.is_thinking,
+                "conversation": state.is_in_conversation(),
+                "post_speak_cooldown": state.in_post_speak_cooldown(),
+            }, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         super().do_GET()
 
@@ -465,6 +499,17 @@ def listen_and_process(main_loop):
                         
                         if this_clean in HALLUCINATIONS_STT or len(this_clean) < 2:
                             # print(f"[MIC] Hallucination ignorée : \"{texte}\"")
+                            asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                            continue
+
+                        # ── Anti-écho secondaire : deque(10) des dernières
+                        # utterances + cooldown post-parole 1.4s. Couche
+                        # complémentaire de la détection ci-dessous (qui se
+                        # base sur current/last_PHOEBUS_speech). Capte les
+                        # cas où l'écho arrive juste après que parler() a
+                        # vidé current_PHOEBUS_speech.
+                        if state.looks_like_own_echo(texte):
+                            print(f"[ECHO] Ignoré (auto-écho détecté) : {texte!r}")
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 

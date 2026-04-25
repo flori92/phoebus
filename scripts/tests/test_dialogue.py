@@ -199,6 +199,87 @@ def test_brain_router_profiles_and_ranking():
     )[0] == "groq"
 
 
+def test_echo_detection():
+    import PHOEBUS.state as st
+    st.recent_PHOEBUS_utterances.clear()
+    st.post_speak_until_ts = 0
+    st.mark_spoke("Bonjour Floriace, comment allez vous ?")
+    assert st.looks_like_own_echo("bonjour floriace comment allez vous")
+    assert st.looks_like_own_echo("bonjour floriace")
+    assert not st.looks_like_own_echo("quel temps fait il demain à Paris")
+
+
+def test_llm_health_circuit_breaker():
+    from PHOEBUS.llm_health import (
+        record_failure, skip, record_success, _parse_retry_delay,
+    )
+    assert _parse_retry_delay("retryDelay: 42.5s") == 42.5
+    assert _parse_retry_delay("bla bla") is None
+
+    class FakeErr(Exception):
+        pass
+    record_failure("test_prov", FakeErr("429 RESOURCE_EXHAUSTED retryDelay: 5s"))
+    assert skip("test_prov") is True
+    record_success("test_prov")
+    assert skip("test_prov") is False
+
+
+def test_timer_intent_and_parsing():
+    from PHOEBUS.intent import detect
+    import json
+    r = detect("mets un minuteur de 3 minutes pour le thé")
+    assert r is not None and r.name == "timer_set"
+    payload = json.loads(r.reply)
+    assert payload["duration_s"] == 180
+    assert "thé" in (payload.get("label") or "").lower() or "the" in (payload.get("label") or "").lower()
+
+    r = detect("rappelle-moi dans 2 heures de sortir les poubelles")
+    assert r is not None and r.name == "rappel_set"
+    payload = json.loads(r.reply)
+    assert payload["duration_s"] == 7200
+    assert payload["kind"] == "rappel"
+
+
+def test_spotify_intents_dont_clash_with_domotique():
+    from PHOEBUS.intent import detect
+    # Domotique gagne sur Spotify
+    assert detect("allume le salon").name == "allumer"
+    assert detect("éteins la cuisine").name == "eteindre"
+    # Spotify détecté correctement
+    assert detect("pause").name == "spotify_pause"
+    r = detect("joue bob marley redemption song")
+    assert r is not None and r.name == "spotify_search_play"
+
+
+def test_planner_json_extract():
+    from PHOEBUS.planner import _extract_json
+    assert _extract_json('{"plan": [], "summary": "ok"}') == {"plan": [], "summary": "ok"}
+    wrapped = "```json\n{\"plan\": []}\n```"
+    assert _extract_json(wrapped) == {"plan": []}
+    assert _extract_json('bla bla {"a": 1} fin') == {"a": 1}
+    # Accolades dans les strings ne cassent pas le parseur.
+    assert _extract_json('{"s": "a {b} c"}') == {"s": "a {b} c"}
+
+
+def test_observability_records_and_renders():
+    import asyncio
+    from PHOEBUS.observability import timed, snapshot, render_html, render_json, reset
+
+    reset()
+
+    @timed("unit_test.phase")
+    async def go():
+        await asyncio.sleep(0.01)
+
+    asyncio.run(go())
+    asyncio.run(go())
+    snap = snapshot()
+    assert "unit_test.phase" in snap
+    assert snap["unit_test.phase"]["count"] == 2
+    assert "PHOEBUS METRICS" in render_html() or "JARVIS METRICS" in render_html()
+    assert "unit_test.phase" in render_json()
+
+
 # ── Exécution directe ─────────────────────────────────────────────────────
 
 def _run_all():
@@ -219,6 +300,12 @@ def _run_all():
         test_correction_detection,
         test_response_cache_key_stability,
         test_brain_router_profiles_and_ranking,
+        test_echo_detection,
+        test_llm_health_circuit_breaker,
+        test_timer_intent_and_parsing,
+        test_spotify_intents_dont_clash_with_domotique,
+        test_planner_json_extract,
+        test_observability_records_and_renders,
     ]
     failed = 0
     for fn in tests:

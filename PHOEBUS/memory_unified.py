@@ -17,6 +17,7 @@ jongler avec 3 stores différents :
 Les corrections utilisateur sont stockées dans le RAG avec une importance
 haute (3) pour peser plus lourd lors des recherches futures.
 """
+import os
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -25,6 +26,24 @@ from PHOEBUS.memory import (
     apprendre_signal,
 )
 from PHOEBUS.rag_memory import stocker_souvenir, rechercher_souvenirs
+
+
+# Backend : local (JSON+Chroma) ou postgres (multi-device, scalable).
+_BACKEND = os.getenv("PHOEBUS_MEMORY_BACKEND", "local").strip().lower()
+
+
+def _pg():
+    """Renvoie le module Postgres s'il est actif et opérationnel, sinon None.
+    Permet à memory_unified de router vers Postgres de façon transparente."""
+    if _BACKEND != "postgres":
+        return None
+    try:
+        from PHOEBUS.memory_backends import postgres as pg
+        if pg.ensure_schema():
+            return pg
+    except Exception as e:
+        print(f"[MEM] Postgres indispo, repli local : {e}")
+    return None
 
 
 @dataclass
@@ -46,6 +65,12 @@ def remember(content: str, kind: str = "fact", importance: int = 1,
       - "signal"     : compteur appris (profil) — ex: pièce utilisée.
     """
     if not content:
+        return
+
+    # Backend Postgres actif ? Route et sors (sauf signaux profil → local).
+    pg = _pg()
+    if pg is not None and kind != "signal":
+        pg.remember(content, kind=kind, importance=importance, key=key)
         return
 
     if kind == "fact":
@@ -74,6 +99,15 @@ def recall(query: str, limit: int = 5) -> List[RecallResult]:
     2. Corrections RAG (forte pondération).
     3. Souvenirs RAG standards.
     """
+    # Backend Postgres actif ? La recherche combine faits + vecteurs là-bas.
+    pg = _pg()
+    if pg is not None:
+        items = pg.recall(query, limit=limit)
+        return [
+            RecallResult(source=r.source, text=r.text, importance=r.importance, extra=r.extra)
+            for r in items
+        ]
+
     results: List[RecallResult] = []
 
     q = (query or "").lower().strip()
@@ -117,6 +151,9 @@ def recall(query: str, limit: int = 5) -> List[RecallResult]:
 
 
 def forget_key(key: str) -> bool:
+    pg = _pg()
+    if pg is not None:
+        return pg.forget_key(key)
     return supprimer_memoire(key)
 
 

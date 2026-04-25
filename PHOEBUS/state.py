@@ -6,7 +6,9 @@ Tous les modules qui doivent lire/écrire de l'état partagé importent depuis i
 """
 import asyncio
 import json
+import re
 import time as _time
+from collections import deque
 from datetime import datetime
 
 from PHOEBUS.config import types, WS_AUTH_REQUIRED
@@ -58,6 +60,73 @@ speech_started_timestamp = 0.0
 # ── Tâches de fond (actions longues non bloquantes) ───────────────────────
 background_tasks = {}  # {id: {"task": asyncio.Task, "label": str, "started": ts}}
 _background_seq = 0
+
+# ── Anti-écho acoustique ──────────────────────────────────────────────────
+# Quand PHOEBUS parle, le micro capte SA propre voix via les enceintes. Sans
+# protection, Whisper/Google transcrivent ces retours et PHOEBUS se répond
+# à lui-même → boucle infinie. Deux couches :
+#   (1) un délai de refroidissement après la parole — le temps que l'audio
+#       résiduel se dissipe et que le buffer du micro se vide.
+#   (2) une mémoire glissante des dernières phrases dites : toute
+#       transcription qui ressemble fortement à l'une d'elles est rejetée.
+POST_SPEAK_COOLDOWN_S = 1.4
+post_speak_until_ts = 0.0
+recent_PHOEBUS_utterances: deque = deque(maxlen=10)
+
+
+def _normalize_for_echo(s: str) -> str:
+    if not s:
+        return ""
+    s = s.lower()
+    s = re.sub(r"[^\w\s]", "", s, flags=re.UNICODE)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def mark_spoke(texte: str) -> None:
+    """À appeler à la fin de parler() : démarre le cooldown et enregistre
+    ce qu'on vient de dire pour détecter un éventuel retour acoustique."""
+    global post_speak_until_ts
+    post_speak_until_ts = _time.time() + POST_SPEAK_COOLDOWN_S
+    norm = _normalize_for_echo(texte)
+    if norm and len(norm) >= 3:
+        recent_PHOEBUS_utterances.append(norm)
+
+
+def in_post_speak_cooldown() -> bool:
+    return _time.time() < post_speak_until_ts
+
+
+def looks_like_own_echo(texte_transcript: str) -> bool:
+    """Vrai si la transcription ressemble à une phrase qu'on vient de dire.
+
+    Heuristiques :
+    - pendant le cooldown post-parole, une transcription courte (<30 car.)
+      est très probablement un morceau d'écho ;
+    - sinon, comparaison de recouvrement avec les 10 dernières utterances :
+      inclusion substring OU >55 % de tokens partagés.
+    """
+    if not texte_transcript:
+        return False
+    t_norm = _normalize_for_echo(texte_transcript)
+    if not t_norm:
+        return False
+
+    if in_post_speak_cooldown() and len(t_norm) < 30:
+        return True
+
+    t_tokens = set(t_norm.split())
+    for utt in recent_PHOEBUS_utterances:
+        if t_norm in utt or (len(t_norm) >= 10 and utt in t_norm):
+            return True
+        u_tokens = set(utt.split())
+        if t_tokens and u_tokens:
+            inter = t_tokens & u_tokens
+            denom = min(len(t_tokens), len(u_tokens))
+            if denom and len(inter) / denom > 0.55 and len(inter) >= 2:
+                return True
+    return False
+
 
 dossier_courant    = None
 dernier_doc_id     = None
