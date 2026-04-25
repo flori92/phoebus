@@ -21,13 +21,18 @@ from PHOEBUS.utils import normalize_text
 from PHOEBUS.desktop import (
     ouvrir_dossier, lister_dossier, trier_par_type, trier_par_date,
     trier_par_type_puis_date, creer_sous_dossier, renommer_fichier,
-    deplacer_fichier, chercher_fichier, action_whatsapp_appel
+    deplacer_fichier, chercher_fichier, action_whatsapp_appel,
+    system_control
 )
 from PHOEBUS.google_services import (
     creer_google_doc, modifier_google_doc, lire_emails, lister_evenements_calendar,
     creer_google_sheet, envoyer_email
 )
-from PHOEBUS.vision import PHOEBUS_vision_cliquer, PHOEBUS_vision_ecrire
+from PHOEBUS.vision import (
+    PHOEBUS_vision_cliquer, PHOEBUS_vision_ecrire, voir_camera, 
+    identifier_objet, lire_texte_objet, identifier_personne,
+    analyse_contexte_ecran
+)
 from PHOEBUS.agent import orchestrer_agent_autonome
 from PHOEBUS.voice import parler
 from PHOEBUS.skills import get_skill, describe_skill
@@ -43,6 +48,51 @@ try:
     from PHOEBUS.memory_timeline import enregistrer_evenement as _timeline_evt
 except ImportError:
     _timeline_evt = None
+
+
+def _lancer_timer_thread(secondes, message):
+    """Callback de fin de minuteur."""
+    import time
+    time.sleep(secondes)
+    # On utilise parler() via une file d'attente ou un callback si possible
+    print(f"\n[TIMER] TERMINÉ : {message}")
+    # Envoi direct via un broadcast global ou injecté dans l'IA
+    asyncio.run_coroutine_threadsafe(parler(f"Floriace, votre minuteur est terminé : {message}"), asyncio.get_event_loop())
+
+
+async def action_timer(d):
+    minutes = d.get("minutes", 0)
+    secondes = d.get("secondes", 0)
+    label = d.get("label", "Minuteur")
+    total = (minutes * 60) + secondes
+    if total <= 0:
+        await parler("Je ne peux pas lancer un minuteur de zéro seconde.")
+        return
+    
+    import threading
+    threading.Thread(target=_lancer_timer_thread, args=(total, label), daemon=True).start()
+    
+    temps_desc = f"{minutes} minutes " if minutes else ""
+    temps_desc += f"{secondes} secondes" if secondes else ""
+    await parler(f"C'est noté. Je lance un minuteur de {temps_desc} pour : {label}.")
+
+
+async def action_metamorphose(d):
+    """Métamorphose visuelle de l'orbe."""
+    theme = d.get("theme", "neutre")
+    shape = d.get("forme", "sphere")
+    colors = d.get("couleurs", ["#4ca8e8"])
+    
+    payload = {
+        "action": "metamorphose",
+        "theme": theme,
+        "shape": shape,
+        "colors": colors
+    }
+    await state.broadcast(payload)
+    # PHOEBUS commente brièvement sa transformation
+    if theme != "neutre":
+        await parler(f"Initiation du protocole {theme}. Métamorphose en cours.")
 
 
 async def _executer_en_fond(handler, data, label):
@@ -666,6 +716,68 @@ async def executer_une_action(d):
         txt = d.get("texte", "")
         if ins and txt:
             await parler(await PHOEBUS_vision_ecrire(ins, txt))
+        return
+
+    elif action == "voir_camera":
+        ins = d.get("instruction", "Que vois-tu devant toi ?")
+        src = d.get("source", "pc")
+        await parler("Je regarde à travers la caméra...")
+        resultat = await voir_camera(ins, src)
+        await parler(resultat)
+        return
+
+    elif action == "identifier_objet":
+        src = d.get("source", "pc")
+        await parler("Laisse-moi identifier cela...")
+        await parler(await identifier_objet(src))
+        return
+
+    elif action == "lire_texte":
+        src = d.get("source", "pc")
+        await parler("Je lis le texte...")
+        await parler(await lire_texte_objet(src))
+        return
+
+    elif action == "timer":
+        await action_timer(d)
+        return
+
+    elif action == "system_control":
+        t = d.get("type")
+        ok, msg = system_control(t)
+        await parler(msg)
+        return
+
+    elif action == "identifier_personne":
+        src = d.get("source", "pc")
+        res = await identifier_personne(src)
+        await parler(res)
+        return
+
+    elif action == "mode_interprete":
+        etat = d.get("etat", "off") == "on"
+        langue = d.get("langue", "anglais")
+        state.INTERPRETE_ACTIF = etat
+        state.INTERPRETE_LANGUE_CIBLE = langue
+        if etat:
+            await parler(f"Mode interprète activé. Je traduis tout en {langue} désormais.")
+        else:
+            await parler("Mode interprète désactivé. Je reprends mon rôle habituel.")
+        return
+
+    elif action == "proactive_help":
+        state.is_proactive = True
+        await state.send_web_state("proactive")
+        res = await analyse_contexte_ecran()
+        state.is_proactive = False
+        if res:
+            await parler(res)
+        else:
+            await state.send_web_state("idle")
+        return
+
+    elif action == "metamorphose":
+        await action_metamorphose(d)
         return
 
 

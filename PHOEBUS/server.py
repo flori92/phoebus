@@ -8,6 +8,8 @@ import http.server
 import socketserver
 import hmac
 import hashlib
+import os
+import sys
 
 from PHOEBUS.config import (
     websockets, sr, DEFAULT_WS_PORT, DEFAULT_MOBILE_PORT, MOBILE_DIR,
@@ -257,34 +259,40 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
             f"Position: {metadata.get('location')} | "
             f"Mode de concentration: {metadata.get('focus')}\n"
         )
-    
+
     query_enrichie = contexte_ios + texte
-    
-    final_rep = ""
+
+    # Pour collecter la réponse textuelle
+    full_text_parts = []
+
     spoken = {"v": False}
     async def _on_sentence(s):
-        nonlocal final_rep
+        nonlocal spoken
         spoken["v"] = True
-        final_rep += s + " "
+        full_text_parts.append(s)
         await parler(s)
 
     # On utilise le streaming pour la réactivité
-    rep = await demander_ia_stream(query_enrichie, on_sentence=_on_sentence)
-    
-    # Si le streaming n'a pas tout capté ou si c'est du JSON
-    if not final_rep or "{" in (rep or ""):
-        final_rep = rep
+    # demander_ia_stream renvoie le texte COMPLET accumulé
+    rep_finale_ia = await demander_ia_stream(query_enrichie, on_sentence=_on_sentence)
 
-    if "{" in (rep or "") and "}" in (rep or ""):
-        await traiter_reponse_ia(rep)
-    elif not spoken["v"] and rep:
-        if not await traiter_reponse_ia(rep):
-            await parler(rep)
-    
+    # Cas 1 : C'est du JSON (Action technique)
+    if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
+        await traiter_reponse_ia(rep_finale_ia)
+        # On renvoie une confirmation courte si c'est une commande muette
+        return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
+
+    # Cas 2 : Réponse textuelle normale
+    if not spoken["v"] and rep_finale_ia:
+        # Si le streaming a échoué mais qu'on a une réponse brute
+        if not await traiter_reponse_ia(rep_finale_ia):
+            await parler(rep_finale_ia)
+            return rep_finale_ia
+
     # On reste à l'écoute après une commande externe
     state.extend_conversation()
-    return final_rep.strip()
 
+    return " ".join(full_text_parts).strip() or rep_finale_ia or ""
 
 # ── Serveur Mobile (HTTP) ──────────────────────────────────────────────────
 
@@ -623,6 +631,15 @@ def listen_and_process(main_loop):
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
+                    # ── MODE INTERPRÈTE ── (Priorité haute)
+                    if state.INTERPRETE_ACTIF:
+                        from PHOEBUS.ai import traduire_live
+                        async def wrap_traduction(txt, lang):
+                            trad = await traduire_live(txt, lang)
+                            await parler(trad, keep_conversation=True)
+                        asyncio.run_coroutine_threadsafe(wrap_traduction(cleaned_texte, state.INTERPRETE_LANGUE_CIBLE), main_loop)
+                        continue
+
                     asyncio.run_coroutine_threadsafe(executer_commande_generique(cleaned_texte, source="voix"), main_loop)
                             
                 except sr.WaitTimeoutError:
@@ -699,8 +716,17 @@ async def main():
 
     main_loop = asyncio.get_running_loop()
     # Threads annexes
-    threading.Thread(target=run_mobile_server, daemon=True).start()
-    threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
+    # On masque les erreurs SDL/AUHAL polluantes sur macOS au boot
+    devnull = open(os.devnull, 'w')
+    old_stderr = os.dup(sys.stderr.fileno())
+    try:
+        os.dup2(devnull.fileno(), sys.stderr.fileno())
+        threading.Thread(target=run_mobile_server, daemon=True).start()
+        threading.Thread(target=listen_and_process, args=(main_loop,), daemon=True).start()
+    finally:
+        os.dup2(old_stderr, sys.stderr.fileno())
+        devnull.close()
+
     asyncio.create_task(run_telegram_bot(main_loop))
     # threading.Thread(target=monitor_claps, daemon=True).start()
 

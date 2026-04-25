@@ -21,6 +21,16 @@ scipy>=1.10
 #   Windows: install.py utilise pipwin pour installer un wheel pré-compilé
 pyaudio>=0.2; platform_system != "Windows"
 
+# ── Audio Robuste (Super-Pouvoir #1) ────────────────────────────────────
+# VAD (Voice Activity Detection) professionnel — critique pour écoute sans écho
+webrtcvad>=4.3
+
+# Suppression bruit et silence intelligent (fallback VAD)
+silero-vad>=5.0
+
+# Audio file processing
+soundfile>=0.12
+
 # ── Wake Word — 100% gratuit, 100% local ──────────────────────────────
 openwakeword>=0.6
 # onnxruntime : version standard cross-platform
@@ -46,3 +56,4 @@ pywin32>=306; platform_system == "Windows"
 
 
 
+zeroconf>=0.131

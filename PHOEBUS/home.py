@@ -121,7 +121,9 @@ def ha_get_states_cached(max_age=30):
         HA_STATES_CACHE["ts"] = now
         return states
     except Exception as e:
-        print(f"[HA] Impossible de recuperer les entites : {e}")
+        # On affiche l'erreur seulement si on n'a rien en cache pour éviter le spam
+        if not HA_STATES_CACHE["states"]:
+            print(f"[HA] Home Assistant injoignable ({HA_URL}). Vérifiez votre configuration.")
         return HA_STATES_CACHE["states"] or []
 
 
@@ -294,8 +296,8 @@ def ha_get_etat(entity_id, attribut=None):
         if attribut:
             return data.get("attributes", {}).get(attribut, "inconnu")
         return data.get("state", "inconnu")
-    except Exception as e:
-        print(f"[HA] Erreur get etat : {e}")
+    except Exception:
+        # Silencieux pour ne pas spammer les logs
         return "inconnu"
 
 

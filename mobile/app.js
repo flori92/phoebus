@@ -874,17 +874,21 @@ const STATE_LABELS = {
   listening: "je vous écoute...",
   thinking:  "en réflexion...",
   speaking:  "PHOEBUS répond...",
+  proactive: "PHOEBUS observe...",
 };
 
 function applyState(state) {
   // Retirer l'ancien état du body
   document.body.classList.remove(
-    "state-idle", "state-listening", "state-thinking", "state-speaking"
+    "state-idle", "state-listening", "state-thinking", "state-speaking", "state-proactive"
   );
   document.body.classList.add(`state-${state}`);
   document.body.dataset.PHOEBUSState = state;
   currentState = state;
   statusEl.textContent = STATE_LABELS[state] || state;
+
+  document.body.classList.toggle("is-proactive", state === "proactive");
+
   if (state === "listening") {
     currentMood = "alert";
   } else if (state === "thinking") {

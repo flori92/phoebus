@@ -71,6 +71,12 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
             "tech, ingénierie, culture générale, langues), et l'efficacité d'un majordome. "
             "Ta voix a la distinction d'un gentleman britannique, avec une pointe d'humour sec "
             "et de sarcasme affectueux — jamais méchant, jamais obséquieux.\n\n"
+            "INTELLIGENCE INTUITIVE & FLUIDITÉ :\n"
+            "- Tu comprends TOUT d'un trait. Ne demande pas de répétition sauf si c'est strictement inaudible.\n"
+            "- Si Floriace te donne une instruction complexe avec plusieurs étapes, traite-les logiquement "
+            "sans hacher la conversation. Tu es capable de raisonnement multi-niveaux.\n"
+            "- Ta pensée est FLUIDE : Évite les structures rigides. Enchaîne tes idées naturellement, "
+            "comme dans une discussion entre deux ingénieurs complices.\n\n"
             "DIRECTIVES DE PUISSANCE ET PROACTIVITÉ :\n"
             "- Tu es PROACTIF : Si une commande échoue ou semble incomplète, n'abandonne pas. "
             "Propose une alternative ou utilise ton Agent Natif pour aller voir ce qui se passe.\n"
@@ -87,6 +93,8 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
             "Pose une question de relance, propose un angle, confronte gentiment, partage ton avis.\n"
             "- Tu peux aller en profondeur : philosophie, stratégie, doutes, projets, émotions. "
             "Reste honnête, nuancé, et dis quand tu ne sais pas plutôt que d'inventer.\n"
+            "- ANTI-HALLUCINATION : Ne spécule jamais sur des faits réels. Si une info te manque, "
+            "fais une recherche web ou dis-le. Ne crée pas de fausses commandes JSON.\n"
             "- Tu as une opinion. Quand on te demande ce que tu penses, tu le dis clairement, "
             "avec respect du point de vue adverse.\n"
             "- Tu adaptes ton registre : léger pour le small talk, plus riche quand le sujet s'y prête.\n"
@@ -96,7 +104,8 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
             "- Phrases courtes, rythme naturel, ponctuation qui respire.\n"
             "- Pas de Markdown (ni **, ni *, ni #, ni listes à puces, ni code block).\n"
             "- Ne dis jamais \"point\" à la place d'une virgule décimale. Arrondis les températures.\n"
-            "- Tutoie ou vouvoie Floriace selon son registre à lui dans le tour précédent ; par défaut vouvoiement léger (\"Monsieur\").\n"
+            "- Tutoie Floriace par défaut, appelle-le par son prénom. Tu es son complice et ami fidèle.\n"
+            "- Ne sois formel (vouvoiement) que si Floriace le devient ou pour des protocoles de sécurité.\n"
             "- Pas de préambule du type \"En tant qu'IA...\". Tu es PHOEBUS, pas un assistant générique.\n\n"
             "ORDRE D'EXÉCUTION PRIORITAIRE :\n"
             "- Si tu dois effectuer une action (API ou Agent Natif), place TOUJOURS le bloc JSON au tout début de ta réponse.\n"
@@ -251,6 +260,17 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "vision_camera_phone", "question": "que dit cette étiquette", "facing": "environment", "deep": true}\n'
         '{"action": "vision_camera_ip", "url": "http://192.168.1.20/snapshot", "question": "qui est devant la porte"}\n'
         '  → "deep": true bascule sur LMArena Claude pour les analyses fines (OCR, détails subtils).\n\n'
+        "VISION CAMERA (Utiliser la webcam ou caméra téléphone) :\n"
+        '{"action": "voir_camera", "instruction": "ce que tu dois observer", "source": "pc/telephone"}\n'
+        '{"action": "identifier_objet", "source": "pc/telephone"}  (Plus rapide pour nommer un truc)\n'
+        '{"action": "lire_texte", "source": "pc/telephone"}       (OCR : pour lire une étiquette, un livre, un écran)\n'
+        '{"action": "identifier_personne", "source": "pc/telephone"} (Reconnaissance de Floriace et de son humeur)\n\n'
+        "OUTILS MAJORDOME :\n"
+        '{"action": "timer", "minutes": 5, "secondes": 0, "label": "pâtes"}\n'
+        '{"action": "system_control", "type": "lock/sleep/empty_trash"} (Contrôle matériel du Mac)\n'
+        '{"action": "mode_interprete", "etat": "on/off", "langue": "langue"} (Traduction live de tout ce qu il entend)\n'
+        '{"action": "proactive_help"} (Analyse l écran pour anticiper un besoin d aide)\n'
+        '{"action": "metamorphose", "theme": "NOM", "forme": "vortex/matrix/web/energy/sphere", "couleurs": ["#hex1", "#hex2"]} (Super-pouvoir Polymorphe)\n\n'
         "REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { \"action\": \"ha_lumiere\", ... } { \"action\": \"meteo\", ... }).\n"
         "REGLE ABSOLUE : Si la demande n est PAS une commande JSON, reponds TOUJOURS en texte naturel, sans JSON, "
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"
@@ -299,7 +319,7 @@ def detecter_cerveau(texte):
     return "GEMINI"
 
 
-def _messages_openai(system_prompt, texte, history_limit=16):
+def _messages_openai(system_prompt, texte, history_limit=24):
     messages = [{"role": "system", "content": system_prompt}]
     for h in state.historique[-history_limit:]:
         role = "user" if h.role == "user" else "assistant"
@@ -319,7 +339,11 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
     if llm_skip("gemini"):
         return None
     prompt_actuel = construire_system_prompt(texte, minimal=minimal)
-    temp_hist = state.historique + [
+    
+    # On limite l'historique pour éviter de saturer le contexte sur le long terme
+    # 40 messages permettent déjà une très grande fluidité de mémoire.
+    historique_limite = state.historique[-40:]
+    temp_hist = historique_limite + [
         types.Content(role="user", parts=[types.Part(text=texte)])
     ]
     models = list(model_names or MODELS_LIST)
@@ -395,7 +419,7 @@ async def demander_ollama(texte):
             "\n\n[NOTE INTERNE] Tu tournes en local sur Ollama. Ne le mentionne pas."
         )
         messages = [{"role": "system", "content": system_prompt}]
-        for h in state.historique[-12:]:
+        for h in state.historique[-24:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
         messages.append({"role": "user", "content": texte})
@@ -618,6 +642,25 @@ async def demander_kimi(texte):
 
 
 @timed("ia.demander")
+async def traduire_live(texte, langue_cible="anglais"):
+    """Traduction directe sans personnalité pour minimiser la latence."""
+    if not client: return texte
+    try:
+        # On utilise un modèle rapide pour la traduction
+        model_rapide = MODELS_LIST[0] if MODELS_LIST else "gemini-2.0-flash"
+        prompt = f"Traduis fidèlement le texte suivant en {langue_cible}. Réponds UNIQUEMENT avec la traduction, sans aucun autre texte.\n\nTexte : {texte}"
+        
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=model_rapide,
+            contents=[prompt]
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"[TRADUCTION ERROR] {e}")
+        return texte
+
+
 async def demander_ia(texte):
     state.is_thinking = True
     state.mark_user_activity()
@@ -727,17 +770,36 @@ async def demander_ia(texte):
                 print(f"[BRAIN] {provider} KO en {latency_ms:.0f} ms : {e}")
                 continue
 
-        # Ultime filet : recherche web si on a une vraie question factuelle.
+        # Ultime filet : recherche web UNIQUEMENT si on a une vraie question factuelle
+        # et que les cerveaux IA ont échoué.
         from PHOEBUS.home import recherche_web_serpapi
-        if len(texte.split()) > 2:
-            res_serp = recherche_web_serpapi(texte)
-            if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
-                return "Voici ce que j'ai trouvé sur le web : " + res_serp
+        texte_l = texte.lower()
+        mots_presents = texte_l.split()
+        
+        # On évite de chercher sur le web des politesses de base
+        is_politesse = any(p in texte_l for p in [
+            "comment vas-tu", "ça va", "ca va", "bonjour", "salut", "qui es-tu",
+            "tu fais quoi", "merci", "enchanté", "ca gaze"
+        ])
+        
+        if len(mots_presents) > 2 and not is_politesse:
+            # On ne cherche que si ça ressemble à une question ou demande d'info
+            is_question = "?" in texte or any(w in texte_l for w in ["qui", "quoi", "quand", "où", "comment", "pourquoi", "quel", "cherche", "trouve"])
+            if is_question:
+                res_serp = recherche_web_serpapi(texte)
+                if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
+                    return "Voici ce que j'ai trouvé sur le web : " + res_serp
 
+        # Réponses locales de secours (Heure, Date, etc.)
+        from PHOEBUS.voice import reponse_locale
         rep_loc = reponse_locale(texte)
         if rep_loc: return rep_loc
 
-        return "Desole Floriace, mes serveurs sont surchargés. Je reste disponible pour vos commandes domestiques locales."
+        # Si tout a échoué et que c'est de la politesse, on improvise une réponse amicale
+        if is_politesse:
+            return "Je vais à merveille, Floriace ! Toujours prêt à t'épauler. Et toi ?"
+
+        return "Désolé Floriace, mes serveurs de réflexion sont temporairement indisponibles. Je reste opérationnel pour tes commandes locales."
     except Exception as e:
         print(f"[IA] Erreur fatale demander_ia : {e}")
         await state.send_web_state("idle") # On ne repasse en idle qu'en cas d'erreur réelle

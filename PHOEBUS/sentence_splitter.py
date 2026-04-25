@@ -27,7 +27,7 @@ def _is_abbrev(token: str) -> bool:
     return token.lower().rstrip(".") in _ABBREV
 
 
-def split_streaming(buffer: str, min_len: int = 12) -> tuple[list[str], str]:
+def split_streaming(buffer: str, min_len: int = 8) -> tuple[list[str], str]:
     """Version streaming : renvoie (phrases_completes, reste_inacheve).
 
     Une phrase "complète" DOIT se terminer par un séparateur `.!?…` SUIVI d'un
@@ -53,7 +53,7 @@ def split_streaming(buffer: str, min_len: int = 12) -> tuple[list[str], str]:
     return sentences, buffer[last:]
 
 
-def split(texte: str, min_len: int = 12) -> list[str]:
+def split(texte: str, min_len: int = 8) -> list[str]:
     """Découpe `texte` en phrases complètes.
 
     Exemple :
