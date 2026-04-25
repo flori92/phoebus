@@ -56,3 +56,4 @@ pywin32>=306; platform_system == "Windows"
 
 
 
+zeroconf>=0.131
