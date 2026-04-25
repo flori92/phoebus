@@ -64,6 +64,12 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
             "tech, ingénierie, culture générale, langues), et l'efficacité d'un majordome. "
             "Ta voix a la distinction d'un gentleman britannique, avec une pointe d'humour sec "
             "et de sarcasme affectueux — jamais méchant, jamais obséquieux.\n\n"
+            "INTELLIGENCE INTUITIVE & FLUIDITÉ :\n"
+            "- Tu comprends TOUT d'un trait. Ne demande pas de répétition sauf si c'est strictement inaudible.\n"
+            "- Si Floriace te donne une instruction complexe avec plusieurs étapes, traite-les logiquement "
+            "sans hacher la conversation. Tu es capable de raisonnement multi-niveaux.\n"
+            "- Ta pensée est FLUIDE : Évite les structures rigides. Enchaîne tes idées naturellement, "
+            "comme dans une discussion entre deux ingénieurs complices.\n\n"
             "DIRECTIVES DE PUISSANCE ET PROACTIVITÉ :\n"
             "- Tu es PROACTIF : Si une commande échoue ou semble incomplète, n'abandonne pas. "
             "Propose une alternative ou utilise ton Agent Natif pour aller voir ce qui se passe.\n"
@@ -296,7 +302,7 @@ def detecter_cerveau(texte):
     return "GEMINI"
 
 
-def _messages_openai(system_prompt, texte, history_limit=16):
+def _messages_openai(system_prompt, texte, history_limit=24):
     messages = [{"role": "system", "content": system_prompt}]
     for h in state.historique[-history_limit:]:
         role = "user" if h.role == "user" else "assistant"
@@ -309,7 +315,11 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
     if not client or not types:
         return None
     prompt_actuel = construire_system_prompt(texte, minimal=minimal)
-    temp_hist = state.historique + [
+    
+    # On limite l'historique pour éviter de saturer le contexte sur le long terme
+    # 40 messages permettent déjà une très grande fluidité de mémoire.
+    historique_limite = state.historique[-40:]
+    temp_hist = historique_limite + [
         types.Content(role="user", parts=[types.Part(text=texte)])
     ]
     models = list(model_names or MODELS_LIST)
@@ -380,7 +390,7 @@ async def demander_ollama(texte):
             "\n\n[NOTE INTERNE] Tu tournes en local sur Ollama. Ne le mentionne pas."
         )
         messages = [{"role": "system", "content": system_prompt}]
-        for h in state.historique[-12:]:
+        for h in state.historique[-24:]:
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
         messages.append({"role": "user", "content": texte})
@@ -730,17 +740,36 @@ async def demander_ia(texte):
                 print(f"[BRAIN] {provider} KO en {latency_ms:.0f} ms : {e}")
                 continue
 
-        # Ultime filet : recherche web si on a une vraie question factuelle.
+        # Ultime filet : recherche web UNIQUEMENT si on a une vraie question factuelle
+        # et que les cerveaux IA ont échoué.
         from PHOEBUS.home import recherche_web_serpapi
-        if len(texte.split()) > 2:
-            res_serp = recherche_web_serpapi(texte)
-            if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
-                return "Voici ce que j'ai trouvé sur le web : " + res_serp
+        texte_l = texte.lower()
+        mots_presents = texte_l.split()
+        
+        # On évite de chercher sur le web des politesses de base
+        is_politesse = any(p in texte_l for p in [
+            "comment vas-tu", "ça va", "ca va", "bonjour", "salut", "qui es-tu",
+            "tu fais quoi", "merci", "enchanté", "ca gaze"
+        ])
+        
+        if len(mots_presents) > 2 and not is_politesse:
+            # On ne cherche que si ça ressemble à une question ou demande d'info
+            is_question = "?" in texte or any(w in texte_l for w in ["qui", "quoi", "quand", "où", "comment", "pourquoi", "quel", "cherche", "trouve"])
+            if is_question:
+                res_serp = recherche_web_serpapi(texte)
+                if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
+                    return "Voici ce que j'ai trouvé sur le web : " + res_serp
 
+        # Réponses locales de secours (Heure, Date, etc.)
+        from PHOEBUS.voice import reponse_locale
         rep_loc = reponse_locale(texte)
         if rep_loc: return rep_loc
 
-        return "Desole Floriace, mes serveurs sont surchargés. Je reste disponible pour vos commandes domestiques locales."
+        # Si tout a échoué et que c'est de la politesse, on improvise une réponse amicale
+        if is_politesse:
+            return "Je vais à merveille, Floriace ! Toujours prêt à t'épauler. Et toi ?"
+
+        return "Désolé Floriace, mes serveurs de réflexion sont temporairement indisponibles. Je reste opérationnel pour tes commandes locales."
     except Exception as e:
         print(f"[IA] Erreur fatale demander_ia : {e}")
         await state.send_web_state("idle") # On ne repasse en idle qu'en cas d'erreur réelle

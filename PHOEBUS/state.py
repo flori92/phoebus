@@ -40,7 +40,7 @@ INTERPRETE_ACTIF = False
 INTERPRETE_LANGUE_CIBLE = "anglais"
 
 # ── Mode Conversation Naturelle ───────────────────────────────────
-─────────
+# ─────────
 # Pendant cette fenêtre, le mot-clé "PHOEBUS" n'est plus requis : on enchaîne
 # naturellement avec des échanges suivis, comme avec un humain.
 CONVERSATION_WINDOW_SECONDS = 10

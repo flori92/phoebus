@@ -112,6 +112,10 @@ async def PHOEBUS_vision_ecrire(instruction, texte_a_taper):
         pyautogui.write(texte_a_taper, interval=0.03)
         pyautogui.press('enter')
         os.remove(path_ss)
+        return f"C'est fait Floriace. J'ai saisi '{texte_a_taper}' dans {instruction}."
+    except Exception as e:
+        print(f"[VISION ERROR] {e}")
+        return "J'ai eu un petit souci technique pour taper le texte, Floriace."
 
 
 async def voir_camera(instruction, source="pc"):
