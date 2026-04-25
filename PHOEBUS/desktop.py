@@ -178,6 +178,30 @@ def chercher_fichier(nom, chemin=None):
 
 # ── Actions PC directes ────────────────────────────────────────────────────
 
+def system_control(action_type):
+    """Contrôle matériel du système (optimisé pour macOS)."""
+    try:
+        if IS_MACOS:
+            if action_type == "lock":
+                os.system('open -a ScreenSaverEngine')
+            elif action_type == "sleep":
+                os.system('osascript -e "tell application \\"System Events\\" to sleep"')
+            elif action_type == "empty_trash":
+                os.system('osascript -e "tell application \\"Finder\\" to empty trash"')
+            elif action_type == "screensaver":
+                os.system('open -a ScreenSaverEngine')
+            return True, f"Action système {action_type} exécutée sur Mac."
+        elif IS_WINDOWS:
+            if action_type == "lock":
+                os.system('rundll32.exe user32.dll,LockWorkStation')
+            elif action_type == "sleep":
+                os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+            return True, f"Action système {action_type} exécutée sur Windows."
+        return False, "OS non supporté pour cette action."
+    except Exception as e:
+        return False, str(e)
+
+
 def executer_action_pc(commande):
     cmd = commande.lower()
 

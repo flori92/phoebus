@@ -36,12 +36,23 @@ def _try_faster_whisper():
 
             import io
             audio_file = io.BytesIO(wav_bytes)
-            segments, info = model.transcribe(audio_file, language="fr", beam_size=5)
+            
+            # vad_filter=True est essentiel pour bloquer les hallucinations de Whisper 
+            # (comme "Sous-titres par Amara.org" ou "Merci de votre écoute")
+            segments, info = model.transcribe(
+                audio_file, 
+                language="fr", 
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
             
             text = " ".join(seg.text for seg in segments).strip()
             
-            # Filtre de confiance : si Whisper renvoie un texte mais avec une probabilité de silence élevée
-            # (ce qui cause les hallucinations type Radio-Canada)
+            # Filtre de confiance additionnel pour éviter le bruit
+            if info.language_probability < 0.6:
+                return ""
+
             return text
 
         return recognize

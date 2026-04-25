@@ -25,6 +25,7 @@ PENDING_CONFIRMATION = None
 is_listening  = False
 is_speaking   = False
 is_thinking   = False
+is_proactive  = False
 speak_volume  = 0.0
 
 PHOEBUS_actif    = False
@@ -34,7 +35,12 @@ STOP_PARLER     = False
 MODE_IRON_MAN = False
 VIDEO_LANCEE  = False
 
-# ── Mode Conversation Naturelle ────────────────────────────────────────────
+# ── Mode Interprète (Traduction Live) ──────────────────────────────
+INTERPRETE_ACTIF = False
+INTERPRETE_LANGUE_CIBLE = "anglais"
+
+# ── Mode Conversation Naturelle ───────────────────────────────────
+─────────
 # Pendant cette fenêtre, le mot-clé "PHOEBUS" n'est plus requis : on enchaîne
 # naturellement avec des échanges suivis, comme avec un humain.
 CONVERSATION_WINDOW_SECONDS = 10

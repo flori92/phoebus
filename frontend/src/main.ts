@@ -913,6 +913,7 @@ const STATE_LABELS: Record<OrbState, string> = {
   listening: "écoute...",
   thinking: "PHOEBUS réfléchit...",
   speaking: "PHOEBUS répond...",
+  proactive: "PHOEBUS observe...",
 };
 let currentState: OrbState = "idle";
 let currentMood: PHOEBUSMood = "neutral";
@@ -949,6 +950,9 @@ function applyState(state: OrbState): void {
   document.body.dataset.state = state;
   statusEl.textContent = STATE_LABELS[state];
   document.body.dataset.PHOEBUSState = state;
+
+  // Toggle de la classe proactivite pour l'effet 'Neural Pulse'
+  document.body.classList.toggle("is-proactive", state === "proactive");
 
   if (state === "listening") {
     currentMood = "alert";
@@ -1118,6 +1122,12 @@ function connect(): void {
 
       if (data.action === "demo") {
         orb.triggerDemo();
+        return;
+      }
+      if (data.action === "metamorphose") {
+        const shape = (data as any).shape || "sphere";
+        const colors = (data as any).colors || [];
+        orb.setTheme(shape as any, colors);
         return;
       }
       if (data.action === "PHOEBUS_expression" && data.text) {

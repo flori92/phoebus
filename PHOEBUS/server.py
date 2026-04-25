@@ -569,6 +569,13 @@ def listen_and_process(main_loop):
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
+                    # ── MODE INTERPRÈTE ── (Priorité haute)
+                    if state.INTERPRETE_ACTIF:
+                        from PHOEBUS.ai import traduire_live
+                        traduction = await traduire_live(cleaned_texte, state.INTERPRETE_LANGUE_CIBLE)
+                        asyncio.run_coroutine_threadsafe(parler(traduction, keep_conversation=True), main_loop)
+                        continue
+
                     asyncio.run_coroutine_threadsafe(executer_commande_generique(cleaned_texte, source="voix"), main_loop)
                             
                 except sr.WaitTimeoutError:

@@ -80,6 +80,8 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
             "Pose une question de relance, propose un angle, confronte gentiment, partage ton avis.\n"
             "- Tu peux aller en profondeur : philosophie, stratégie, doutes, projets, émotions. "
             "Reste honnête, nuancé, et dis quand tu ne sais pas plutôt que d'inventer.\n"
+            "- ANTI-HALLUCINATION : Ne spécule jamais sur des faits réels. Si une info te manque, "
+            "fais une recherche web ou dis-le. Ne crée pas de fausses commandes JSON.\n"
             "- Tu as une opinion. Quand on te demande ce que tu penses, tu le dis clairement, "
             "avec respect du point de vue adverse.\n"
             "- Tu adaptes ton registre : léger pour le small talk, plus riche quand le sujet s'y prête.\n"
@@ -89,7 +91,8 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
             "- Phrases courtes, rythme naturel, ponctuation qui respire.\n"
             "- Pas de Markdown (ni **, ni *, ni #, ni listes à puces, ni code block).\n"
             "- Ne dis jamais \"point\" à la place d'une virgule décimale. Arrondis les températures.\n"
-            "- Tutoie ou vouvoie Floriace selon son registre à lui dans le tour précédent ; par défaut vouvoiement léger (\"Monsieur\").\n"
+            "- Tutoie Floriace par défaut, appelle-le par son prénom. Tu es son complice et ami fidèle.\n"
+            "- Ne sois formel (vouvoiement) que si Floriace le devient ou pour des protocoles de sécurité.\n"
             "- Pas de préambule du type \"En tant qu'IA...\". Tu es PHOEBUS, pas un assistant générique.\n\n"
             "ORDRE D'EXÉCUTION PRIORITAIRE :\n"
             "- Si tu dois effectuer une action (API ou Agent Natif), place TOUJOURS le bloc JSON au tout début de ta réponse.\n"
@@ -234,6 +237,17 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "VISION WEBSOCKET (Interactions basiques depuis navigateur):\n"
         '{"action": "voir_ecran", "instruction": "ou cliquer EXACTEMENT"}\n'
         '{"action": "vision_ecrire", "instruction": "ou cliquer", "texte": "texte"}\n\n'
+        "VISION CAMERA (Utiliser la webcam ou caméra téléphone) :\n"
+        '{"action": "voir_camera", "instruction": "ce que tu dois observer", "source": "pc/telephone"}\n'
+        '{"action": "identifier_objet", "source": "pc/telephone"}  (Plus rapide pour nommer un truc)\n'
+        '{"action": "lire_texte", "source": "pc/telephone"}       (OCR : pour lire une étiquette, un livre, un écran)\n'
+        '{"action": "identifier_personne", "source": "pc/telephone"} (Reconnaissance de Floriace et de son humeur)\n\n'
+        "OUTILS MAJORDOME :\n"
+        '{"action": "timer", "minutes": 5, "secondes": 0, "label": "pâtes"}\n'
+        '{"action": "system_control", "type": "lock/sleep/empty_trash"} (Contrôle matériel du Mac)\n'
+        '{"action": "mode_interprete", "etat": "on/off", "langue": "langue"} (Traduction live de tout ce qu il entend)\n'
+        '{"action": "proactive_help"} (Analyse l écran pour anticiper un besoin d aide)\n'
+        '{"action": "metamorphose", "theme": "NOM", "forme": "vortex/matrix/web/energy/sphere", "couleurs": ["#hex1", "#hex2"]} (Super-pouvoir Polymorphe)\n\n'
         "REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { \"action\": \"ha_lumiere\", ... } { \"action\": \"meteo\", ... }).\n"
         "REGLE ABSOLUE : Si la demande n est PAS une commande JSON, reponds TOUJOURS en texte naturel, sans JSON, "
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"
@@ -586,6 +600,25 @@ async def demander_kimi(texte):
     except Exception as e:
         print(f"[ERREUR KIMI] {e}")
         return None
+
+
+async def traduire_live(texte, langue_cible="anglais"):
+    """Traduction directe sans personnalité pour minimiser la latence."""
+    if not client: return texte
+    try:
+        # On utilise un modèle rapide pour la traduction
+        model_rapide = MODELS_LIST[0] if MODELS_LIST else "gemini-2.0-flash"
+        prompt = f"Traduis fidèlement le texte suivant en {langue_cible}. Réponds UNIQUEMENT avec la traduction, sans aucun autre texte.\n\nTexte : {texte}"
+        
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=model_rapide,
+            contents=[prompt]
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"[TRADUCTION ERROR] {e}")
+        return texte
 
 
 async def demander_ia(texte):

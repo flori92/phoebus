@@ -16,10 +16,12 @@
 
 import * as THREE from "three";
 
-export type OrbState = "idle" | "listening" | "thinking" | "speaking";
+export type OrbState = "idle" | "listening" | "thinking" | "speaking" | "proactive";
+export type OrbShape = "sphere" | "vortex" | "web" | "energy" | "matrix";
 
 export interface Orb {
   setState(s: OrbState): void;
+  setTheme(shape: OrbShape, colors: string[]): void;
   setVolume(v: number): void;
   setAnalyser(a: AnalyserNode | null): void;
   triggerDemo(): void;
@@ -164,6 +166,12 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     return { col, bright };
   }
 
+  // ── Polymorph / Morphing (PHOEBUS) ────────────────────────────────────────
+  let currentShape: OrbShape = "sphere";
+  let themeColors: THREE.Color[] = [];
+  let isThemed = false;
+  let themeIntensity = 0; // 0 to 1 for transition
+
   // ── Base state vars ────────────────────────────────────────────────────────
   let state: OrbState = "idle";
   let targetRadius = 25, currentRadius = 25;
@@ -223,14 +231,27 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     // ── Solar palette update ────────────────────────────────────────────────
     // PHOEBUS adjusts its internal core colors based on the sun's position.
     const solar = getSolarPalette(t);
-    COL_BASE.lerp(solar.col, 0.02);
-    // Derived colors follow the base solar color with slight offsets
-    _tmpColor.copy(solar.col).addScalar(0.15);
-    COL_THINK.lerp(_tmpColor, 0.02);
-    _tmpColor.copy(solar.col).multiplyScalar(1.1);
-    COL_SPEAK.lerp(_tmpColor, 0.02);
-    _tmpColor.copy(solar.col).addScalar(0.3);
-    COL_BRIGHT.lerp(_tmpColor, 0.02);
+    
+    if (isThemed) {
+      themeIntensity += (1 - themeIntensity) * 0.05;
+      if (themeColors.length > 0) {
+        COL_BASE.lerp(themeColors[0], 0.05);
+        if (themeColors.length > 1) {
+          COL_THINK.lerp(themeColors[1], 0.05);
+          COL_SPEAK.lerp(themeColors[1], 0.05);
+        }
+      }
+    } else {
+      themeIntensity += (0 - themeIntensity) * 0.05;
+      COL_BASE.lerp(solar.col, 0.02);
+      // Derived colors follow the base solar color with slight offsets
+      _tmpColor.copy(solar.col).addScalar(0.15);
+      COL_THINK.lerp(_tmpColor, 0.02);
+      _tmpColor.copy(solar.col).multiplyScalar(1.1);
+      COL_SPEAK.lerp(_tmpColor, 0.02);
+      _tmpColor.copy(solar.col).addScalar(0.3);
+      COL_BRIGHT.lerp(_tmpColor, 0.02);
+    }
 
     // ── Demo expiry ──────────────────────────────────────────────────────────
     if (demoActive && t - demoStartTime >= DEMO_DURATION) {
@@ -288,6 +309,12 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
           targetRadius = 20; targetSpeed = 0.45; targetBright = 0.78 * solar.bright; targetSize = 0.46;
           targetLineAmount = 0.92; targetElectronRate = 0.01;
           targetVortex = 1.4; targetBreathAmp = 1.0;
+          break;
+
+        case "proactive":
+          targetRadius = 24; targetSpeed = 0.6; targetBright = 0.85 * solar.bright; targetSize = 0.42;
+          targetLineAmount = 0.6; targetElectronRate = 0.02;
+          targetVortex = 0.8; targetBreathAmp = 0.4;
           break;
       }
     }
@@ -654,6 +681,44 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       electronMat.color.set(0xffffff);
     }
 
+    // ── Apply morphing physics to each particle ─────────────────────────────
+    const positions = geo.attributes.position.array as Float32Array;
+    for (let i = 0; i < N; i++) {
+      const px = positions[i * 3];
+      const py = positions[i * 3 + 1];
+      const pz = positions[i * 3 + 2];
+
+      let tx = px, ty = py, tz = pz; // Target coords for this particle
+
+      if (currentShape === "vortex") {
+        const angle = t * 2 + i * 0.1;
+        const dist = (i / N) * currentRadius * 1.5;
+        tx = Math.cos(angle) * dist;
+        ty = Math.sin(angle) * dist;
+        tz = (i / N - 0.5) * 20;
+      } else if (currentShape === "matrix") {
+        const grid = Math.floor(Math.sqrt(N));
+        const ix = i % grid;
+        const iy = Math.floor(i / grid);
+        tx = (ix / grid - 0.5) * 50;
+        ty = (iy / grid - 0.5) * 50;
+        tz = Math.sin(t + i * 0.1) * 3;
+      } else if (currentShape === "web") {
+        const mag = Math.sqrt(px*px + py*py + pz*pz);
+        if (mag > 0) {
+          tx = (px / mag) * (currentRadius * 1.5);
+          ty = (py / mag) * (currentRadius * 1.5);
+          tz = (pz / mag) * (currentRadius * 1.5);
+        }
+      }
+
+      // Lerp current position to target based on themeIntensity
+      positions[i * 3]     += (tx - px) * 0.05 * themeIntensity;
+      positions[i * 3 + 1] += (ty - py) * 0.05 * themeIntensity;
+      positions[i * 3 + 2] += (tz - pz) * 0.05 * themeIntensity;
+    }
+    geo.attributes.position.needsUpdate = true;
+
     // ── Camera drift ──────────────────────────────────────────────────────────
     if (demoActive) {
       // Camera swoops around during demo
@@ -684,6 +749,14 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     setState(s: OrbState) {
       state = s;
       if (s !== "speaking") externalVolume = 0;
+    },
+    setTheme(shape: OrbShape, colors: string[]) {
+      currentShape = shape;
+      themeColors = colors.map(c => new THREE.Color(c));
+      isThemed = true;
+      // Trigger a visual burst on transformation
+      shockwave = 1.0;
+      transitionEnergy = 1.0;
     },
     setVolume(v: number) {
       externalVolume = v;

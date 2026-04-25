@@ -217,6 +217,8 @@ body[data-PHOEBUS-state="thinking"] #avatar-core[data-PHOEBUS-clip="reflective"]
   --avatar-media-scale: 1.16;
   --avatar-media-position-y: 35%;
   --avatar-media-shift-y: -4px;
+  animation: holographic-pulse 4s ease-in-out infinite;
+  mix-blend-mode: screen;
 }
 
 body[data-PHOEBUS-mood="warm"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media,
@@ -241,6 +243,8 @@ body[data-PHOEBUS-mood="serious"] #avatar-core[data-PHOEBUS-clip="reflective"] .
 body[data-PHOEBUS-state="speaking"] #avatar-core[data-PHOEBUS-clip="expressive"] .avatar-face-media {
   --avatar-media-scale: 1.18;
   --avatar-media-position-y: 38%;
+  animation: holographic-pulse 2.5s ease-in-out infinite, holographic-glitch 6s infinite;
+  mix-blend-mode: screen;
 }
 
 .avatar-face-video::-webkit-media-controls {
@@ -845,6 +849,31 @@ body.has-face-avatar[data-state="listening"] #orb-canvas {
   0%,
   100% { opacity: 1; }
   50%  { opacity: 0.35; }
+}
+
+@keyframes neural-pulse {
+  0% { transform: scale(1); filter: brightness(1) blur(0px); }
+  50% { transform: scale(1.05); filter: brightness(1.4) blur(2px); }
+  100% { transform: scale(1); filter: brightness(1) blur(0px); }
+}
+
+@keyframes holographic-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 10px rgba(var(--avatar-accent-rgb), 0.3)); }
+  50% { transform: scale(1.03); filter: brightness(1.15) drop-shadow(0 0 40px rgba(var(--avatar-accent-rgb), 0.6)); }
+}
+
+@keyframes holographic-glitch {
+  0% { filter: hue-rotate(0deg) saturate(100%) brightness(1) drop-shadow(0 0 10px rgba(var(--avatar-accent-rgb), 0.5)); transform: scale(1) translate(0, 0); }
+  5% { filter: hue-rotate(-10deg) saturate(120%) brightness(1.2) drop-shadow(0 0 30px rgba(var(--avatar-accent-rgb), 0.8)); transform: scale(1.02) translate(1px, -1px); }
+  10% { filter: hue-rotate(10deg) saturate(90%) brightness(0.9) drop-shadow(-5px 0 10px rgba(var(--avatar-soft-rgb), 0.6)); transform: scale(0.98) translate(-1px, 1px); }
+  15% { filter: hue-rotate(0deg) saturate(110%) brightness(1.1) drop-shadow(5px 0 15px rgba(var(--avatar-hot-rgb), 0.7)); transform: scale(1.01) translate(1px, 0); }
+  20% { filter: hue-rotate(0deg) saturate(100%) brightness(1) drop-shadow(0 0 15px rgba(var(--avatar-accent-rgb), 0.4)); transform: scale(1) translate(0, 0); }
+  100% { filter: hue-rotate(0deg) saturate(100%) brightness(1) drop-shadow(0 0 10px rgba(var(--avatar-accent-rgb), 0.5)); transform: scale(1) translate(0, 0); }
+}
+
+.is-proactive #avatar-shell {
+  animation: neural-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 50px rgba(var(--avatar-accent-rgb), 0.4);
 }
 
 #connection-label {
