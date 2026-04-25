@@ -187,7 +187,16 @@ async def ws_handler(websocket):
                         fut = state.PENDING_SCREEN_CAPTURES.pop(req_id)
                         if not fut.done():
                             fut.set_result(img_b64)
-                            
+
+                elif action == "phone_camera_result":
+                    # Frame caméra téléphone retournée par mobile/app.js.
+                    req_id = data.get("id")
+                    img_b64 = data.get("image")
+                    if req_id in state.PENDING_PHONE_CAPTURES:
+                        fut = state.PENDING_PHONE_CAPTURES.pop(req_id)
+                        if not fut.done():
+                            fut.set_result(img_b64)
+
                 elif action == "audio_chunk":
                     pass
 

@@ -48,6 +48,10 @@ DEFAULT_RISK_BY_ACTION = {
     "spotify_volume": "low",
     "spotify_now_playing": "low",
     "spotify_search_play": "low",
+    # Caméras : medium — capture image de l'environnement, vie privée.
+    "vision_camera_pc": "medium",
+    "vision_camera_phone": "medium",
+    "vision_camera_ip": "medium",
 }
 
 # Conservé pour compat descendante — dérivé du dict ci-dessus.

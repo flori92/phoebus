@@ -1020,6 +1020,105 @@ class StreamingAudioPlayer {
 
 const streamingPlayer = new StreamingAudioPlayer();
 
+// ── Caméra du téléphone (servie à PHOEBUS sur demande WebSocket) ─────────
+//
+// Quand le backend envoie {"action":"request_phone_camera","id":..,"facing":..},
+// on capture une frame via getUserMedia + canvas, on encode en JPEG base64
+// et on renvoie {"action":"phone_camera_result","id":..,"image":..}.
+//
+// Première utilisation : iOS/Android demande la permission caméra. Une fois
+// accordée, les captures suivantes sont instantanées.
+let _phoebusCamStream = null;
+
+async function capturerCameraTelephone(reqId, facing) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("getUserMedia non supporté sur ce navigateur");
+    }
+    // Réutilise le stream s'il est déjà ouvert ; sinon en ouvre un.
+    if (!_phoebusCamStream || !_phoebusCamStream.active) {
+      const constraints = {
+        video: {
+          facingMode: facing === "user" ? "user" : { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      };
+      _phoebusCamStream = await navigator.mediaDevices.getUserMedia(constraints);
+    }
+
+    const track = _phoebusCamStream.getVideoTracks()[0];
+    if (!track) throw new Error("Aucun flux vidéo disponible");
+
+    // Capture via ImageCapture si dispo (plus précis), sinon via <video> + canvas.
+    let blob;
+    if (typeof ImageCapture !== "undefined") {
+      const ic = new ImageCapture(track);
+      blob = await ic.takePhoto({ imageHeight: 720, imageWidth: 1280 }).catch(
+        async () => {
+          // Certains devices ne supportent pas takePhoto → fallback grabFrame.
+          const frame = await ic.grabFrame();
+          const cv = document.createElement("canvas");
+          cv.width = frame.width;
+          cv.height = frame.height;
+          cv.getContext("2d").drawImage(frame, 0, 0);
+          return await new Promise((res) =>
+            cv.toBlob((b) => res(b), "image/jpeg", 0.85)
+          );
+        }
+      );
+    } else {
+      const video = document.createElement("video");
+      video.srcObject = _phoebusCamStream;
+      video.muted = true;
+      video.playsInline = true;
+      await video.play();
+      // Petit délai pour laisser l'autoexposition se stabiliser.
+      await new Promise((r) => setTimeout(r, 250));
+      const cv = document.createElement("canvas");
+      cv.width = video.videoWidth;
+      cv.height = video.videoHeight;
+      cv.getContext("2d").drawImage(video, 0, 0);
+      video.pause();
+      blob = await new Promise((res) =>
+        cv.toBlob((b) => res(b), "image/jpeg", 0.85)
+      );
+    }
+
+    if (!blob) throw new Error("Échec encodage JPEG");
+
+    const dataUrl = await new Promise((res) => {
+      const fr = new FileReader();
+      fr.onloadend = () => res(fr.result);
+      fr.readAsDataURL(blob);
+    });
+    // dataUrl = "data:image/jpeg;base64,XXXX". Le backend supporte les deux
+    // formats (avec ou sans le préfixe).
+    ws.send(
+      JSON.stringify({
+        action: "phone_camera_result",
+        id: reqId,
+        image: dataUrl,
+      })
+    );
+  } catch (err) {
+    console.error("[CAM] Erreur capture :", err);
+    // On répond quand même pour débloquer la Future côté backend.
+    try {
+      ws.send(
+        JSON.stringify({
+          action: "phone_camera_result",
+          id: reqId,
+          image: "",
+          error: String(err && err.message ? err.message : err),
+        })
+      );
+    } catch (_) {}
+  }
+}
+
 function connectWS() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
@@ -1117,6 +1216,12 @@ function connectWS() {
       else if (data.action === "PHOEBUS_response" && data.text) {
         afficherReponsePHOEBUS(data.text);
         parleSynthese(data.text, { id: data.id, text: data.text });
+      }
+      else if (data.action === "request_phone_camera" && data.id) {
+        // Le backend nous demande une frame caméra (PHOEBUS veut voir).
+        capturerCameraTelephone(data.id, data.facing || "environment").catch(
+          (err) => console.error("[CAM] Capture KO :", err)
+        );
       }
     } catch (e) {
       console.error("[WS] Erreur parsing message :", e);

@@ -261,6 +261,47 @@ def test_planner_json_extract():
     assert _extract_json('{"s": "a {b} c"}') == {"s": "a {b} c"}
 
 
+def test_brain_router_prefers_arena_for_deep_thinking():
+    """Une question complexe doit préférer LMArena (Claude/GPT-4o)."""
+    from PHOEBUS.brain_router import build_profile, rank_provider_names
+
+    p = build_profile(
+        "explique-moi en détail la philosophie stoïcienne et compare-la à Spinoza, "
+        "avec leurs implications pour le bonheur moderne",
+        streaming=False,
+    )
+    assert p.priority == "smart" or p.kind == "deep"
+    assert p.preferred_provider == "arena"
+    ranked = rank_provider_names(
+        p,
+        available=["gemini", "groq", "arena", "ollama"],
+        order=["gemini", "groq", "arena", "ollama"],
+        mode="smart",
+        metrics={},
+    )
+    assert ranked[0] == "arena"
+
+
+def test_camera_intent_routing():
+    """Les intents caméra doivent être bien classés (PC vs téléphone vs IP)."""
+    from PHOEBUS.intent import detect
+    cases = [
+        ("regarde autour de toi", "vision_camera_pc"),
+        ("que vois-tu", "vision_camera_pc"),
+        ("active la webcam", "vision_camera_pc"),
+        ("regarde avec mon téléphone", "vision_camera_phone"),
+        ("utilise la caméra de mon iphone", "vision_camera_phone"),
+        ("prends une photo avec mon mobile", "vision_camera_phone"),
+        # Les commandes domotique gardent priorité.
+        ("allume le salon", "allumer"),
+        ("éteins la cuisine", "eteindre"),
+    ]
+    for txt, expected in cases:
+        r = detect(txt)
+        assert r is not None, f"Intent attendu pour {txt!r}"
+        assert r.name == expected, f"{txt!r}: attendu {expected}, obtenu {r.name}"
+
+
 def test_observability_records_and_renders():
     import asyncio
     from PHOEBUS.observability import timed, snapshot, render_html, render_json, reset
@@ -306,6 +347,8 @@ def _run_all():
         test_spotify_intents_dont_clash_with_domotique,
         test_planner_json_extract,
         test_observability_records_and_renders,
+        test_brain_router_prefers_arena_for_deep_thinking,
+        test_camera_intent_routing,
     ]
     failed = 0
     for fn in tests:

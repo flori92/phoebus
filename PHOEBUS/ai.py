@@ -241,6 +241,16 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "VISION WEBSOCKET (Interactions basiques depuis navigateur):\n"
         '{"action": "voir_ecran", "instruction": "ou cliquer EXACTEMENT"}\n'
         '{"action": "vision_ecrire", "instruction": "ou cliquer", "texte": "texte"}\n\n'
+        "VISION CAMÉRA — utilise une vraie caméra physique pour observer le monde réel.\n"
+        "Choisis intelligemment la source selon ce qui est demandé :\n"
+        "- vision_camera_pc : webcam du Mac/PC. Idéal pour ce qui est devant Floriace.\n"
+        "- vision_camera_phone : caméra du téléphone via WebSocket. Idéal quand Floriace\n"
+        "  veut te montrer un objet précis, lire une étiquette, regarder ailleurs dans la pièce.\n"
+        "- vision_camera_ip : caméra réseau (URL HTTP/RTSP). Surveillance, doorbell.\n"
+        '{"action": "vision_camera_pc", "question": "que vois-tu", "deep": false}\n'
+        '{"action": "vision_camera_phone", "question": "que dit cette étiquette", "facing": "environment", "deep": true}\n'
+        '{"action": "vision_camera_ip", "url": "http://192.168.1.20/snapshot", "question": "qui est devant la porte"}\n'
+        '  → "deep": true bascule sur LMArena Claude pour les analyses fines (OCR, détails subtils).\n\n'
         "REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { \"action\": \"ha_lumiere\", ... } { \"action\": \"meteo\", ... }).\n"
         "REGLE ABSOLUE : Si la demande n est PAS une commande JSON, reponds TOUJOURS en texte naturel, sans JSON, "
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"

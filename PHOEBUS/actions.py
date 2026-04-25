@@ -585,6 +585,45 @@ async def executer_une_action(d):
         await parler(msg)
         return
 
+    # ── CAMÉRAS (PC webcam, téléphone via WS, caméra IP réseau) ──────────────
+    elif action == "vision_camera_pc":
+        from PHOEBUS import camera as _cam
+        question = d.get("question") or d.get("instruction") or "Décris ce que tu vois en une phrase."
+        img = await _cam.capturer_pc_webcam()
+        if not img:
+            await parler("Je n'arrive pas à accéder à la webcam.")
+            return
+        rep = await _cam.analyser_image(img, question=question,
+                                         use_arena_for_complex=bool(d.get("deep")))
+        await parler(rep)
+        return
+
+    elif action == "vision_camera_phone":
+        from PHOEBUS import camera as _cam
+        question = d.get("question") or d.get("instruction") or "Décris ce que tu vois en une phrase."
+        facing = d.get("facing", "environment")
+        img = await _cam.capturer_telephone(facing=facing)
+        if not img:
+            await parler("Aucun téléphone n'a répondu pour me prêter sa caméra.")
+            return
+        rep = await _cam.analyser_image(img, question=question,
+                                         use_arena_for_complex=bool(d.get("deep")))
+        await parler(rep)
+        return
+
+    elif action == "vision_camera_ip":
+        from PHOEBUS import camera as _cam
+        question = d.get("question") or d.get("instruction") or "Décris ce que tu vois en une phrase."
+        url = d.get("url", "")
+        img = await _cam.capturer_ip_camera(url=url)
+        if not img:
+            await parler("La caméra réseau n'a pas répondu.")
+            return
+        rep = await _cam.analyser_image(img, question=question,
+                                         use_arena_for_complex=bool(d.get("deep")))
+        await parler(rep)
+        return
+
     # ── PLAYWRIGHT (automatisation navigateur) ───────────────────────────────
     elif action == "playwright_run":
         from PHOEBUS import playwright_skill as _pw

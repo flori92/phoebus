@@ -18,6 +18,8 @@ CONNECTED_CLIENTS = set()
 AUTHENTICATED_CLIENTS = set()
 CLIENT_META = {}
 PENDING_SCREEN_CAPTURES = {}
+# Captures caméra téléphone en attente : {req_id: asyncio.Future}
+PENDING_PHONE_CAPTURES = {}
 
 # ── Flags globaux ───────────────────────────────────────────────────────────
 interface_deja_connectee = False

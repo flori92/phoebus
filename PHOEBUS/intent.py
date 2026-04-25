@@ -152,6 +152,30 @@ _RE_SPOT_NOW = re.compile(rf"^{_WAKE_PREFIX}(?:c(?:'|\s?)est quoi|qu(?:'|\s)est-
 _RE_SPOT_VOL = re.compile(rf"^{_WAKE_PREFIX}(?:mets|règle|regle|passe)\s+(?:le\s+)?volume\s+(?:spotify\s+)?(?:à|a|sur)\s+(?P<v>\d{{1,3}})(?:\s*%| pour cent)?$")
 _RE_SPOT_SEARCH = re.compile(rf"^{_WAKE_PREFIX}(?:mets|joue|lance|écoute|ecoute|play)\s+(?:la (?:chanson|musique)|le morceau|le titre)?\s*(?P<q>.+)$")
 
+# ── Caméras : PC webcam / téléphone / caméra IP ────────────────────────────
+# "regarde autour de toi" / "que vois-tu" / "regarde ce que je te montre"
+_RE_CAM_PC = re.compile(
+    rf"^{_WAKE_PREFIX}(?:"
+    rf"regarde\s+(?:autour|ici|devant|ce que je te montre|ce qu(?:i|e)\s+il y a)"
+    rf"|que (?:vois|regardes)[- ]tu"
+    rf"|qu(?:'|\s)est[- ]ce qu(?:i|e)\s+il y a (?:devant|ici|autour)"
+    rf"|active\s+(?:la\s+)?(?:webcam|cam[ée]ra)(?:\s+du pc| de l'ordinateur)?"
+    rf"|prends? une photo (?:de la pi[èe]ce|de mon environnement)"
+    rf")(?:\s+(?P<question>.+))?$"
+)
+
+_RE_CAM_PHONE = re.compile(
+    rf"^{_WAKE_PREFIX}(?:"
+    rf"regarde\s+(?:avec|via|sur|depuis)\s+(?:mon\s+)?(?:t[ée]l[ée]phone|portable|mobile|iphone|smartphone)"
+    rf"|utilise\s+(?:la\s+cam[ée]ra\s+(?:de\s+)?)?(?:mon\s+)?(?:t[ée]l[ée]phone|portable|mobile|iphone|smartphone)"
+    rf"|prends? une photo (?:avec|via)\s+(?:mon\s+)?(?:t[ée]l[ée]phone|portable|mobile|iphone|smartphone)"
+    rf")(?:\s+(?P<question>.+))?$"
+)
+
+_RE_CAM_IP = re.compile(
+    rf"^{_WAKE_PREFIX}(?:regarde|montre[- ]moi)\s+(?:la\s+)?cam[ée]ra\s+(?P<lieu>[a-zà-ÿ' -]+)$"
+)
+
 
 def _unite_to_seconds(n: int, unit: str) -> int:
     u = (unit or "min").lower()
@@ -331,5 +355,35 @@ def detect(texte: str) -> Optional[IntentResult]:
                 "spotify_search_play",
                 _json.dumps({"action": "spotify_search_play", "query": q}, ensure_ascii=False),
             )
+
+    # ── Caméras ───────────────────────────────────────────────────────────
+    m = _RE_CAM_PHONE.match(t)
+    if m:
+        question = (m.group("question") or "").strip()
+        import json as _json
+        payload = {"action": "vision_camera_phone"}
+        if question:
+            payload["question"] = question
+        return IntentResult("vision_camera_phone",
+                            _json.dumps(payload, ensure_ascii=False))
+
+    m = _RE_CAM_PC.match(t)
+    if m:
+        question = (m.group("question") or "").strip()
+        import json as _json
+        payload = {"action": "vision_camera_pc"}
+        if question:
+            payload["question"] = question
+        return IntentResult("vision_camera_pc",
+                            _json.dumps(payload, ensure_ascii=False))
+
+    m = _RE_CAM_IP.match(t)
+    if m:
+        # On laisse le LLM ou la config résoudre le nom → URL.
+        lieu = (m.group("lieu") or "").strip()
+        import json as _json
+        payload = {"action": "vision_camera_ip", "label": lieu}
+        return IntentResult("vision_camera_ip",
+                            _json.dumps(payload, ensure_ascii=False))
 
     return None
