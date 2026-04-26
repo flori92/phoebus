@@ -1078,6 +1078,11 @@ function connect(): void {
       if (data.action === "request_screen_capture") {
         return;
       }
+      if (data.action === "reload_ui") {
+        console.log("[SYSTEM] Synchronisation avec le moteur... rechargement.");
+        setTimeout(() => window.location.reload(), 300);
+        return;
+      }
       if (data.action === "auth_ok") {
         return;
       }

@@ -799,6 +799,9 @@ async def main():
     await parler("Bonjour Floriace. Tous les systèmes sont opérationnels.", keep_conversation=False)
 
     print("\n[INIT] Démarrage du serveur WebSocket...")
+    # On notifie l'interface qu'elle doit se synchroniser (reload) au cas où c'est un redémarrage
+    asyncio.create_task(state.broadcast({"action": "reload_ui"}))
+    
     await asyncio.gather(
         start_websocket_server(),
     )

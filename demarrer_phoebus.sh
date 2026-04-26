@@ -12,7 +12,8 @@ echo "============================================================"
 # Boucle de redémarrage automatique (watchdog)
 while true; do
   echo "[WATCHDOG] Lancement de PHOEBUS..."
-  .venv/bin/python main2.py || true
+  # On passe --auto-restart pour éviter d'ouvrir 50 onglets dans le navigateur
+  .venv/bin/python main2.py --auto-restart || true
   exit_code=$?
   
   if [ $exit_code -eq 0 ]; then

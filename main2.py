@@ -85,10 +85,10 @@ async def open_browser():
     await asyncio.sleep(5)
     from PHOEBUS.utils import open_uri
 
-    # On utilise l'alias demandé
-    url = "http://phoebus.local:8080"
+    # On utilise l'alias demandé en HTTPS pour débloquer les permissions
+    url = "https://phoebus.local:8080"
 
-    print(f"[SYSTEM] Ouverture de l'interface : {url}")
+    print(f"[SYSTEM] Ouverture de l'interface SÉCURISÉE : {url}")
     open_uri(url)
 
 async def run_frontend():
@@ -103,7 +103,8 @@ async def run_frontend():
         print("[FRONTEND] npm non trouvé, impossible de lancer l'interface web.")
         return
 
-    print("[FRONTEND] Démarrage de l'interface PHOEBUS (Vite) sur http://phoebus.local:8080 ...")
+    print("[FRONTEND] Démarrage de l'interface PHOEBUS (Vite) sur https://phoebus.local:8080 ...")
+
     try:
         # On crée le dossier logs s'il n'existe pas
         logs_dir = os.path.join(ROOT_DIR, "logs")
@@ -173,6 +174,9 @@ async def run_arena_bridge():
 
 async def main():
     frontend_dir = os.path.join(ROOT_DIR, "frontend")
+    
+    # On détecte si on est dans un redémarrage automatique via un argument
+    is_auto_restart = "--auto-restart" in sys.argv
 
     # On lance tout en parallèle
     tasks = [
@@ -183,7 +187,9 @@ async def main():
 
     if os.path.exists(frontend_dir):
         tasks.append(run_frontend())
-        tasks.append(open_browser())
+        # On n'ouvre le navigateur QUE si ce n'est pas un redémarrage auto
+        if not is_auto_restart:
+            tasks.append(open_browser())
 
     await asyncio.gather(*tasks)
 if __name__ == "__main__":
