@@ -484,18 +484,28 @@ def listen_and_process(main_loop):
 
     try:
         with sr.Microphone() as source:
-            r.adjust_for_ambient_noise(source, duration=1.5)
-            r.energy_threshold += 200 # Marge de sécurité supplémentaire
-            print("[MIC] Prêt à écouter localement...")
+            print("[MIC] Calibrage du bruit ambiant...")
+            r.adjust_for_ambient_noise(source, duration=1.0)
+            r.energy_threshold += 150
+            print(f"[MIC] Prêt. Seuil d'énergie : {r.energy_threshold:.0f}")
+            
             while True:
                 try:
                     state.is_listening = True
                     asyncio.run_coroutine_threadsafe(state.send_web_state("listening"), main_loop)
-                    audio = r.listen(source, timeout=15, phrase_time_limit=10)
+                    
+                    # On réduit le timeout pour boucler plus souvent et rester réactif
+                    try:
+                        audio = r.listen(source, timeout=5, phrase_time_limit=12)
+                        print("[MIC] Audio capturé, transcription en cours...")
+                    except sr.WaitTimeoutError:
+                        # Timeout normal quand personne ne parle, on continue simplement
+                        continue
+                    
                     state.is_listening = False
 
                     if state.STOP_PARLER:
-                        time.sleep(0.2)
+                        time.sleep(0.1)
 
                     try:
                         texte = stt_recognize(audio)
@@ -648,7 +658,10 @@ def listen_and_process(main_loop):
                     asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                     time.sleep(2)
     except Exception as e:
-        print(f"[MIC] Impossible d'ouvrir le micro : {e}")
+        print(f"[MIC] Impossible d'ouvrir le micro ou erreur fatale : {e}")
+        time.sleep(3)
+        print("[MIC] Relance de la boucle d'écoute...")
+        return listen_and_process(main_loop)
 
 
 # ── Bot Telegram ───────────────────────────────────────────────────────────

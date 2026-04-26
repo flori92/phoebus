@@ -77,8 +77,8 @@ if not logger.handlers:
     logger.addHandler(ch)
 
 
-ENABLE_NETWORK_CAMERAS = os.getenv("PHOEBUS_ENABLE_NETWORK_CAMERAS", "1").strip() == "1"
-CAMERA_SCAN_TIMEOUT = float(os.getenv("PHOEBUS_CAMERA_SCAN_TIMEOUT", "5.0"))
+ENABLE_NETWORK_CAMERAS = os.getenv("PHOEBUS_ENABLE_NETWORK_CAMERAS", "0").strip() == "1"
+CAMERA_SCAN_TIMEOUT = float(os.getenv("PHOEBUS_CAMERA_SCAN_TIMEOUT", "2.0"))
 CAMERA_STORAGE = os.getenv("PHOEBUS_CAMERA_STORAGE", "phoebus_cameras.json")
 PHONE_IP = os.getenv("PHOEBUS_PHONE_IP", "").strip()
 NVR_IP = os.getenv("PHOEBUS_NVR_IP", "").strip()
