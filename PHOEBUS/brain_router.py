@@ -104,13 +104,14 @@ def build_profile(texte: str, streaming: bool = False, in_conversation: bool = F
 
     if kind == "deep":
         priority = "smart"
-        timeout = float(os.getenv("PHOEBUS_BRAIN_SMART_TIMEOUT", "16"))
+        # Arena (Claude/GPT-4) peut prendre du temps. On lui laisse jusqu'à 120s pour réfléchir.
+        timeout = float(os.getenv("PHOEBUS_BRAIN_SMART_TIMEOUT", "120"))
     elif kind == "command" or in_conversation or (streaming and kind == "conversation"):
         priority = "fast"
-        timeout = float(os.getenv("PHOEBUS_BRAIN_FAST_TIMEOUT", "10"))
+        timeout = float(os.getenv("PHOEBUS_BRAIN_FAST_TIMEOUT", "15"))
     else:
         priority = "balanced"
-        timeout = float(os.getenv("PHOEBUS_BRAIN_TIMEOUT", "10"))
+        timeout = float(os.getenv("PHOEBUS_BRAIN_TIMEOUT", "30"))
 
     return BrainProfile(
         kind=kind,
@@ -118,7 +119,7 @@ def build_profile(texte: str, streaming: bool = False, in_conversation: bool = F
         preferred_provider=preferred,
         needs_realtime=needs_realtime,
         complexity=complexity,
-        timeout_s=max(2.0, timeout),
+        timeout_s=max(5.0, timeout),
     )
 
 
