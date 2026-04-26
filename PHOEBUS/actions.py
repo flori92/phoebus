@@ -748,6 +748,15 @@ async def executer_une_action(d):
         await parler(msg)
         return
 
+    elif action == "redemarrer_phoebus":
+        await parler("À vos ordres. Je me redémarre immédiatement.")
+        # Laisser le temps à la synthèse vocale de se lancer
+        await asyncio.sleep(2)
+        import sys
+        # Le code d'erreur 42 signalera au script de lancement (watchdog) de nous relancer
+        sys.exit(42)
+        return
+
     elif action == "identifier_personne":
         src = d.get("source", "pc")
         res = await identifier_personne(src)
