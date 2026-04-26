@@ -6,7 +6,12 @@ Aucune dépendance interne au package PHOEBUS/.
 """
 import os
 import platform
+import unicodedata
 from pathlib import Path
+
+os.environ.setdefault("PYTHONUTF8", "1")
+os.environ.setdefault("LANG", "en_US.UTF-8")
+os.environ.setdefault("LC_ALL", "en_US.UTF-8")
 
 try:
     from dotenv import load_dotenv
@@ -14,7 +19,16 @@ except ImportError:
     def load_dotenv(*args, **kwargs):
         return False
 
-load_dotenv(override=True)
+# ── Chemins ─────────────────────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Chargement robuste du .env
+ENV_PATH = BASE_DIR / ".env"
+if ENV_PATH.exists():
+    load_dotenv(dotenv_path=ENV_PATH, override=True)
+else:
+    # Fallback au dossier courant au cas où
+    load_dotenv(override=True)
 
 # ── Imports optionnels ──────────────────────────────────────────────────────
 try:
@@ -34,15 +48,33 @@ try:
 except Exception:
     edge_tts = None
 
-try:
-    import pygame
-except Exception:
-    pygame = None
+class _LazyOptionalModule:
+    def __init__(self, module_name):
+        self.module_name = module_name
+        self._module = None
+        self._checked = False
 
-try:
-    import pyautogui
-except Exception:
-    pyautogui = None
+    def _load(self):
+        if not self._checked:
+            self._checked = True
+            try:
+                self._module = __import__(self.module_name)
+            except Exception:
+                self._module = None
+        return self._module
+
+    def __bool__(self):
+        return self._load() is not None
+
+    def __getattr__(self, name):
+        module = self._load()
+        if module is None:
+            raise AttributeError(f"Module optionnel indisponible: {self.module_name}")
+        return getattr(module, name)
+
+
+pyautogui = _LazyOptionalModule("pyautogui")
+pygame = _LazyOptionalModule("pygame")
 
 try:
     import pyaudio
@@ -76,6 +108,25 @@ except Exception as e:
     google_build = None
 
 # ── Clés API ────────────────────────────────────────────────────────────────
+def _secret_is_configured(value):
+    value = (value or "").strip()
+    if not value:
+        return False
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").lower()
+    placeholders = (
+        "votre",
+        "change_me",
+        "change-moi",
+        "change_moi",
+        "cle_ici",
+        "api_key",
+        "token_ici",
+        "placeholder",
+        "xxxx",
+    )
+    return not any(marker in normalized for marker in placeholders)
+
+
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 XAI_API_KEY     = os.getenv("XAI_API_KEY")
@@ -94,10 +145,10 @@ PHOEBUS_AUDIT_FILE   = os.getenv("PHOEBUS_AUDIT_FILE", "logs/audit.jsonl").strip
 PHOEBUS_WAKE_ENABLED = os.getenv("PHOEBUS_WAKE_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 # ── Clients IA ──────────────────────────────────────────────────────────────
-client = genai.Client(api_key=GEMINI_API_KEY) if genai and GEMINI_API_KEY else None
+client = genai.Client(api_key=GEMINI_API_KEY) if genai and _secret_is_configured(GEMINI_API_KEY) else None
 
 openai_client = None
-if OpenAI and OPENAI_API_KEY and OPENAI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+if OpenAI and _secret_is_configured(OPENAI_API_KEY):
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 arena_client = None
@@ -126,19 +177,19 @@ if OpenAI:
     arena_client = OpenAI(api_key=ARENA_API_KEY, base_url=ARENA_URL)
 
 grok_client = None
-if OpenAI and XAI_API_KEY and XAI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+if OpenAI and _secret_is_configured(XAI_API_KEY):
     grok_client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
 groq_client = None
-if OpenAI and GROQ_API_KEY and GROQ_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+if OpenAI and _secret_is_configured(GROQ_API_KEY):
     groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
 mistral_client = None
-if OpenAI and MISTRAL_API_KEY and MISTRAL_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+if OpenAI and _secret_is_configured(MISTRAL_API_KEY):
     mistral_client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
 
 kimi_client = None
-if OpenAI and KIMI_API_KEY and KIMI_API_KEY not in ["VOTRE_CLE_ICI", "VOTRE_API"]:
+if OpenAI and _secret_is_configured(KIMI_API_KEY):
     kimi_client = OpenAI(api_key=KIMI_API_KEY, base_url="https://api.moonshot.cn/v1")
 
 # ── Modèles ─────────────────────────────────────────────────────────────────
@@ -162,8 +213,7 @@ MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o").strip()
 KIMI_MODEL = os.getenv("KIMI_MODEL", "moonshot-v1-8k").strip()
 
-# ── Chemins ─────────────────────────────────────────────────────────────────
-BASE_DIR          = Path(__file__).resolve().parent.parent
+# ── Chemins (suite) ──────────────────────────────────────────────────────────
 FRONTEND_DIR      = BASE_DIR / "frontend"
 MOBILE_DIR        = BASE_DIR / "mobile"
 MEMOIRE_FILE      = str(BASE_DIR / "phoebus_memoire.json")

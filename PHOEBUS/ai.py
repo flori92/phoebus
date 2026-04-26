@@ -758,7 +758,7 @@ async def demander_ia(texte):
                 continue
             started = time.perf_counter()
             try:
-                rep = await call()
+                rep = await asyncio.wait_for(call(), timeout=profile.timeout_s)
                 latency_ms = (time.perf_counter() - started) * 1000
                 if rep:
                     record_provider_result(provider, True, latency_ms)

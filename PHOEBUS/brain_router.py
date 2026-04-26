@@ -102,12 +102,12 @@ def build_profile(texte: str, streaming: bool = False, in_conversation: bool = F
     if needs_realtime:
         complexity += 1
 
-    if streaming or in_conversation or kind == "command":
-        priority = "fast"
-        timeout = float(os.getenv("PHOEBUS_BRAIN_FAST_TIMEOUT", "7"))
-    elif kind == "deep":
+    if kind == "deep":
         priority = "smart"
-        timeout = float(os.getenv("PHOEBUS_BRAIN_SMART_TIMEOUT", "14"))
+        timeout = float(os.getenv("PHOEBUS_BRAIN_SMART_TIMEOUT", "16"))
+    elif kind == "command" or in_conversation or (streaming and kind == "conversation"):
+        priority = "fast"
+        timeout = float(os.getenv("PHOEBUS_BRAIN_FAST_TIMEOUT", "10"))
     else:
         priority = "balanced"
         timeout = float(os.getenv("PHOEBUS_BRAIN_TIMEOUT", "10"))
@@ -227,7 +227,7 @@ def rank_provider_names(
             healthy.append(provider)
     
     if exclude_cooling:
-        return healthy  # Exclure complètement les providers en cooldown
+        return healthy or cooling  # Si tout est en cooldown, tenter quand même le moins pire.
     else:
         return healthy + cooling  # Ancien comportement
 

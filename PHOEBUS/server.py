@@ -6,6 +6,7 @@ import asyncio
 import threading
 import http.server
 import socketserver
+import concurrent.futures
 import hmac
 import hashlib
 import os
@@ -58,6 +59,15 @@ except ImportError:
 def verify_token(provided_token):
     # Authentification désactivée par l'utilisateur
     return True
+
+
+def _payload_text(data: dict, *keys: str) -> str:
+    """Retourne le premier champ texte non vide d'une charge JSON."""
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 # ── Gestionnaire WebSocket ─────────────────────────────────────────────────
@@ -121,40 +131,24 @@ async def ws_handler(websocket):
                     await parler("Test vocal depuis l'interface web.")
                     
                 elif action == "PHOEBUS_parler":
-                    txt = data.get("text", "")
+                    txt = _payload_text(data, "text", "message", "command", "commande", "query")
                     if txt: await parler(txt)
                     
                 elif action == "stop_parler" or action == "stop_audio":
                     state.STOP_PARLER = True
                     
                 elif action == "demander_ia" or action == "mobile_command":
-                    question = data.get("text", "")
+                    question = _payload_text(data, "text", "message", "command", "commande", "query", "question")
                     if question:
-                        state.extend_conversation()
-                        state.mark_user_activity()
-
-                        # Streaming : on parle phrase par phrase dès que le LLM
-                        # produit. Si la réponse est une commande JSON, on
-                        # supprime le streaming voix et on traite à la fin.
-                        spoken = {"v": False}
-
-                        async def _on_sentence(s):
-                            spoken["v"] = True
-                            await parler(s)
-
-                        rep = await demander_ia_stream(question, on_sentence=_on_sentence)
-
-                        if "{" in (rep or "") and "}" in (rep or ""):
-                            await traiter_reponse_ia(rep)
-                        elif not spoken["v"] and rep:
-                            # Aucune phrase n'a été streamée (ex: fast-path texte) :
-                            # on gère comme avant.
-                            if not await traiter_reponse_ia(rep):
-                                await parler(rep)
-                        state.extend_conversation()
+                        reponse_texte = await executer_commande_generique(question, source="web")
+                        if reponse_texte:
+                            await state.send_ws_json(
+                                websocket,
+                                {"action": "PHOEBUS_response", "text": reponse_texte},
+                            )
 
                 elif action == "demander_ia_vision":
-                    question = data.get("text", "")
+                    question = _payload_text(data, "text", "message", "question", "query")
                     img_b64 = data.get("image", "")
                     if question and img_b64:
                         state.extend_conversation()
@@ -165,7 +159,7 @@ async def ws_handler(websocket):
                         state.extend_conversation()
                             
                 elif action == "action_pc":
-                    cmd = data.get("commande", "")
+                    cmd = _payload_text(data, "commande", "command", "text", "message", "query")
                     res = executer_action_pc(cmd)
                     if res: await parler(res)
                     
@@ -213,21 +207,71 @@ async def start_websocket_server():
     if not websockets:
         print("[WEB] websockets non installe.")
         return
-    try:
-        # On utilise le port fixe 8765 pour être synchro avec le frontend
-        port = DEFAULT_WS_PORT
-        print(f"[WEB] Serveur WebSocket sur ws://0.0.0.0:{port}")
-        if WS_AUTH_REQUIRED:
-            print("[WEB] AUTHENTIFICATION REQUISE (Token actif).")
-        async with websockets.serve(ws_handler, "0.0.0.0", port):
-            await asyncio.Future()
-    except Exception as e:
-        print(f"[WEB] Erreur WebSocket (port {DEFAULT_WS_PORT} probablement occupé) : {e}")
+    port = DEFAULT_WS_PORT
+    while True:
+        try:
+            # On utilise le port fixe 8765 pour être synchro avec le frontend.
+            print(f"[WEB] Serveur WebSocket sur ws://0.0.0.0:{port}")
+            if WS_AUTH_REQUIRED:
+                print("[WEB] AUTHENTIFICATION REQUISE (Token actif).")
+            async with websockets.serve(ws_handler, "0.0.0.0", port):
+                await asyncio.Future()
+        except Exception as e:
+            print(f"[WEB] Erreur WebSocket (port {DEFAULT_WS_PORT} probablement occupé) : {e}")
+            await asyncio.sleep(3)
 
 
 # ── Globaux ────────────────────────────────────────────────────────────────
 
 main_loop = None
+
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+COMMAND_REPLY_TIMEOUT = _float_env("PHOEBUS_COMMAND_REPLY_TIMEOUT", 10.0)
+AI_COMMAND_TIMEOUT = _float_env("PHOEBUS_AI_COMMAND_TIMEOUT", 35.0)
+
+
+async def _parler_safe(texte: str, keep_conversation: bool = True) -> None:
+    try:
+        await parler(texte, keep_conversation=keep_conversation)
+    except Exception as e:
+        print(f"[VOICE] parole ignorée après erreur : {e}")
+
+
+class _SpeechQueue:
+    """File de parole non bloquante: le LLM continue pendant que PHOEBUS parle."""
+
+    def __init__(self):
+        self._queue = asyncio.Queue()
+        self._task = None
+
+    async def say(self, texte: str) -> None:
+        if not texte or not texte.strip():
+            return
+        if self._task is None:
+            self._task = asyncio.create_task(self._run())
+        self._queue.put_nowait(texte)
+
+    async def _run(self) -> None:
+        while True:
+            texte = await self._queue.get()
+            if texte is None:
+                self._queue.task_done()
+                return
+            try:
+                await _parler_safe(texte)
+            finally:
+                self._queue.task_done()
+
+    def close(self) -> None:
+        if self._task is not None and not self._task.done():
+            self._queue.put_nowait(None)
 
 
 async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
@@ -257,33 +301,51 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
     full_text_parts = []
 
     spoken = {"v": False}
+    speech = _SpeechQueue()
+
     async def _on_sentence(s):
         nonlocal spoken
         spoken["v"] = True
         full_text_parts.append(s)
-        await parler(s)
+        await speech.say(s)
 
-    # On utilise le streaming pour la réactivité
-    # demander_ia_stream renvoie le texte COMPLET accumulé
-    rep_finale_ia = await demander_ia_stream(query_enrichie, on_sentence=_on_sentence)
+    try:
+        # On utilise le streaming pour la réactivité.
+        # demander_ia_stream renvoie le texte COMPLET accumulé.
+        rep_finale_ia = await asyncio.wait_for(
+            demander_ia_stream(query_enrichie, on_sentence=_on_sentence),
+            timeout=AI_COMMAND_TIMEOUT,
+        )
 
-    # Cas 1 : C'est du JSON (Action technique)
-    if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
-        await traiter_reponse_ia(rep_finale_ia)
-        # On renvoie une confirmation courte si c'est une commande muette
-        return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
+        # Cas 1 : C'est du JSON (Action technique)
+        if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
+            await traiter_reponse_ia(rep_finale_ia)
+            # On renvoie une confirmation courte si c'est une commande muette.
+            return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
 
-    # Cas 2 : Réponse textuelle normale
-    if not spoken["v"] and rep_finale_ia:
-        # Si le streaming a échoué mais qu'on a une réponse brute
-        if not await traiter_reponse_ia(rep_finale_ia):
-            await parler(rep_finale_ia)
-            return rep_finale_ia
+        # Cas 2 : Réponse textuelle normale
+        if not spoken["v"] and rep_finale_ia:
+            # Si le streaming a échoué mais qu'on a une réponse brute.
+            if not await traiter_reponse_ia(rep_finale_ia):
+                await speech.say(rep_finale_ia)
+                return rep_finale_ia
 
-    # On reste à l'écoute après une commande externe
-    state.extend_conversation()
+        return " ".join(full_text_parts).strip() or rep_finale_ia or ""
 
-    return " ".join(full_text_parts).strip() or rep_finale_ia or ""
+    except asyncio.TimeoutError:
+        msg = "Je réfléchis encore, Floriace. La réponse vocale arrive dès que le cerveau se débloque."
+        await speech.say(msg)
+        return msg
+    except Exception as e:
+        print(f"[COMMANDE] Erreur traitement {source} : {e}")
+        msg = "J'ai eu un raté interne, Floriace, mais je reste opérationnel."
+        await speech.say(msg)
+        return msg
+    finally:
+        # On reste à l'écoute après une commande externe et on laisse la file
+        # audio terminer en arrière-plan.
+        state.extend_conversation()
+        speech.close()
 
 # ── Serveur Mobile (HTTP) ──────────────────────────────────────────────────
 
@@ -400,7 +462,7 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 metadata = {}
                 try:
                     data = json.loads(post_data)
-                    texte = data.get("text", "")
+                    texte = _payload_text(data, "text", "command", "commande", "message", "query", "question")
                     metadata = {
                         "battery": data.get("battery", "Inconnue"),
                         "location": data.get("location", "Inconnue"),
@@ -416,7 +478,20 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                             executer_commande_generique(texte, source="ios", metadata=metadata), 
                             main_loop
                         )
-                        reponse_texte = future.result(timeout=45)
+                        def _log_future_error(done_future):
+                            try:
+                                done_future.result()
+                            except Exception as exc:
+                                print(f"[WEBHOOK] Commande arrière-plan KO : {exc}")
+
+                        future.add_done_callback(_log_future_error)
+                        try:
+                            reponse_texte = future.result(timeout=COMMAND_REPLY_TIMEOUT)
+                        except concurrent.futures.TimeoutError:
+                            reponse_texte = (
+                                "Je suis dessus, Floriace. "
+                                "La réponse vocale arrive dès que le traitement se termine."
+                            )
                     else:
                         reponse_texte = "Erreur : PHOEBUS Core non prêt."
                 else:
@@ -438,15 +513,21 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
 
 
+class ThreadingMobileServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 def run_mobile_server():
-    try:
-        # On force le port 8090
-        port = DEFAULT_MOBILE_PORT
-        with socketserver.TCPServer(("0.0.0.0", port), MobileHandler) as httpd:
-            print(f"[MOBILE] App satellite dispo sur http://0.0.0.0:{port}")
-            httpd.serve_forever()
-    except Exception as e:
-        print(f"[MOBILE] Serveur erreur (port {DEFAULT_MOBILE_PORT} occupé) : {e}")
+    port = DEFAULT_MOBILE_PORT
+    while True:
+        try:
+            with ThreadingMobileServer(("0.0.0.0", port), MobileHandler) as httpd:
+                print(f"[MOBILE] App satellite dispo sur http://0.0.0.0:{port}")
+                httpd.serve_forever()
+        except Exception as e:
+            print(f"[MOBILE] Serveur erreur (port {DEFAULT_MOBILE_PORT} occupé) : {e}")
+            time.sleep(3)
 
 
 # ── Écoute Vocale (STT) ────────────────────────────────────────────────────
@@ -814,8 +895,14 @@ async def main():
     asyncio.create_task(proactive.loop(parler))
     asyncio.create_task(system_self_healing())
 
-    # Salutation initiale
-    await parler("Bonjour Floriace. Tous les systèmes sont opérationnels.", keep_conversation=False)
+    # Salutation initiale non bloquante : le WebSocket doit démarrer même si
+    # CoreAudio ou le TTS met du temps à rendre la main.
+    asyncio.create_task(
+        _parler_safe(
+            "Bonjour Floriace. Tous les systèmes sont opérationnels.",
+            keep_conversation=False,
+        )
+    )
 
     print("\n[INIT] Démarrage du serveur WebSocket...")
     # On notifie l'interface qu'elle doit se synchroniser (reload) au cas où c'est un redémarrage

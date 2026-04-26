@@ -6,13 +6,25 @@ import time
 import uuid
 import asyncio
 
-try:
-    import cv2
-except ImportError:
-    cv2 = None
-
 from PHOEBUS.config import client, pyautogui, Image, CHOSEN_MODEL
 import PHOEBUS.state as state
+
+_cv2 = None
+_cv2_checked = False
+
+
+def _get_cv2():
+    """Importe OpenCV seulement quand une action caméra le demande."""
+    global _cv2, _cv2_checked
+    if _cv2_checked:
+        return _cv2
+    _cv2_checked = True
+    try:
+        import cv2  # type: ignore
+        _cv2 = cv2
+    except ImportError:
+        _cv2 = None
+    return _cv2
 
 
 async def request_screen_capture():
@@ -119,6 +131,7 @@ async def PHOEBUS_vision_ecrire(instruction, texte_a_taper):
 
 
 async def voir_camera(instruction, source="pc"):
+    cv2 = _get_cv2()
     if not client or not Image or not cv2:
         return "Le module de vision IA n'est pas disponible, Floriace. (Installe opencv-python)"
     try:
@@ -171,6 +184,7 @@ async def identifier_objet(source="pc"):
 
 async def identifier_personne(source="pc"):
     """Reconnaissance de Floriace et analyse de l'état émotionnel."""
+    cv2 = _get_cv2()
     if not client or not Image or not cv2:
         return "Module Sentinelle indisponible."
     try:

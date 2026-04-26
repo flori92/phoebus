@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 cd "$(dirname "$0")"
 
+export PYTHONUTF8=1
+export PYTHONIOENCODING=UTF-8
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
 if [ ! -x ".venv/bin/python" ]; then
   python3 scripts/bootstrap.py
 fi

@@ -16,6 +16,9 @@ from urllib.parse import urlparse
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 os.environ['SDL_VIDEODRIVER'] = 'dummy' # Évite d'ouvrir des fenêtres SDL inutiles
 os.environ['SDL_AUDIODRIVER'] = 'coreaudio'
+os.environ.setdefault('PYTHONUTF8', '1')
+os.environ.setdefault('LANG', 'en_US.UTF-8')
+os.environ.setdefault('LC_ALL', 'en_US.UTF-8')
 
 # Dossier racine du projet
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -103,7 +106,7 @@ async def run_frontend():
         print("[FRONTEND] Dossier frontend/ introuvable, skip.")
         return
 
-    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    npm = find_executable("npm")
     if not npm:
         print("[FRONTEND] npm non trouvé, impossible de lancer l'interface web.")
         return
@@ -116,16 +119,51 @@ async def run_frontend():
 
         with open(os.path.join(logs_dir, "frontend.log"), "a") as log_file:
             log_file.write(f"\n--- Démarrage le {datetime.now().isoformat()} ---\n")
+            env = os.environ.copy()
+            npm_dir = os.path.dirname(npm)
+            env["PATH"] = npm_dir + os.pathsep + env.get("PATH", "")
             # On force le port 8080 pour correspondre à l'alias
             process = await asyncio.create_subprocess_exec(
                 npm, "run", "dev", "--", "--port", "8080", "--host", "0.0.0.0",
                 cwd=frontend_dir,
+                env=env,
                 stdout=log_file,
                 stderr=log_file
             )
             await process.wait()
     except Exception as e:
         print(f"[FRONTEND] Erreur lors du lancement : {e}")
+
+
+def find_executable(name):
+    """Trouve un binaire même quand l'app macOS ne charge pas le shell nvm."""
+    exe = shutil.which(name) or shutil.which(f"{name}.cmd")
+    if exe:
+        return exe
+
+    candidates = [
+        os.path.expanduser(f"~/.nvm/versions/node/*/bin/{name}"),
+        f"/opt/homebrew/bin/{name}",
+        f"/usr/local/bin/{name}",
+    ]
+    import glob
+    for pattern in candidates:
+        for path in sorted(glob.glob(pattern), reverse=True):
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                return path
+
+    try:
+        out = subprocess.check_output(
+            ["/bin/zsh", "-lc", f"command -v {name}"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+        ).strip()
+        if out and os.path.exists(out):
+            return out
+    except Exception:
+        pass
+    return None
 def _env_mode(value, default="auto"):
     return (value if value is not None else default).strip().lower()
 

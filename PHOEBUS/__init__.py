@@ -23,15 +23,27 @@ __version__ = "2.0.0-superpouvoirs"
 __author__ = "Floriace"
 __title__ = "PHOEBUS — The Brilliant One"
 
-# Initialiser les super-pouvoirs au boot
-try:
-    from PHOEBUS.audio_optimization import get_processor, check_hallucination
-    AUDIO_AVAILABLE = True
-except ImportError:
-    AUDIO_AVAILABLE = False
+# Les super-pouvoirs lourds restent chargeables, mais ne doivent pas ralentir
+# le boot du serveur. Les imports OpenCV/ML se font à la première utilisation.
+AUDIO_AVAILABLE = True
+CAMERAS_AVAILABLE = True
 
-try:
-    from PHOEBUS.network_cameras import discover_cameras, get_camera_manager
-    CAMERAS_AVAILABLE = True
-except ImportError:
-    CAMERAS_AVAILABLE = False
+
+def get_processor(*args, **kwargs):
+    from PHOEBUS.audio_optimization import get_processor as _get_processor
+    return _get_processor(*args, **kwargs)
+
+
+def check_hallucination(*args, **kwargs):
+    from PHOEBUS.audio_optimization import check_hallucination as _check_hallucination
+    return _check_hallucination(*args, **kwargs)
+
+
+def discover_cameras(*args, **kwargs):
+    from PHOEBUS.network_cameras import discover_cameras as _discover_cameras
+    return _discover_cameras(*args, **kwargs)
+
+
+def get_camera_manager(*args, **kwargs):
+    from PHOEBUS.network_cameras import get_camera_manager as _get_camera_manager
+    return _get_camera_manager(*args, **kwargs)
