@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 cd "$(dirname "$0")"
 
+# --- AUTO-CLEANUP ---
+# Libère les ports bloqués par des instances précédentes (zombies)
+lsof -ti :8765,8090,8080 | xargs kill -9 2>/dev/null || true
+# --------------------
+
 export PYTHONUTF8=1
 export PYTHONIOENCODING=UTF-8
 export LANG=en_US.UTF-8
