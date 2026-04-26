@@ -149,7 +149,12 @@ _RE_SPOT_PAUSE = re.compile(rf"^{_WAKE_PREFIX}(?:pause|met(?:s)?\s+(?:en\s+)?pau
 _RE_SPOT_NEXT = re.compile(rf"^{_WAKE_PREFIX}(?:suivante|(?:morceau|chanson|titre)\s+suivant|next)$")
 _RE_SPOT_PREV = re.compile(rf"^{_WAKE_PREFIX}(?:pr[ée]c[ée]dente|(?:morceau|chanson|titre)\s+pr[ée]c[ée]dent|previous)$")
 _RE_SPOT_NOW = re.compile(rf"^{_WAKE_PREFIX}(?:c(?:'|\s?)est quoi|qu(?:'|\s)est-ce (?:qui|que)\s+(?:\w+\s+){{0,3}})?\s*(?:ce morceau|cette (?:chanson|musique)|le (?:morceau|titre))(?:\s+qui\s+passe)?$")
-_RE_SPOT_VOL = re.compile(rf"^{_WAKE_PREFIX}(?:mets|règle|regle|passe)\s+(?:le\s+)?volume\s+(?:spotify\s+)?(?:à|a|sur)\s+(?P<v>\d{{1,3}})(?:\s*%| pour cent)?$")
+# Volume Spotify : on exige le mot "spotify" pour éviter de capter le
+# "volume système" ou un volume implicite. Les phrases sans qualificatif
+# tomberont dans la conversation libre, où le LLM choisira lui-même.
+_RE_SPOT_VOL = re.compile(
+    rf"^{_WAKE_PREFIX}(?:mets|règle|regle|passe)\s+(?:le\s+)?volume\s+spotify\s+(?:à|a|sur)\s+(?P<v>\d{{1,3}})(?:\s*%| pour cent)?$"
+)
 _RE_SPOT_SEARCH = re.compile(rf"^{_WAKE_PREFIX}(?:mets|joue|lance|écoute|ecoute|play)\s+(?:la (?:chanson|musique)|le morceau|le titre)?\s*(?P<q>.+)$")
 
 # ── Caméras : PC webcam / téléphone / caméra IP ────────────────────────────
@@ -175,6 +180,46 @@ _RE_CAM_PHONE = re.compile(
 _RE_CAM_IP = re.compile(
     rf"^{_WAKE_PREFIX}(?:regarde|montre[- ]moi)\s+(?:la\s+)?cam[ée]ra\s+(?P<lieu>[a-zà-ÿ' -]+)$"
 )
+
+# ── Réseau LAN ─────────────────────────────────────────────────────────────
+_RE_NET_SCAN = re.compile(
+    rf"^{_WAKE_PREFIX}(?:scanne|liste|d[ée]tecte|montre[- ]moi)\s+"
+    rf"(?:le\s+)?(?:r[ée]seau|lan|wifi)(?:\s+(?:local|domestique))?$"
+)
+_RE_NET_PING = re.compile(
+    rf"^{_WAKE_PREFIX}(?:ping|teste)\s+(?P<ip>\d{{1,3}}\.\d{{1,3}}\.\d{{1,3}}\.\d{{1,3}})$"
+)
+_RE_NET_WAKE = re.compile(
+    rf"^{_WAKE_PREFIX}(?:r[ée]veille|wake[- ]on[- ]lan|allume\s+(?:le\s+)?(?:pc|ordinateur|mac|serveur))"
+    rf"(?:\s+(?P<mac>[0-9A-Fa-f]{{2}}[:\-]?(?:[0-9A-Fa-f]{{2}}[:\-]?){{4}}[0-9A-Fa-f]{{2}}))?$"
+)
+
+# ── Système (Mac/Linux) ────────────────────────────────────────────────────
+_RE_SYS_LOCK = re.compile(
+    rf"^{_WAKE_PREFIX}(?:verrouille|lock)"
+    rf"(?:\s+(?:la|l['']|l[' ]|le)?\s*(?:session|écran|ecran|mac|ordinateur))?$"
+)
+_RE_SYS_SLEEP = re.compile(rf"^{_WAKE_PREFIX}(?:mets\s+(?:le\s+)?(?:mac|ordinateur)\s+en\s+veille|veille|endors[- ]toi)$")
+_RE_SYS_TRASH = re.compile(rf"^{_WAKE_PREFIX}vide\s+(?:la\s+)?corbeille$")
+_RE_SYS_VOLUME = re.compile(
+    rf"^{_WAKE_PREFIX}(?:mets|règle|regle|passe)\s+(?:le\s+)?volume\s+(?:syst[èe]me\s+)?(?:à|a|sur)\s+(?P<v>\d{{1,3}})(?:\s*%| pour cent)?$"
+)
+_RE_SYS_MUTE = re.compile(rf"^{_WAKE_PREFIX}(?:coupe|mute)\s+(?:le\s+)?son$")
+_RE_SYS_UNMUTE = re.compile(rf"^{_WAKE_PREFIX}(?:r[ée]tablis|remets|unmute)\s+(?:le\s+)?son$")
+_RE_SYS_OPEN_APP = re.compile(rf"^{_WAKE_PREFIX}(?:ouvre|lance|d[ée]marre)\s+(?:l['' ])?(?:app(?:lication)?\s+)?(?P<name>[a-zà-ÿ0-9' -]+)$")
+_RE_SYS_SCREENSHOT = re.compile(rf"^{_WAKE_PREFIX}(?:capture|screenshot|prends une capture)(?:\s+(?:d['']\s*[ée]cran|de l['' ]?[ée]cran))?$")
+
+# ── Cast media ─────────────────────────────────────────────────────────────
+_RE_CAST_LIST = re.compile(rf"^{_WAKE_PREFIX}(?:liste|montre[- ]moi)\s+(?:les\s+)?(?:receivers?|appareils?)\s+(?:airplay|chromecast|cast)$")
+_RE_CAST_YT = re.compile(
+    rf"^{_WAKE_PREFIX}(?:diffuse|cast(?:e)?|envoie|lance)\s+(?P<query>.+?)\s+sur\s+(?P<target>[a-zà-ÿ0-9' -]+)$"
+)
+
+# ── Connaissance / recherche ───────────────────────────────────────────────
+_RE_KNOW = re.compile(
+    rf"^{_WAKE_PREFIX}(?:cherche|recherche|trouve|qu(?:'|\s)est[- ]ce que|qui est|d[ée]finition de|c[' ]?est quoi)\s+(?P<q>.+)$"
+)
+_RE_NEWS = re.compile(rf"^{_WAKE_PREFIX}(?:donne[- ]moi|montre[- ]moi|quelles\s+sont)?\s*(?:les\s+)?(?:actualit[ée]s?|news|derni[èe]res nouvelles|infos? du jour)$")
 
 
 def _unite_to_seconds(n: int, unit: str) -> int:
@@ -347,9 +392,20 @@ def detect(texte: str) -> Optional[IntentResult]:
     m = _RE_SPOT_SEARCH.match(t)
     if m:
         q = m.group("q").strip()
-        # Filtre : "mets le salon" ne doit PAS déclencher Spotify. On rejette
-        # si la requête correspond à une pièce connue.
-        if q and q not in PIECES_ALIAS and len(q) >= 3:
+        # Filtre anti-collision : "mets le salon" / "mets le volume X" /
+        # "mets un minuteur" ne doivent PAS déclencher Spotify.
+        _SPOT_BLOCKLIST_PREFIXES = (
+            "le volume", "la lumière", "la lumiere", "les lumières",
+            "le thermostat", "la scène", "la scene", "un minuteur",
+            "un chrono", "un timer", "le mode", "un rappel",
+            "en pause", "à pause",
+        )
+        q_low = q.lower()
+        is_blocked = (
+            q in PIECES_ALIAS
+            or any(q_low.startswith(p) for p in _SPOT_BLOCKLIST_PREFIXES)
+        )
+        if q and not is_blocked and len(q) >= 3:
             import json as _json
             return IntentResult(
                 "spotify_search_play",
@@ -385,5 +441,79 @@ def detect(texte: str) -> Optional[IntentResult]:
         payload = {"action": "vision_camera_ip", "label": lieu}
         return IntentResult("vision_camera_ip",
                             _json.dumps(payload, ensure_ascii=False))
+
+    # ── Réseau ────────────────────────────────────────────────────────────
+    if _RE_NET_SCAN.match(t):
+        return IntentResult("network_scan", '{"action": "network_scan"}')
+    m = _RE_NET_PING.match(t)
+    if m:
+        import json as _json
+        return IntentResult("network_ping",
+                            _json.dumps({"action": "network_ping", "ip": m.group("ip")}))
+    m = _RE_NET_WAKE.match(t)
+    if m and m.group("mac"):
+        import json as _json
+        return IntentResult("network_wake",
+                            _json.dumps({"action": "network_wake", "mac": m.group("mac")}))
+
+    # ── Système ───────────────────────────────────────────────────────────
+    if _RE_SYS_LOCK.match(t):
+        return IntentResult("system_lock", '{"action": "system_lock"}')
+    if _RE_SYS_SLEEP.match(t):
+        return IntentResult("system_sleep", '{"action": "system_sleep"}')
+    if _RE_SYS_TRASH.match(t):
+        return IntentResult("system_empty_trash", '{"action": "system_empty_trash"}')
+    m = _RE_SYS_VOLUME.match(t)
+    if m:
+        v = int(m.group("v"))
+        if 0 <= v <= 100:
+            return IntentResult("system_volume",
+                                '{"action": "system_volume", "percent": ' + str(v) + "}")
+    if _RE_SYS_MUTE.match(t):
+        return IntentResult("system_mute", '{"action": "system_mute"}')
+    if _RE_SYS_UNMUTE.match(t):
+        return IntentResult("system_unmute", '{"action": "system_unmute"}')
+    if _RE_SYS_SCREENSHOT.match(t):
+        return IntentResult("system_screenshot", '{"action": "system_screenshot"}')
+    m = _RE_SYS_OPEN_APP.match(t)
+    if m:
+        name = m.group("name").strip()
+        # On évite de matcher "ouvre la lumière" — domotique a déjà trappé
+        # ces patterns plus haut, mais double sécurité ici.
+        if name and len(name) >= 2 and name not in PIECES_ALIAS:
+            import json as _json
+            return IntentResult("system_open_app",
+                                _json.dumps({"action": "system_open_app", "name": name}))
+
+    # ── Cast media ────────────────────────────────────────────────────────
+    if _RE_CAST_LIST.match(t):
+        return IntentResult("cast_list", '{"action": "cast_list"}')
+    m = _RE_CAST_YT.match(t)
+    if m:
+        import json as _json
+        return IntentResult(
+            "cast_youtube",
+            _json.dumps({
+                "action": "cast_youtube",
+                "query": m.group("query").strip(),
+                "target": m.group("target").strip(),
+            }, ensure_ascii=False),
+        )
+
+    # ── Actualités ────────────────────────────────────────────────────────
+    if _RE_NEWS.match(t):
+        return IntentResult("news",
+                            '{"action": "knowledge_query", "question": "actualités"}')
+
+    # ── Connaissance générale (Wikipedia/Wolfram) ─────────────────────────
+    m = _RE_KNOW.match(t)
+    if m:
+        q = m.group("q").strip().rstrip("?.")
+        if len(q) >= 3:
+            import json as _json
+            return IntentResult(
+                "knowledge_query",
+                _json.dumps({"action": "knowledge_query", "question": q}, ensure_ascii=False),
+            )
 
     return None
