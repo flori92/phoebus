@@ -710,6 +710,24 @@ async def run_telegram_bot(main_loop):
         print(f"[TELEGRAM] Erreur : {e}")
 
 
+async def system_self_healing():
+    """Surveille l'état du système et tente des réparations silencieuses."""
+    while True:
+        try:
+            await asyncio.sleep(60) # Vérification toutes les minutes
+            
+            # Vérification de la santé des clients WebSocket
+            from PHOEBUS.state import CONNECTED_CLIENTS, get_authenticated_clients
+            if not CONNECTED_CLIENTS:
+                # Si aucune interface n'est connectée pendant longtemps, 
+                # on peut tenter un petit log de rappel
+                pass
+            
+            # Ici on pourrait ajouter des tests de connectivité IA, etc.
+            
+        except Exception as e:
+            print(f"[SELF-HEALING] Erreur lors du monitoring : {e}")
+
 # ── Boucle Principale ──────────────────────────────────────────────────────
 
 async def main():
@@ -794,6 +812,7 @@ async def main():
 
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.
     asyncio.create_task(proactive.loop(parler))
+    asyncio.create_task(system_self_healing())
 
     # Salutation initiale
     await parler("Bonjour Floriace. Tous les systèmes sont opérationnels.", keep_conversation=False)

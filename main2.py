@@ -197,7 +197,11 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n[PHOEBUS] Arrêt du système. Au revoir Floriace.")
+        sys.exit(0)
     except Exception as e:
         # On ignore les erreurs de socket fermée au shutdown
         if "Event loop is closed" not in str(e):
             print(f"\n[PHOEBUS] Erreur critique inattendue : {e}")
+            # On quitte avec un code d'erreur pour que le Watchdog relance
+            sys.exit(1)
+        sys.exit(0)

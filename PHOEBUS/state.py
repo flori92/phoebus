@@ -277,3 +277,11 @@ async def send_web_lipsync(frames, utterance_id=None, backend=None):
         message = json.dumps(payload, ensure_ascii=False)
         await asyncio.gather(*[ws.send(message) for ws in recipients],
                              return_exceptions=True)
+
+async def broadcast(payload):
+    """Diffuse un message JSON à tous les clients authentifiés."""
+    recipients = get_authenticated_clients()
+    if recipients:
+        message = json.dumps(payload, ensure_ascii=False)
+        await asyncio.gather(*[ws.send(message) for ws in recipients],
+                             return_exceptions=True)
