@@ -103,7 +103,6 @@ const WS_HOST = window.location.hostname || "localhost";
 const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_URL = `${WS_SCHEME}://${WS_HOST}:8765`;
 const RECONNECT_INTERVAL_MS = 2_000;
-const WS_TOKEN_STORAGE_KEY = "PHOEBUS_ws_token";
 const FACE_ROOT = document.documentElement;
 const MOOD_PRESETS: Record<PHOEBUSMood, MoodPreset> = {
   neutral: {
@@ -319,25 +318,6 @@ function resolveFallbackFrame(state: OrbState, mood: PHOEBUSMood): AvatarFallbac
     return "serious";
   }
   return "neutral";
-}
-
-function getStoredToken(): string {
-  const params = new URLSearchParams(window.location.search);
-  const tokenFromUrl = params.get("token")?.trim() ?? "";
-  if (tokenFromUrl) {
-    localStorage.setItem(WS_TOKEN_STORAGE_KEY, tokenFromUrl);
-    return tokenFromUrl;
-  }
-  return localStorage.getItem(WS_TOKEN_STORAGE_KEY)?.trim() ?? "";
-}
-
-function requestToken(): string {
-  const current = getStoredToken();
-  const provided = window.prompt("Token PHOEBUS", current)?.trim() ?? "";
-  if (provided) {
-    localStorage.setItem(WS_TOKEN_STORAGE_KEY, provided);
-  }
-  return provided;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -928,7 +908,7 @@ let moodResetTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingExpressionTimer: ReturnType<typeof setTimeout> | null = null;
 let timedLipsyncTimers: ReturnType<typeof setTimeout>[] = [];
 let pendingExpressionId = "";
-let authToken = getStoredToken();
+let authToken = "";
 let lastExpressionText = "";
 let lastExpressionAt = 0;
 let lastExpressionId = "";
@@ -1099,24 +1079,6 @@ function connect(): void {
         return;
       }
       if (data.action === "auth_ok") {
-        return;
-      }
-      if (data.action === "auth_required") {
-        authToken = requestToken();
-        if (!authToken) {
-          showError("Token requis");
-          return;
-        }
-        sendAuth();
-        return;
-      }
-      if (data.action === "auth_failed") {
-        localStorage.removeItem(WS_TOKEN_STORAGE_KEY);
-        authToken = "";
-        showError("Token invalide");
-        setConnected(false);
-        authToken = requestToken();
-        if (authToken) sendAuth();
         return;
       }
 

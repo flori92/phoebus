@@ -12,26 +12,6 @@ const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_URL = `${WS_SCHEME}://${window.location.hostname}:8765`;
 const RECONNECT_DELAY_MS = 2500;
 const SPEECH_LANG = "fr-FR";
-const WS_TOKEN_STORAGE_KEY = "PHOEBUS_ws_token";
-
-function getStoredToken() {
-  const params = new URLSearchParams(window.location.search);
-  const tokenFromUrl = (params.get("token") || "").trim();
-  if (tokenFromUrl) {
-    localStorage.setItem(WS_TOKEN_STORAGE_KEY, tokenFromUrl);
-    return tokenFromUrl;
-  }
-  return (localStorage.getItem(WS_TOKEN_STORAGE_KEY) || "").trim();
-}
-
-function requestToken() {
-  const token = window.prompt("Token PHOEBUS", getStoredToken()) || "";
-  const trimmed = token.trim();
-  if (trimmed) {
-    localStorage.setItem(WS_TOKEN_STORAGE_KEY, trimmed);
-  }
-  return trimmed;
-}
 
 // ── DOM Refs ────────────────────────────────────────────────────────────────
 const badgeEl      = document.getElementById("connection-badge");
@@ -77,7 +57,7 @@ let currentState = "idle";
 let ws           = null;
 let isListening  = false;
 let reconnectTimer = null;
-let authToken = getStoredToken();
+let authToken = "";
 const faceRoot = document.documentElement;
 const MOOD_PRESETS = {
   neutral: {
@@ -1144,35 +1124,6 @@ function connectWS() {
       const data = JSON.parse(event.data);
 
       if (data.action === "auth_ok") {
-        return;
-      }
-      if (data.action === "auth_required") {
-        authToken = requestToken();
-        if (!authToken) {
-          setConnected(false);
-          return;
-        }
-        ws.send(JSON.stringify({
-          type: "auth",
-          token: authToken,
-          client_type: "mobile",
-          client_name: navigator.userAgent.slice(0, 80),
-        }));
-        return;
-      }
-      if (data.action === "auth_failed") {
-        localStorage.removeItem(WS_TOKEN_STORAGE_KEY);
-        authToken = requestToken();
-        if (!authToken) {
-          setConnected(false);
-          return;
-        }
-        ws.send(JSON.stringify({
-          type: "auth",
-          token: authToken,
-          client_type: "mobile",
-          client_name: navigator.userAgent.slice(0, 80),
-        }));
         return;
       }
 

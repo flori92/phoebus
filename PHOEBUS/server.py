@@ -56,17 +56,8 @@ except ImportError:
 # ── Sécurité WebSocket ─────────────────────────────────────────────────────
 
 def verify_token(provided_token):
-    if not PHOEBUS_WS_TOKEN or PHOEBUS_WS_TOKEN in {"CHANGE_ME", "VOTRE_TOKEN_ICI"}:
-        return True
-    if not provided_token:
-        return False
-    try:
-        return hmac.compare_digest(
-            hashlib.sha256(provided_token.encode()).digest(),
-            hashlib.sha256(PHOEBUS_WS_TOKEN.encode()).digest()
-        )
-    except Exception:
-        return False
+    # Authentification désactivée par l'utilisateur
+    return True
 
 
 # ── Gestionnaire WebSocket ─────────────────────────────────────────────────
