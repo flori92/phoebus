@@ -12,6 +12,11 @@ import socket
 from datetime import datetime
 from urllib.parse import urlparse
 
+# On désactive les messages de support Pygame et les erreurs SDL polluantes
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+os.environ['SDL_VIDEODRIVER'] = 'dummy' # Évite d'ouvrir des fenêtres SDL inutiles
+os.environ['SDL_AUDIODRIVER'] = 'coreaudio'
+
 # Dossier racine du projet
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -85,10 +90,10 @@ async def open_browser():
     await asyncio.sleep(5)
     from PHOEBUS.utils import open_uri
 
-    # On utilise l'alias demandé en HTTPS pour débloquer les permissions
-    url = "https://phoebus.local:8080"
+    # On utilise l'alias demandé
+    url = "http://phoebus.local:8080"
 
-    print(f"[SYSTEM] Ouverture de l'interface SÉCURISÉE : {url}")
+    print(f"[SYSTEM] Ouverture de l'interface : {url}")
     open_uri(url)
 
 async def run_frontend():
@@ -103,8 +108,7 @@ async def run_frontend():
         print("[FRONTEND] npm non trouvé, impossible de lancer l'interface web.")
         return
 
-    print("[FRONTEND] Démarrage de l'interface PHOEBUS (Vite) sur https://phoebus.local:8080 ...")
-
+    print("[FRONTEND] Démarrage de l'interface PHOEBUS (Vite) sur http://phoebus.local:8080 ...")
     try:
         # On crée le dossier logs s'il n'existe pas
         logs_dir = os.path.join(ROOT_DIR, "logs")
