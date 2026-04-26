@@ -1149,6 +1149,11 @@ renderFace();
 applyState("idle");
 connect();
 
+// Retrait du masque de chargement après une courte attente pour la stabilité
+setTimeout(() => {
+  document.body.classList.remove("is-loading");
+}, 100);
+
 // Mise à jour périodique de la palette solaire (chaque minute)
 setInterval(() => {
   renderFace();
