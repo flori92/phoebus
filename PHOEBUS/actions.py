@@ -757,6 +757,27 @@ async def executer_une_action(d):
         sys.exit(42)
         return
 
+    elif action == "noter_etudiant":
+        from PHOEBUS.skills_education import noter_presence
+        nom = d.get("nom")
+        statut = d.get("statut", "present")
+        date = d.get("date")
+        msg = noter_presence(nom, date, statut)
+        await parler(msg)
+        return
+
+    elif action == "calculer_notes_etudiants":
+        from PHOEBUS.skills_education import calculer_notes
+        notes = calculer_notes()
+        if isinstance(notes, str):
+            await parler(notes)
+        else:
+            txt = "Voici le rapport des notes de présence sur 10 :\n\n"
+            for n in notes:
+                txt += f"- {n['nom']} : {n['note']}/10 ({n['presences']} présences, {n['excuses']} excuses).\n"
+            await parler(txt)
+        return
+
     elif action == "identifier_personne":
         src = d.get("source", "pc")
         res = await identifier_personne(src)

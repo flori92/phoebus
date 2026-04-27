@@ -245,6 +245,8 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "timer", "minutes": 5, "secondes": 0, "label": "pâtes"}\n'
         '{"action": "system_control", "type": "lock/sleep/empty_trash"} (Contrôle matériel du Mac)\n'
         '{"action": "redemarrer_phoebus"} (Redémarre le moteur PHOEBUS et se relance)\n'
+        '{"action": "noter_etudiant", "nom": "Nom Etudiant", "statut": "present/absent/excuse", "date": "AAAA-MM-DD"}\n'
+        '{"action": "calculer_notes_etudiants"} (Génère le rapport final des notes sur 10)\n'
         '{"action": "mode_interprete", "etat": "on/off", "langue": "langue"} (Traduction live de tout ce qu il entend)\n'
         '{"action": "proactive_help"} (Analyse l écran pour anticiper un besoin d aide)\n'
         '{"action": "metamorphose", "theme": "NOM", "forme": "vortex/matrix/web/energy/sphere", "couleurs": ["#hex1", "#hex2"]} (Super-pouvoir Polymorphe)\n\n'

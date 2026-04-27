@@ -1,0 +1,9 @@
+{
+  "config": {
+    "total_sessions": 0,
+    "max_grade": 10,
+    "last_session": "2026-04-28"
+  },
+  "sessions": [],
+  "students": {}
+}
