@@ -188,7 +188,7 @@ def _arena_bridge_should_start():
 
 
 async def run_arena_bridge():
-    """Lance LMArenaBridge si la configuration locale Arena est presente."""
+    """Lance LMArenaBridge si la configuration locale Arena est présente."""
     if not _arena_bridge_should_start():
         return
 
@@ -197,10 +197,13 @@ async def run_arena_bridge():
         print("[ARENA] scripts/arena_bridge.py introuvable, bridge ignore.")
         return
 
-    print("[ARENA] Verification du bridge LMArena...")
+    print("[ARENA] Vérification et lancement du bridge LMArena...")
     try:
         log_path = os.getenv("PHOEBUS_ARENA_BRIDGE_LOG", os.path.join(ROOT_DIR, "logs", "arena_bridge.log"))
         os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+        
+        # On lance le bridge en arrière-plan sans attendre la fin du processus
+        # car il remplace son propre processus ou tourne indéfiniment.
         with open(log_path, "ab") as log_file:
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -209,7 +212,15 @@ async def run_arena_bridge():
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
             )
-            await process.wait()
+            # On laisse une seconde pour voir s'il y a une erreur immédiate au lancement
+            try:
+                await asyncio.wait_for(process.wait(), timeout=1.0)
+                if process.returncode != 0:
+                    print(f"[ARENA] Échec du démarrage du bridge (Code {process.returncode}).")
+            except asyncio.TimeoutError:
+                # C'est bon signe, le processus continue de tourner
+                print("[ARENA] Bridge lancé en arrière-plan.")
+                
     except Exception as e:
         print(f"[ARENA] Bridge indisponible : {e}")
 
