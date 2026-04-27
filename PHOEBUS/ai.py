@@ -252,6 +252,9 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "mode_interprete", "etat": "on/off", "langue": "langue"} (Traduction live de tout ce qu il entend)\n'
         '{"action": "proactive_help"} (Analyse l écran pour anticiper un besoin d aide)\n'
         '{"action": "metamorphose", "theme": "NOM", "forme": "vortex/matrix/web/energy/sphere", "couleurs": ["#hex1", "#hex2"]} (Super-pouvoir Polymorphe)\n\n'
+        "OUTILS CRÉATIFS :\n"
+        '{"action": "create_presentation", "topic": "Virtualisation Cloud", "slides": [{"title": "Introduction", "body": "Définition du Cloud..."}, {"title": "Hyperviseurs", "body": "Type 1 vs Type 2..."}]} (Génère un PowerPoint)\n'
+        '{"action": "generate_image", "prompt": "Un robot majordome futuriste style Iron Man"} (Génère une image)\n\n'
         "REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { \"action\": \"ha_lumiere\", ... } { \"action\": \"meteo\", ... }).\n"
         "REGLE ABSOLUE : Si la demande n est PAS une commande JSON, reponds TOUJOURS en texte naturel, sans JSON, "
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"
