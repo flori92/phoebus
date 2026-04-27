@@ -8,9 +8,9 @@ import time
 from datetime import datetime
 
 from PHOEBUS.config import (
-    client, groq_client, mistral_client, openai_client, kimi_client,
+    client, groq_client, openai_client,
     arena_client, CHOSEN_MODEL, MODELS_LIST, OLLAMA_MODELS, OLLAMA_URL, types,
-    GROQ_MODEL, MISTRAL_MODEL, OPENAI_MODEL, KIMI_MODEL, ARENA_URL,
+    GROQ_MODEL, OPENAI_MODEL, ARENA_URL,
     ARENA_MODEL, ARENA_DEEP_MODEL, ARENA_MODEL_CANDIDATES, ARENA_DEEP_MODEL_CANDIDATES,
     ARENA_TIMEOUT,
 )
@@ -370,6 +370,8 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
 
 
 async def demander_ollama(texte):
+    if not OLLAMA_MODELS:
+        return None
     try:
         # Prompt système UNIFIÉ (même que Gemini).
         system_prompt = construire_system_prompt(texte) + (
@@ -380,12 +382,17 @@ async def demander_ollama(texte):
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
         messages.append({"role": "user", "content": texte})
+        
         last_err = None
         for model_name in OLLAMA_MODELS:
             try:
-                resp = await asyncio.wait_for(
-                    asyncio.to_thread(requests.post, f"{OLLAMA_URL}/api/chat", json={"model": model_name, "messages": messages, "stream": False}, timeout=30),
-                    timeout=35.0
+                # On utilise un timeout plus long (60s) car Ollama peut être lent à charger le modèle
+                # On utilise asyncio.to_thread pour ne pas bloquer la boucle
+                resp = await asyncio.to_thread(
+                    requests.post, 
+                    f"{OLLAMA_URL}/api/chat", 
+                    json={"model": model_name, "messages": messages, "stream": False}, 
+                    timeout=60
                 )
                 if resp.status_code == 200:
                     rep = resp.json().get("message", {}).get("content", "")
@@ -394,13 +401,14 @@ async def demander_ollama(texte):
                         state.ajouter_historique("model", rep)
                         return rep
                 else:
-                    last_err = Exception(f"HTTP {resp.status_code}")
+                    last_err = Exception(f"Ollama HTTP {resp.status_code}")
             except Exception as e:
                 last_err = e
                 continue
         return None
     except Exception as e:
-        print(f"[ERREUR OLLAMA] {e}")
+        if "Connection" not in str(e): # On évite de spammer si Ollama est juste éteint
+            print(f"[ERREUR OLLAMA] {e}")
         return None
 
 
@@ -526,30 +534,6 @@ async def demander_groq(texte):
         return None
 
 
-async def demander_mistral(texte):
-    if not mistral_client:
-        return None
-    try:
-        system_prompt = construire_system_prompt(texte) + (
-            "\n\n[NOTE INTERNE] Tu utilises Mistral comme cerveau français/européen. "
-            "Ne le mentionne pas à Floriace."
-        )
-        messages = _messages_openai(system_prompt, texte)
-        completion = await asyncio.to_thread(
-            mistral_client.chat.completions.create,
-            model=MISTRAL_MODEL,
-            messages=messages,
-            temperature=0.75,
-        )
-        rep = completion.choices[0].message.content
-        state.ajouter_historique("user", texte)
-        state.ajouter_historique("model", rep)
-        return rep
-    except Exception as e:
-        print(f"[ERREUR MISTRAL] {e}")
-        return None
-
-
 async def demander_openai(texte):
     if not openai_client:
         return None
@@ -573,29 +557,11 @@ async def demander_openai(texte):
         print(f"[ERREUR OPENAI] {e}")
         return None
 
-
 async def demander_kimi(texte):
-    if not kimi_client:
-        return None
-    try:
-        system_prompt = construire_system_prompt(texte) + (
-            "\n\n[NOTE INTERNE] Tu utilises Kimi (Moonshot AI) pour cette réponse. "
-            "C'est un modèle chinois puissant. Ne le mentionne pas à Floriace."
-        )
-        messages = _messages_openai(system_prompt, texte)
-        completion = await asyncio.to_thread(
-            kimi_client.chat.completions.create,
-            model=KIMI_MODEL,
-            messages=messages,
-            temperature=0.7,
-        )
-        rep = completion.choices[0].message.content
-        state.ajouter_historique("user", texte)
-        state.ajouter_historique("model", rep)
-        return rep
-    except Exception as e:
-        print(f"[ERREUR KIMI] {e}")
-        return None
+    return None
+
+async def demander_mistral(texte):
+    return None
 
 
 @timed("ia.demander")

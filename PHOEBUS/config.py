@@ -180,33 +180,29 @@ groq_client = None
 if OpenAI and _secret_is_configured(GROQ_API_KEY):
     groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
-mistral_client = None
-if OpenAI and _secret_is_configured(MISTRAL_API_KEY):
-    mistral_client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
-
-kimi_client = None
-if OpenAI and _secret_is_configured(KIMI_API_KEY):
-    kimi_client = OpenAI(api_key=KIMI_API_KEY, base_url="https://api.moonshot.cn/v1")
+# Client OpenAI (On utilise gpt-4o-mini par défaut pour la vitesse et le coût)
+openai_client = None
+if OpenAI and _secret_is_configured(OPENAI_API_KEY):
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ── Modèles ─────────────────────────────────────────────────────────────────
-MODELS_LIST  = [
+MODELS_LIST = [
     m.strip() for m in os.getenv(
         "PHOEBUS_GEMINI_MODELS",
-        "gemini-2.0-flash,gemini-2.0-flash-lite,gemini-1.5-flash",
+        "gemini-2.0-flash,gemini-2.0-flash-lite,gemini-2.5-flash",
     ).split(",") if m.strip()
 ]
+
 CHOSEN_MODEL = MODELS_LIST[0]
-OLLAMA_URL    = "http://127.0.0.1:11434"
+OLLAMA_URL    = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").strip()
 OLLAMA_MODELS = [
     m.strip() for m in os.getenv(
         "PHOEBUS_OLLAMA_MODELS",
-        "mistral:instruct,mistral,llama3:8b,llama3,gemma4",
+        "qwen2.5:0.5b,llama3.1:8b",
     ).split(",") if m.strip()
 ]
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
-MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o").strip()
-KIMI_MODEL = os.getenv("KIMI_MODEL", "moonshot-v1-8k").strip()
+GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 # ── Chemins (suite) ──────────────────────────────────────────────────────────
 FRONTEND_DIR      = BASE_DIR / "frontend"
