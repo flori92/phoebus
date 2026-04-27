@@ -135,6 +135,12 @@ _RE_NET_INFO = re.compile(
     r")$"
 )
 
+_RE_FULLY_SCREEN = re.compile(rf"^{_WAKE_PREFIX}(?:allume|éteins|réveille|coupe)\s+(?:la\s+)?(?:tablette|écran de la tablette)$")
+_RE_FULLY_RELOAD = re.compile(rf"^{_WAKE_PREFIX}(?:actualise|recharge|rafraîchis)\s+(?:la\s+)?tablette$")
+
+_RE_MODE_LOCAL_ON = re.compile(rf"^{_WAKE_PREFIX}(?:passe en|active le|lance le)\s+mode\s+(?:local|offline|ollama)$")
+_RE_MODE_LOCAL_OFF = re.compile(rf"^{_WAKE_PREFIX}(?:quitte le|désactive le|arrête le)\s+mode\s+(?:local|offline|ollama)$")
+
 # ── Contrôle du volume système ───────────────────────────────────────────
 _RE_VOLUME_UP = re.compile(rf"^{_WAKE_PREFIX}(?:monte|augmente|augmentez)\s+(?:le\s+)?(?:volume|son)$")
 _RE_VOLUME_DOWN = re.compile(rf"^{_WAKE_PREFIX}(?:baisse|diminue|diminuez)\s+(?:le\s+)?(?:volume|son)$")
@@ -311,6 +317,19 @@ def detect(texte: str) -> Optional[IntentResult]:
     
     if _RE_NET_INFO.match(t):
         return IntentResult("network_info", '{"action": "network_info"}')
+
+    if _RE_FULLY_SCREEN.match(t):
+        st = "on" if any(w in t for w in ["allume", "réveille"]) else "off"
+        return IntentResult("fully_screen", '{"action": "fully_screen", "state": "' + st + '"}')
+    
+    if _RE_FULLY_RELOAD.match(t):
+        return IntentResult("fully_reload", '{"action": "fully_load_url", "url": "http://phoebus.local:8080"}')
+
+    if _RE_MODE_LOCAL_ON.match(t):
+        return IntentResult("mode_local_on", '{"action": "mode_local", "etat": "on"}')
+    
+    if _RE_MODE_LOCAL_OFF.match(t):
+        return IntentResult("mode_local_off", '{"action": "mode_local", "etat": "off"}')
 
     # ── Volume Système ────────────────────────────────────────────────────
     if _RE_VOLUME_UP.match(t):

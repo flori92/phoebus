@@ -48,3 +48,18 @@ async def launch_app(data: dict):
     if ok:
         return f"J'ai lancé {name}, Monsieur."
     return f"Je n'ai pas pu trouver l'application {name} sur ce système."
+
+@skill(
+    "mode_local",
+    risk="low",
+    help_text="Active ou désactive le mode IA locale (Ollama)",
+    describe=lambda d: f"Passer en mode IA {'locale' if d.get('etat') == 'on' else 'hybride'}"
+)
+async def mode_local(data: dict):
+    etat = data.get("etat", "on") == "on"
+    if etat:
+        os.environ["PHOEBUS_BRAIN_MODE"] = "privacy"
+        return "Mode local activé. J'utilise désormais exclusivement Ollama."
+    else:
+        os.environ["PHOEBUS_BRAIN_MODE"] = "smart"
+        return "Mode hybride réactivé. Je retrouve toute ma puissance cloud."
