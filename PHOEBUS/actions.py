@@ -60,51 +60,8 @@ def _lancer_timer_thread(secondes, message):
     asyncio.run_coroutine_threadsafe(parler(f"Floriace, votre minuteur est terminé : {message}"), asyncio.get_event_loop())
 
 
-async def action_timer(d):
-    minutes = d.get("minutes", 0)
-    secondes = d.get("secondes", 0)
-    label = d.get("label", "Minuteur")
-    total = (minutes * 60) + secondes
-    if total <= 0:
-        await parler("Je ne peux pas lancer un minuteur de zéro seconde.")
-        return
-    
-    import threading
-    threading.Thread(target=_lancer_timer_thread, args=(total, label), daemon=True).start()
-    
-    temps_desc = f"{minutes} minutes " if minutes else ""
-    temps_desc += f"{secondes} secondes" if secondes else ""
-    await parler(f"C'est noté. Je lance un minuteur de {temps_desc} pour : {label}.")
-
-
-async def action_metamorphose(d):
-    """Métamorphose visuelle de l'orbe."""
-    theme = d.get("theme", "neutre")
-    shape = d.get("forme", "sphere")
-    colors = d.get("couleurs", ["#4ca8e8"])
-    
-    payload = {
-        "action": "metamorphose",
-        "theme": theme,
-        "shape": shape,
-        "colors": colors
-    }
-    await state.broadcast(payload)
-    # PHOEBUS commente brièvement sa transformation
-    if theme != "neutre":
-        await parler(f"Initiation du protocole {theme}. Métamorphose en cours.")
-
-
-async def _executer_en_fond(handler, data, label):
-    """Exécute un handler en tâche asyncio séparée pour ne pas bloquer la conversation."""
-    async def _run():
-        try:
-            await handler(data)
-        except Exception as e:
-            print(f"[BG:{label}] erreur : {e}")
-    task = asyncio.create_task(_run())
-    state.register_background_task(task, label=label)
-
+# Les fonctions suivantes ont été migrées vers PHOEBUS/skills/
+# et sont automatiquement appelées par executer_une_action via le registre.
 
 async def executer_une_action(d):
     """Exécute un bloc JSON unique."""
