@@ -35,7 +35,7 @@ from PHOEBUS.vision import (
 )
 from PHOEBUS.agent import orchestrer_agent_autonome
 from PHOEBUS.voice import parler
-from PHOEBUS.skills import get_skill, describe_skill
+from PHOEBUS.skills import is_skill_registered, execute_skill, describe_skill, risk_of
 
 # Imports optionnels des nouveaux modules
 try:
