@@ -236,8 +236,8 @@ def rank_provider_names(
 def available_provider_names() -> list[str]:
     """Detecte les fournisseurs configures sans declencher d'appel reseau."""
     from PHOEBUS.config import (
-        client, groq_client, grok_client, mistral_client,
-        openai_client, kimi_client, arena_client, types
+        client, groq_client,
+        openai_client, arena_client, types
     )
 
     names = []
@@ -247,12 +247,6 @@ def available_provider_names() -> list[str]:
         names.append("groq")
     if openai_client:
         names.append("openai")
-    if mistral_client:
-        names.append("mistral")
-    if kimi_client:
-        names.append("kimi")
-    if grok_client:
-        names.append("grok")
     if arena_client:
         names.append("arena")
     # Ollama est local : on le garde comme candidat meme s'il peut etre eteint.

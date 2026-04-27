@@ -936,7 +936,6 @@ async def demander_ia_vision(texte, img_b64):
             if rep: break
         
         if not rep:
-            if grok_client: return await demander_grok(texte + " (Note: Je n'ai pas pu voir ton écran car mes serveurs de vision sont indisponibles).")
             raise last_err or Exception("Aucun modele n'a pu analyser l'image")
 
         state.ajouter_historique("user", f"[Analyse d'écran] {texte}")
