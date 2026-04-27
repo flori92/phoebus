@@ -6,9 +6,9 @@ Permet d'indexer et de rechercher des souvenirs basés sur le contexte sémantiq
 import os
 import time
 from datetime import datetime
-from PHOEBUS.config import BASE_DIR
+from PHOEBUS.config import BASE_DIR, GEMINI_API_KEY
 
-# On importe chromadb de façon optionnelle pour ne pas casser le système s'il n'est pas installé
+# On importe chromadb de façon optionnelle
 try:
     import chromadb
     from chromadb.config import Settings
@@ -21,6 +21,17 @@ DB_PATH = str(BASE_DIR / "phoebus_vector_db")
 _chroma_client = None
 _collection = None
 
+def get_google_embedding_function():
+    """Crée une fonction d'embedding utilisant l'API Google Gemini."""
+    try:
+        import google.generativeai as genai
+        from chromadb.utils.embedding_functions import GoogleGenerativeAiEmbeddingFunction
+        if GEMINI_API_KEY and "votre_clé" not in GEMINI_API_KEY:
+            return GoogleGenerativeAiEmbeddingFunction(api_key=GEMINI_API_KEY)
+    except Exception as e:
+        print(f"[RAG] Impossible d'initialiser les Google Embeddings, repli sur local : {e}")
+    return None
+
 def init_chroma():
     global _chroma_client, _collection
     if not CHROMA_AVAILABLE:
@@ -28,9 +39,13 @@ def init_chroma():
     try:
         if _chroma_client is None:
             _chroma_client = chromadb.PersistentClient(path=DB_PATH)
+            
+            emb_fn = get_google_embedding_function()
+            
             _collection = _chroma_client.get_or_create_collection(
                 name="PHOEBUS_long_term_memory",
-                metadata={"hnsw:space": "cosine"}
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=emb_fn
             )
         return True
     except Exception as e:
