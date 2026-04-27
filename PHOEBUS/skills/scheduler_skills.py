@@ -8,7 +8,11 @@ import logging
 logging.getLogger('apscheduler').setLevel(logging.WARNING)
 
 scheduler = AsyncIOScheduler()
-scheduler.start()
+
+def ensure_scheduler_running():
+    """S'assure que le scheduler est démarré dans la boucle asyncio actuelle."""
+    if not scheduler.running:
+        scheduler.start()
 
 @skill(
     "schedule_task",
@@ -17,6 +21,7 @@ scheduler.start()
     describe=lambda d: f"Programmer l'action : {d.get('instruction')} ({d.get('recurrence')})"
 )
 async def schedule_task(data: dict):
+    ensure_scheduler_running()
     instruction = data.get("instruction")
     recurrence = data.get("recurrence") # 'daily', 'weekly', 'once'
     time_str = data.get("time") # 'HH:MM'
@@ -56,6 +61,7 @@ async def schedule_task(data: dict):
     describe=lambda _: "Lister les tâches programmées"
 )
 async def list_scheduled_tasks(data: dict):
+    ensure_scheduler_running()
     jobs = scheduler.get_jobs()
     if not jobs:
         return "Il n'y a aucune tâche programmée pour le moment."
