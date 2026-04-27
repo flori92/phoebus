@@ -16,8 +16,8 @@ from typing import Iterable, Optional
 from PHOEBUS.config import BASE_DIR
 
 
-PROVIDERS = ("gemini", "groq", "arena", "openai", "mistral", "kimi", "grok", "ollama")
-DEFAULT_ORDER = ("gemini", "groq", "arena", "openai", "mistral", "kimi", "grok", "ollama")
+PROVIDERS = ("gemini", "groq", "arena", "openai", "mistral", "kimi", "ollama")
+DEFAULT_ORDER = ("gemini", "groq", "arena", "openai", "mistral", "kimi", "ollama")
 METRICS_FILE = BASE_DIR / "logs" / "ai_router_metrics.json"
 FAIL_COOLDOWN_SECONDS = 45
 QUOTA_COOLDOWN_SECONDS = 3600  # 1 heure pour les erreurs de quota (429)

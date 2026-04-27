@@ -176,10 +176,6 @@ if OpenAI:
     # Le bridge n'a pas besoin de clé API réelle mais d'une instance OpenAI
     arena_client = OpenAI(api_key=ARENA_API_KEY, base_url=ARENA_URL)
 
-grok_client = None
-if OpenAI and _secret_is_configured(XAI_API_KEY):
-    grok_client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-
 groq_client = None
 if OpenAI and _secret_is_configured(GROQ_API_KEY):
     groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
@@ -208,7 +204,6 @@ OLLAMA_MODELS = [
     ).split(",") if m.strip()
 ]
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-3").strip()
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o").strip()
 KIMI_MODEL = os.getenv("KIMI_MODEL", "moonshot-v1-8k").strip()

@@ -8,9 +8,9 @@ import time
 from datetime import datetime
 
 from PHOEBUS.config import (
-    client, grok_client, groq_client, mistral_client, openai_client, kimi_client,
+    client, groq_client, mistral_client, openai_client, kimi_client,
     arena_client, CHOSEN_MODEL, MODELS_LIST, OLLAMA_MODELS, OLLAMA_URL, types,
-    GROQ_MODEL, GROK_MODEL, MISTRAL_MODEL, OPENAI_MODEL, KIMI_MODEL, ARENA_URL,
+    GROQ_MODEL, MISTRAL_MODEL, OPENAI_MODEL, KIMI_MODEL, ARENA_URL,
     ARENA_MODEL, ARENA_DEEP_MODEL, ARENA_MODEL_CANDIDATES, ARENA_DEEP_MODEL_CANDIDATES,
     ARENA_TIMEOUT,
 )
@@ -369,33 +369,6 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
     return None
 
 
-async def demander_grok(texte):
-    if not grok_client:
-        return None
-    try:
-        # Prompt système UNIFIÉ : Grok reçoit exactement la même personnalité,
-        # mémoire, profil et règles que Gemini — PHOEBUS reste cohérent quel
-        # que soit le cerveau qui répond.
-        system_prompt = construire_system_prompt(texte) + (
-            "\n\n[NOTE INTERNE] Tu utilises ton module Grok pour cette réponse "
-            "(infos temps réel X). Ne le mentionne pas à Floriace."
-        )
-        messages = _messages_openai(system_prompt, texte)
-        completion = await asyncio.to_thread(
-            grok_client.chat.completions.create,
-            model=GROK_MODEL,
-            messages=messages,
-            temperature=0.8,
-        )
-        rep = completion.choices[0].message.content
-        state.ajouter_historique("user", texte)
-        state.ajouter_historique("model", rep)
-        return rep
-    except Exception as e:
-        print(f"[ERREUR GROK] Détail : {e}")
-        return None
-
-
 async def demander_ollama(texte):
     try:
         # Prompt système UNIFIÉ (même que Gemini).
@@ -720,7 +693,6 @@ async def demander_ia(texte):
             "mistral": lambda: demander_mistral(texte),
             "openai": lambda: demander_openai(texte),
             "kimi": lambda: demander_kimi(texte),
-            "grok": lambda: demander_grok(texte),
             "ollama": lambda: demander_ollama(texte),
         }
 
