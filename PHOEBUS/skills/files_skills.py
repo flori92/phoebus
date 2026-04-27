@@ -34,6 +34,45 @@ async def chercher_fichier(data: dict):
     return await asyncio.to_thread(_desktop.chercher_fichier, nom)
 
 @skill(
+    "trier_complet",
+    risk="medium",
+    help_text="Organise et range automatiquement les fichiers du dossier actuel dans des sous-dossiers par type",
+    describe=lambda _: "Organiser intelligemment vos fichiers par catégories"
+)
+async def trier_complet(data: dict):
+    from PHOEBUS.desktop import lister_dossier
+    import shutil
+    
+    EXTENSIONS_MAP = {
+        "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg"],
+        "Videos": [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".webm"],
+        "Musique": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a"],
+        "Documents": [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".rtf", ".csv"],
+        "Archives": [".zip", ".rar", ".7z", ".tar", ".gz"],
+        "Code": [".py", ".js", ".html", ".css", ".java", ".cpp", ".c", ".json", ".sh", ".ts"]
+    }
+    
+    current_dir = os.getcwd()
+    fichiers = [f for f in os.listdir(current_dir) if os.path.isfile(os.path.join(current_dir, f))]
+    
+    compteurs = {}
+    for f in fichiers:
+        ext = os.path.splitext(f)[1].lower()
+        found_cat = "Autres"
+        for cat, list_ext in EXTENSIONS_MAP.items():
+            if ext in list_ext:
+                found_cat = cat
+                break
+        
+        target_dir = os.path.join(current_dir, found_cat)
+        os.makedirs(target_dir, exist_ok=True)
+        shutil.move(os.path.join(current_dir, f), os.path.join(target_dir, f))
+        compteurs[found_cat] = compteurs.get(found_cat, 0) + 1
+        
+    res = "Rangement terminé. " + ", ".join([f"{v} {k}" for k, v in compteurs.items()])
+    return res
+
+@skill(
     "system_control",
     risk="medium",
     help_text="Contrôle le matériel (verrouillage, mise en veille, volume)",

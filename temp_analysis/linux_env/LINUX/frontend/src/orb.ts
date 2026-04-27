@@ -11,17 +11,15 @@
  *  triggerDemo() – 10-second spectacular light show (Big Bang → Hypervortex →
  *                  Pulse Rings → Rainbow Collapse → settle)
  *
- * Ported & heavily enhanced from https://github.com/ethanplusai/PHOEBUS
+ * Ported & heavily enhanced from https://github.com/ethanplusai/jarvis
  */
 
 import * as THREE from "three";
 
-export type OrbState = "idle" | "listening" | "thinking" | "speaking" | "proactive";
-export type OrbShape = "sphere" | "vortex" | "web" | "energy" | "matrix";
+export type OrbState = "idle" | "listening" | "thinking" | "speaking";
 
 export interface Orb {
   setState(s: OrbState): void;
-  setTheme(shape: OrbShape, colors: string[]): void;
   setVolume(v: number): void;
   setAnalyser(a: AnalyserNode | null): void;
   triggerDemo(): void;
@@ -134,44 +132,6 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     x2: number; y2: number; z2: number;
   }[] = [];
 
-  // ── Solar / Circadian (PHOEBUS) ───────────────────────────────────────────
-  function getSolarPalette(t: number) {
-    const date = new Date();
-    const hour = date.getHours() + date.getMinutes() / 60;
-
-    // Keyframes: hour -> [BaseColor, BrightnessFactor]
-    // 0: Night (Indigo), 5: Dawn (Purple/Pink), 7: Sunrise (Orange/Gold),
-    // 12: Noon (White/Yellow), 17: Afternoon (Golden), 19: Sunset (Orange/Red),
-    // 21: Twilight (Deep Purple), 24: Night
-    const night = { col: new THREE.Color(0x0a1128), bright: 0.35 };
-    const dawn = { col: new THREE.Color(0x3e1f47), bright: 0.5 };
-    const sunrise = { col: new THREE.Color(0xff8c42), bright: 0.85 };
-    const noon = { col: new THREE.Color(0xffffee), bright: 1.1 };
-    const afternoon = { col: new THREE.Color(0xffca3a), bright: 0.95 };
-    const sunset = { col: new THREE.Color(0xff3f00), bright: 0.9 };
-    const twilight = { col: new THREE.Color(0x2a1b3d), bright: 0.45 };
-
-    let k1, k2, ratio;
-    if (hour < 5) { k1 = night; k2 = dawn; ratio = hour / 5; }
-    else if (hour < 7) { k1 = dawn; k2 = sunrise; ratio = (hour - 5) / 2; }
-    else if (hour < 12) { k1 = sunrise; k2 = noon; ratio = (hour - 7) / 5; }
-    else if (hour < 17) { k1 = noon; k2 = afternoon; ratio = (hour - 12) / 5; }
-    else if (hour < 19) { k1 = afternoon; k2 = sunset; ratio = (hour - 17) / 2; }
-    else if (hour < 21) { k1 = sunset; k2 = twilight; ratio = (hour - 19) / 2; }
-    else { k1 = twilight; k2 = night; ratio = (hour - 21) / 3; }
-
-    const col = k1.col.clone().lerp(k2.col, ratio);
-    const bright = k1.bright + (k2.bright - k1.bright) * ratio;
-
-    return { col, bright };
-  }
-
-  // ── Polymorph / Morphing (PHOEBUS) ────────────────────────────────────────
-  let currentShape: OrbShape = "sphere";
-  let themeColors: THREE.Color[] = [];
-  let isThemed = false;
-  let themeIntensity = 0; // 0 to 1 for transition
-
   // ── Base state vars ────────────────────────────────────────────────────────
   let state: OrbState = "idle";
   let targetRadius = 25, currentRadius = 25;
@@ -205,10 +165,10 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   const clock = new THREE.Clock();
 
   // ── Colour helpers ─────────────────────────────────────────────────────────
-  let COL_BASE = new THREE.Color(0x4ca8e8);
-  let COL_THINK = new THREE.Color(0x6ec4ff);
-  let COL_SPEAK = new THREE.Color(0x5ab8f0);
-  let COL_BRIGHT = new THREE.Color(0xb8eeff);
+  const COL_BASE = new THREE.Color(0x4ca8e8);
+  const COL_THINK = new THREE.Color(0x6ec4ff);
+  const COL_SPEAK = new THREE.Color(0x5ab8f0);
+  const COL_BRIGHT = new THREE.Color(0xb8eeff);
   const COL_FLASH = new THREE.Color(0xffffff);
   const _tmpColor = new THREE.Color();
   const _rainbowCol = new THREE.Color();
@@ -218,80 +178,15 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   let demoStartTime = 0;
   let demoBurstNextAt = 0;  // clock time of next forced burst
   const DEMO_DURATION = 10.0; // seconds
-// ── Demo state ─────────────────────────────────────────────────────────────
-let demoActive = false;
-let demoStartTime = 0;
-let demoBurstNextAt = 0;  // clock time of next forced burst
-const DEMO_DURATION = 10.0; // seconds
 
-// ── Animate ────────────────────────────────────────────────────────────────
-function animate() {
-  if (destroyed) return;
-  requestAnimationFrame(animate);
+  // ── Animate ────────────────────────────────────────────────────────────────
+  function animate() {
+    if (destroyed) return;
+    requestAnimationFrame(animate);
 
-  const t = clock.getElapsedTime();
-  const dt = Math.min(t - prevT, 0.05);
-  prevT = t;
-
-  // ── Demo expiry ──────────────────────────────────────────────────────────
-  if (demoActive && t - demoStartTime >= DEMO_DURATION) {
-    demoActive = false;
-  }
-
-  const demoElapsed = demoActive ? (t - demoStartTime) : -1;
-  // Phases: 0-2s=BigBang, 2-5s=Hypervortex, 5-7.5s=PulseRings, 7.5-10s=Collapse
-  const demoBigBang = demoActive && demoElapsed < 2.0;
-  const demoVortex = demoActive && demoElapsed >= 2.0 && demoElapsed < 5.0;
-  const demoPulse = demoActive && demoElapsed >= 5.0 && demoElapsed < 7.5;
-  const demoCollapse = demoActive && demoElapsed >= 7.5;
-
-  // ── Per-state targets ───────────────────────────────────────────────────
-  if (demoActive) {
-    if (demoBigBang) {
-      targetRadius = 40; targetSpeed = 1.0; targetBright = 1.0; targetSize = 0.75;
-      targetLineAmount = 1.0; targetElectronRate = 0.04;
-      targetVortex = 0.5; targetBreathAmp = 2.5;
-    } else if (demoVortex) {
-      targetRadius = 32; targetSpeed = 0.9; targetBright = 1.0; targetSize = 0.65;
-      targetLineAmount = 1.0; targetElectronRate = 0.04;
-      targetVortex = 4.5; targetBreathAmp = 2.0;
-    } else if (demoPulse) {
-      targetRadius = 28; targetSpeed = 0.7; targetBright = 0.95; targetSize = 0.55;
-      targetLineAmount = 0.9; targetElectronRate = 0.03;
-      targetVortex = 2.0; targetBreathAmp = 3.0;
-    } else {
-      // Collapse
-      targetRadius = 10; targetSpeed = 0.5; targetBright = 0.85; targetSize = 0.5;
-      targetLineAmount = 0.7; targetElectronRate = 0.015;
-      targetVortex = 1.0; targetBreathAmp = 0.5;
-    }
-  } else {
-    switch (state) {
-
-    // ── Solar palette update ────────────────────────────────────────────────
-    // PHOEBUS adjusts its internal core colors based on the sun's position.
-    const solar = getSolarPalette(t);
-    
-    if (isThemed) {
-      themeIntensity += (1 - themeIntensity) * 0.05;
-      if (themeColors.length > 0) {
-        COL_BASE.lerp(themeColors[0], 0.05);
-        if (themeColors.length > 1) {
-          COL_THINK.lerp(themeColors[1], 0.05);
-          COL_SPEAK.lerp(themeColors[1], 0.05);
-        }
-      }
-    } else {
-      themeIntensity += (0 - themeIntensity) * 0.05;
-      COL_BASE.lerp(solar.col, 0.02);
-      // Derived colors follow the base solar color with slight offsets
-      _tmpColor.copy(solar.col).addScalar(0.15);
-      COL_THINK.lerp(_tmpColor, 0.02);
-      _tmpColor.copy(solar.col).multiplyScalar(1.1);
-      COL_SPEAK.lerp(_tmpColor, 0.02);
-      _tmpColor.copy(solar.col).addScalar(0.3);
-      COL_BRIGHT.lerp(_tmpColor, 0.02);
-    }
+    const t = clock.getElapsedTime();
+    const dt = Math.min(t - prevT, 0.05);
+    prevT = t;
 
     // ── Demo expiry ──────────────────────────────────────────────────────────
     if (demoActive && t - demoStartTime >= DEMO_DURATION) {
@@ -308,53 +203,47 @@ function animate() {
     // ── Per-state targets ───────────────────────────────────────────────────
     if (demoActive) {
       if (demoBigBang) {
-        targetRadius = 40; targetSpeed = 1.0; targetBright = 1.0 * solar.bright; targetSize = 0.75;
+        targetRadius = 40; targetSpeed = 1.0; targetBright = 1.0; targetSize = 0.75;
         targetLineAmount = 1.0; targetElectronRate = 0.04;
         targetVortex = 0.5; targetBreathAmp = 2.5;
       } else if (demoVortex) {
-        targetRadius = 32; targetSpeed = 0.9; targetBright = 1.0 * solar.bright; targetSize = 0.65;
+        targetRadius = 32; targetSpeed = 0.9; targetBright = 1.0; targetSize = 0.65;
         targetLineAmount = 1.0; targetElectronRate = 0.04;
         targetVortex = 4.5; targetBreathAmp = 2.0;
       } else if (demoPulse) {
-        targetRadius = 28; targetSpeed = 0.7; targetBright = 0.95 * solar.bright; targetSize = 0.55;
+        targetRadius = 28; targetSpeed = 0.7; targetBright = 0.95; targetSize = 0.55;
         targetLineAmount = 0.9; targetElectronRate = 0.03;
         targetVortex = 2.0; targetBreathAmp = 3.0;
       } else {
         // Collapse
-        targetRadius = 10; targetSpeed = 0.5; targetBright = 0.85 * solar.bright; targetSize = 0.5;
+        targetRadius = 10; targetSpeed = 0.5; targetBright = 0.85; targetSize = 0.5;
         targetLineAmount = 0.7; targetElectronRate = 0.015;
         targetVortex = 1.0; targetBreathAmp = 0.5;
       }
     } else {
       switch (state) {
         case "idle":
-          targetRadius = 28; targetSpeed = 0.2; targetBright = 0.5 * solar.bright; targetSize = 0.35;
+          targetRadius = 28; targetSpeed = 0.2; targetBright = 0.5; targetSize = 0.35;
           targetLineAmount = 0.15; targetElectronRate = 0;
           targetVortex = 0; targetBreathAmp = 0;
           break;
 
         case "listening":
-          targetRadius = 22; targetSpeed = 0.3; targetBright = 0.65 * solar.bright; targetSize = 0.4;
+          targetRadius = 22; targetSpeed = 0.3; targetBright = 0.65; targetSize = 0.4;
           targetLineAmount = 0.4; targetElectronRate = 0;
           targetVortex = 0; targetBreathAmp = 0;
           break;
 
         case "thinking":
-          targetRadius = 16; targetSpeed = 0.5; targetBright = 0.7 * solar.bright; targetSize = 0.3;
+          targetRadius = 16; targetSpeed = 0.5; targetBright = 0.7; targetSize = 0.3;
           targetLineAmount = 1.0; targetElectronRate = 0.015;
           targetVortex = 0; targetBreathAmp = 0;
           break;
 
         case "speaking":
-          targetRadius = 20; targetSpeed = 0.45; targetBright = 0.78 * solar.bright; targetSize = 0.46;
+          targetRadius = 20; targetSpeed = 0.45; targetBright = 0.78; targetSize = 0.46;
           targetLineAmount = 0.92; targetElectronRate = 0.01;
           targetVortex = 1.4; targetBreathAmp = 1.0;
-          break;
-
-        case "proactive":
-          targetRadius = 24; targetSpeed = 0.6; targetBright = 0.85 * solar.bright; targetSize = 0.42;
-          targetLineAmount = 0.6; targetElectronRate = 0.02;
-          targetVortex = 0.8; targetBreathAmp = 0.4;
           break;
       }
     }
@@ -395,7 +284,7 @@ function animate() {
       mid    = mS / (16 * 255);
       treble = tS / (24 * 255);
     } else if (state === "speaking") {
-      // Use external volume if no analyser (PHOEBUS on PC)
+      // Use external volume if no analyser (Jarvis on PC)
       bass = externalVolume * 0.6;
       mid = externalVolume * 0.3;
       treble = externalVolume * 0.1;
@@ -721,44 +610,6 @@ function animate() {
       electronMat.color.set(0xffffff);
     }
 
-    // ── Apply morphing physics to each particle ─────────────────────────────
-    const positions = geo.attributes.position.array as Float32Array;
-    for (let i = 0; i < N; i++) {
-      const px = positions[i * 3];
-      const py = positions[i * 3 + 1];
-      const pz = positions[i * 3 + 2];
-
-      let tx = px, ty = py, tz = pz; // Target coords for this particle
-
-      if (currentShape === "vortex") {
-        const angle = t * 2 + i * 0.1;
-        const dist = (i / N) * currentRadius * 1.5;
-        tx = Math.cos(angle) * dist;
-        ty = Math.sin(angle) * dist;
-        tz = (i / N - 0.5) * 20;
-      } else if (currentShape === "matrix") {
-        const grid = Math.floor(Math.sqrt(N));
-        const ix = i % grid;
-        const iy = Math.floor(i / grid);
-        tx = (ix / grid - 0.5) * 50;
-        ty = (iy / grid - 0.5) * 50;
-        tz = Math.sin(t + i * 0.1) * 3;
-      } else if (currentShape === "web") {
-        const mag = Math.sqrt(px*px + py*py + pz*pz);
-        if (mag > 0) {
-          tx = (px / mag) * (currentRadius * 1.5);
-          ty = (py / mag) * (currentRadius * 1.5);
-          tz = (pz / mag) * (currentRadius * 1.5);
-        }
-      }
-
-      // Lerp current position to target based on themeIntensity
-      positions[i * 3]     += (tx - px) * 0.05 * themeIntensity;
-      positions[i * 3 + 1] += (ty - py) * 0.05 * themeIntensity;
-      positions[i * 3 + 2] += (tz - pz) * 0.05 * themeIntensity;
-    }
-    geo.attributes.position.needsUpdate = true;
-
     // ── Camera drift ──────────────────────────────────────────────────────────
     if (demoActive) {
       // Camera swoops around during demo
@@ -789,14 +640,6 @@ function animate() {
     setState(s: OrbState) {
       state = s;
       if (s !== "speaking") externalVolume = 0;
-    },
-    setTheme(shape: OrbShape, colors: string[]) {
-      currentShape = shape;
-      themeColors = colors.map(c => new THREE.Color(c));
-      isThemed = true;
-      // Trigger a visual burst on transformation
-      shockwave = 1.0;
-      transitionEnergy = 1.0;
     },
     setVolume(v: number) {
       externalVolume = v;

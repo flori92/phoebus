@@ -1,0 +1,59 @@
+# ── IA & Google ────────────────────────────────────────
+google-genai
+google-generativeai
+google-ai-generativelanguage
+google-api-python-client
+google-api-core
+googleapis-common-protos
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
+grpcio
+grpcio-status
+proto-plus
+protobuf
+
+# ── Fournisseurs IA ─────────────────────────────────────
+groq
+openai
+
+# ── Web / Flask ─────────────────────────────────────────
+flask
+flask-cors
+requests
+requests-oauthlib
+websockets
+httpx
+httpcore
+aiohttp
+
+# ── Audio / TTS / STT ───────────────────────────────────
+SpeechRecognition
+edge-tts
+pyttsx3
+PyAudio
+pygame
+
+# ── Vision / Screenshot ─────────────────────────────────
+Pillow
+pyautogui
+screeninfo
+opencv-python
+
+# ── Utilitaires ─────────────────────────────────────────
+python-dotenv
+colorama
+tenacity
+psutil
+tabulate
+tqdm
+pydantic
+anyio
+distro
+oauthlib
+uritemplate
+pyparsing
+certifi
+charset-normalizer
+idna
+urllib3

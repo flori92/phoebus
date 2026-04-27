@@ -23,4 +23,28 @@ async def skill_agent_natif(data: dict) -> str:
 
     task = asyncio.create_task(_run_agent())
     state.register_background_task(task, label=f"agent_natif: {instruction[:60]}")
-    return "Agent autonome lancé en arrière-plan."
+@skill(
+    "demo",
+    risk="low",
+    help_text="Lance une démonstration visuelle spectaculaire de l'orbe",
+    describe=lambda _: "Lancer une démonstration visuelle de mes capacités"
+)
+async def skill_demo(data: dict) -> str:
+    await state.broadcast({"action": "demo"})
+    return "Initialisation du protocole de démonstration. Observez bien, Floriace."
+
+@skill(
+    "launch_app",
+    risk="medium",
+    help_text="Lance une application ou un logiciel sur l'ordinateur",
+    describe=lambda d: f"Ouvrir l'application : {d.get('name')}"
+)
+async def launch_app(data: dict):
+    from PHOEBUS.utils import launch_app as _launch
+    name = data.get("name")
+    if not name: return "Quelle application voulez-vous ouvrir ?"
+    
+    ok = _launch(name)
+    if ok:
+        return f"J'ai lancé {name}, Monsieur."
+    return f"Je n'ai pas pu trouver l'application {name} sur ce système."
