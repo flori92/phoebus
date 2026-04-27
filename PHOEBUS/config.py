@@ -180,6 +180,11 @@ groq_client = None
 if OpenAI and _secret_is_configured(GROQ_API_KEY):
     groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
+# Client Mistral AI
+mistral_client = None
+if OpenAI and _secret_is_configured(MISTRAL_API_KEY):
+    mistral_client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
+
 # Client OpenAI (On utilise gpt-4o-mini par défaut pour la vitesse et le coût)
 openai_client = None
 if OpenAI and _secret_is_configured(OPENAI_API_KEY):
@@ -202,6 +207,7 @@ OLLAMA_MODELS = [
     ).split(",") if m.strip()
 ]
 GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 # ── Chemins (suite) ──────────────────────────────────────────────────────────

@@ -8,9 +8,9 @@ import time
 from datetime import datetime
 
 from PHOEBUS.config import (
-    client, groq_client, openai_client,
+    client, groq_client, mistral_client, openai_client,
     arena_client, CHOSEN_MODEL, MODELS_LIST, OLLAMA_MODELS, OLLAMA_URL, types,
-    GROQ_MODEL, OPENAI_MODEL, ARENA_URL,
+    GROQ_MODEL, MISTRAL_MODEL, OPENAI_MODEL, ARENA_URL,
     ARENA_MODEL, ARENA_DEEP_MODEL, ARENA_MODEL_CANDIDATES, ARENA_DEEP_MODEL_CANDIDATES,
     ARENA_TIMEOUT,
 )
@@ -534,6 +534,29 @@ async def demander_groq(texte):
         return None
 
 
+async def demander_mistral(texte):
+    if not mistral_client:
+        return None
+    try:
+        system_prompt = construire_system_prompt(texte) + (
+            "\n\n[NOTE INTERNE] Tu utilises Mistral comme cerveau français/européen. "
+            "Ne le mentionne pas à Floriace."
+        )
+        messages = _messages_openai(system_prompt, texte)
+        completion = await asyncio.to_thread(
+            mistral_client.chat.completions.create,
+            model=MISTRAL_MODEL,
+            messages=messages,
+            temperature=0.75,
+        )
+        rep = completion.choices[0].message.content
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", rep)
+        return rep
+    except Exception as e:
+        print(f"[ERREUR MISTRAL] {e}")
+        return None
+
 async def demander_openai(texte):
     if not openai_client:
         return None
@@ -655,8 +678,8 @@ async def demander_ia(texte):
                 use_search=True,
             ),
             "groq": lambda: demander_groq(texte),
-            "arena": lambda: demander_arena(texte, profile=profile),
             "mistral": lambda: demander_mistral(texte),
+            "arena": lambda: demander_arena(texte, profile=profile),
             "openai": lambda: demander_openai(texte),
             "kimi": lambda: demander_kimi(texte),
             "ollama": lambda: demander_ollama(texte),
