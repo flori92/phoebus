@@ -120,6 +120,21 @@ _RE_MODE_IRON_MAN_OFF = re.compile(
     rf"^{_WAKE_PREFIX}(?:désactive|desactive|coupe|arrête|arrete|stop)\s+(?:le\s+)?mode\s+iron\s*man$"
 )
 
+_RE_SYS_STATS = re.compile(
+    rf"^{_WAKE_PREFIX}(?:"
+    r"état du système|etat du systeme|santé matérielle|sante materielle"
+    r"|utilisation (?:du\s+)?cpu|niveau (?:de\s+)?batterie"
+    r"|combien de batterie"
+    r")$"
+)
+
+_RE_NET_INFO = re.compile(
+    rf"^{_WAKE_PREFIX}(?:"
+    r"où es-tu|où (?:on est|on se trouve)|position réseau|infos? réseau"
+    r"|mon adresse ip|ton adresse ip|quelle est (?:ma|ta) position"
+    r")$"
+)
+
 # ── Contrôle du volume système ───────────────────────────────────────────
 _RE_VOLUME_UP = re.compile(rf"^{_WAKE_PREFIX}(?:monte|augmente|augmentez)\s+(?:le\s+)?(?:volume|son)$")
 _RE_VOLUME_DOWN = re.compile(rf"^{_WAKE_PREFIX}(?:baisse|diminue|diminuez)\s+(?:le\s+)?(?:volume|son)$")
@@ -290,6 +305,12 @@ def detect(texte: str) -> Optional[IntentResult]:
         return IntentResult(
             "mode_iron_man_off", '{"action": "mode_iron_man", "etat": "off"}'
         )
+
+    if _RE_SYS_STATS.match(t):
+        return IntentResult("system_stats", '{"action": "system_stats"}')
+    
+    if _RE_NET_INFO.match(t):
+        return IntentResult("network_info", '{"action": "network_info"}')
 
     # ── Volume Système ────────────────────────────────────────────────────
     if _RE_VOLUME_UP.match(t):
