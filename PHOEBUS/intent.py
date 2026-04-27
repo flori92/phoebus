@@ -120,6 +120,11 @@ _RE_MODE_IRON_MAN_OFF = re.compile(
     rf"^{_WAKE_PREFIX}(?:désactive|desactive|coupe|arrête|arrete|stop)\s+(?:le\s+)?mode\s+iron\s*man$"
 )
 
+# ── Contrôle du volume système ───────────────────────────────────────────
+_RE_VOLUME_UP = re.compile(rf"^{_WAKE_PREFIX}(?:monte|augmente|augmentez)\s+(?:le\s+)?(?:volume|son)$")
+_RE_VOLUME_DOWN = re.compile(rf"^{_WAKE_PREFIX}(?:baisse|diminue|diminuez)\s+(?:le\s+)?(?:volume|son)$")
+_RE_VOLUME_MUTE = re.compile(rf"^{_WAKE_PREFIX}(?:coupe|coupez|mute)\s+(?:le\s+)?(?:volume|son)$")
+
 # ── Timers et rappels persistants ──────────────────────────────────────────
 _RE_TIMER = re.compile(
     rf"^{_WAKE_PREFIX}(?:mets|lance|démarre|demarre|programme|active)?\s*"
@@ -286,18 +291,26 @@ def detect(texte: str) -> Optional[IntentResult]:
             "mode_iron_man_off", '{"action": "mode_iron_man", "etat": "off"}'
         )
 
+    # ── Volume Système ────────────────────────────────────────────────────
+    if _RE_VOLUME_UP.match(t):
+        return IntentResult("volume_up", '{"action": "system_control", "type": "volume_up"}')
+    if _RE_VOLUME_DOWN.match(t):
+        return IntentResult("volume_down", '{"action": "system_control", "type": "volume_down"}')
+    if _RE_VOLUME_MUTE.match(t):
+        return IntentResult("volume_mute", '{"action": "system_control", "type": "mute"}')
+
     # ── Timer ─────────────────────────────────────────────────────────────
     m = _RE_TIMER.match(t)
     if m:
         n = int(m.group("n"))
         unit = m.group("u") or "min"
         seconds = _unite_to_seconds(n, unit)
-        label = (m.group("label") or "").strip()
+        m_val = seconds // 60
+        s_val = seconds % 60
+        label = (m.group("label") or "minuteur").strip()
         import json as _json
-        payload = {"action": "timer_set", "duration_s": seconds, "kind": "timer"}
-        if label:
-            payload["label"] = label
-        return IntentResult("timer_set", _json.dumps(payload, ensure_ascii=False))
+        payload = {"action": "timer", "minutes": m_val, "secondes": s_val, "label": label}
+        return IntentResult("timer", _json.dumps(payload, ensure_ascii=False))
 
     # ── Rappel ────────────────────────────────────────────────────────────
     m = _RE_RAPPEL.match(t)

@@ -653,17 +653,6 @@ async def demander_ia(texte):
 
     await state.send_web_state("thinking")
     try:
-        # ── FAST-PATH : dispatcher d'intention local ──────────────────────
-        # Latence ~50 ms au lieu d'un round-trip cloud de 1–2 s pour les
-        # commandes évidentes (allume X, éteins Y, heure, date, thermostat...).
-        from PHOEBUS.intent import detect as detect_intent
-        intent = detect_intent(texte)
-        if intent is not None:
-            print(f"[INTENT] fast-path : {intent.name}")
-            state.ajouter_historique("user", texte)
-            state.ajouter_historique("model", intent.reply)
-            return intent.reply
-
         from PHOEBUS.voice import reponse_locale
         # 1. Priorité absolue aux réponses locales (Heure, Date, Nom) pour la rapidité
         rep_loc = reponse_locale(texte)
@@ -814,17 +803,6 @@ async def demander_ia_stream(texte, on_sentence=None):
     await state.send_web_state("thinking")
 
     try:
-        # ── Fast-path intent local ────────────────────────────────────────
-        from PHOEBUS.intent import detect as detect_intent
-        intent = detect_intent(texte)
-        if intent is not None:
-            print(f"[INTENT-STREAM] fast-path : {intent.name}")
-            state.ajouter_historique("user", texte)
-            state.ajouter_historique("model", intent.reply)
-            if on_sentence and "{" not in intent.reply:
-                await on_sentence(intent.reply)
-            return intent.reply
-
         profile = build_profile(
             texte,
             streaming=True,

@@ -112,30 +112,12 @@ async def executer_une_action(d):
     if not action:
         return
 
-    # ── Dispatch via le registre de skills (prioritaire) ──────────────────────
-    sk = get_skill(action)
-    if sk:
-        try:
-            if sk.background:
-                await _executer_en_fond(sk.handler, d, label=sk.name)
-            else:
-                await sk.handler(d)
-        except Exception as e:
-            print(f"[SKILL:{action}] erreur : {e}")
-            await parler(f"J'ai eu un pépin en exécutant {action}.")
-        return
-
-    # ── AGENT NATIF ── (tourne en tâche de fond : la conversation continue) ──
-    if action == "agent_natif":
-        instruction = d.get("instruction", "")
-        await parler(f"J'initie l'agent autonome pour : {instruction}")
-
-        async def _run_agent():
-            res = await orchestrer_agent_autonome(instruction)
-            await parler(f"Tâche autonome terminée : {res}")
-
-        task = asyncio.create_task(_run_agent())
-        state.register_background_task(task, label=f"agent_natif: {instruction[:60]}")
+    # ── Dispatch via le nouveau Registre de Skills (prioritaire PHOEBUS 3.0) ──
+    from PHOEBUS.skills import is_skill_registered, execute_skill
+    if is_skill_registered(action):
+        ok, msg = await execute_skill(action, d)
+        if msg:
+            await parler(msg)
         return
 
     # ── DOSSIERS & FICHIERS ──────────────────────────────────────────────────
@@ -843,22 +825,38 @@ async def traiter_reponse_ia(reponse):
             stocker_souvenir(f"Action JSON demandée : {reponse}", source="system", importance=2)
             
             parties = []
-            texte_restant = reponse
-            while "{" in texte_restant and "}" in texte_restant:
-                debut = texte_restant.find("{")
-                fin = texte_restant.find("}") + 1
-                try:
-                    d = json.loads(texte_restant[debut:fin])
-                    parties.append(d)
-                except json.JSONDecodeError:
-                    pass
-                texte_restant = texte_restant[fin:]
-
+            
+            # Extracteur robuste pour JSON imbriqués (accolades appariées)
+            texte = reponse
+            brace_count = 0
+            start_idx = -1
+            
+            for i, char in enumerate(texte):
+                if char == "{":
+                    if brace_count == 0:
+                        start_idx = i
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0 and start_idx != -1:
+                        try:
+                            json_str = texte[start_idx:i+1]
+                            d = json.loads(json_str)
+                            parties.append(d)
+                        except json.JSONDecodeError:
+                            pass
+                        start_idx = -1
+            
             if parties:
                 for d in parties:
                     action = d.get("action", "")
+                    from PHOEBUS.skills import is_skill_registered, describe_skill
                     risk = risk_level_for(action)
-                    desc = describe_skill(d) or describe_action(d)
+                    
+                    if is_skill_registered(action):
+                        desc = describe_skill(action, d)
+                    else:
+                        desc = describe_action(d)
 
                     if risk == "high":
                         await parler(f"Vous me demandez de {desc}. C'est une action sensible, vous confirmez ?")

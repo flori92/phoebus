@@ -313,14 +313,14 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
         await speech.say(s)
 
     try:
-        # On utilise le streaming pour la réactivité.
-        # demander_ia_stream renvoie le texte COMPLET accumulé.
+        from PHOEBUS.router import route_request
+        # On utilise le router centralisé (PHOEBUS 3.0)
         rep_finale_ia = await asyncio.wait_for(
-            demander_ia_stream(query_enrichie, on_sentence=_on_sentence),
+            route_request(query_enrichie, source=source, metadata=metadata, on_sentence=_on_sentence),
             timeout=AI_COMMAND_TIMEOUT,
         )
 
-        # Cas 1 : C'est du JSON (Action technique)
+        # Cas 1 : C'est du JSON (Action technique via l'ancien dispatcher temporairement)
         if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
             await traiter_reponse_ia(rep_finale_ia)
             # On renvoie une confirmation courte si c'est une commande muette.
@@ -415,6 +415,16 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
             # ... (code existant pour HA)
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
+            
+            auth_header = self.headers.get('Authorization') or self.headers.get('authorization', '')
+            provided_token = auth_header.replace("Bearer ", "").strip() if auth_header.lower().startswith("bearer ") else auth_header.strip()
+            
+            if WS_AUTH_REQUIRED and not verify_token(provided_token):
+                print(f"[WEBHOOK] HA Event refusé : Mauvais token depuis {self.client_address[0]}")
+                self.send_response(401)
+                self.end_headers()
+                return
+
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 message = data.get("message", "")
@@ -435,16 +445,10 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
             url_token = query_params.get('token', [None])[0]
             
             auth_header = self.headers.get('Authorization') or self.headers.get('authorization', '')
-            provided_token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+            provided_token = auth_header.replace("Bearer ", "").strip() if auth_header.lower().startswith("bearer ") else auth_header.strip()
             
-            # Si Option A (WS_AUTH_REQUIRED=False), on accepte tout.
-            # Sinon, on vérifie l'un des deux tokens fournis.
-            final_auth_ok = True
-            if WS_AUTH_REQUIRED:
-                final_auth_ok = (provided_token == PHOEBUS_WS_TOKEN or url_token == PHOEBUS_WS_TOKEN)
-
-            if not final_auth_ok:
-                print(f"[WEBHOOK] Accès refusé pour {self.client_address[0]}")
+            if WS_AUTH_REQUIRED and not verify_token(provided_token) and not verify_token(url_token):
+                print(f"[WEBHOOK] Commande refusée : Non autorisé depuis {self.client_address[0]}")
                 self.send_response(401)
                 self.end_headers()
                 self.wfile.write(b'{"error": "Unauthorized: Token invalid or missing"}')
