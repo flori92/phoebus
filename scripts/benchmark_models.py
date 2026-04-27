@@ -19,10 +19,10 @@ async def test_provider(name, func, prompt="Donne moi uniquement la reponse : 2+
         if name == "arena":
             # Arena needs a dummy profile to avoid resolving complex defaults
             from PHOEBUS.brain_router import BrainProfile
-            prof = BrainProfile(kind="command", priority="fast", timeout_s=15.0)
-            res = await asyncio.wait_for(func(prompt, profile=prof), timeout=20.0)
+            prof = BrainProfile(kind="command", priority="fast", timeout_s=60.0)
+            res = await asyncio.wait_for(func(prompt, profile=prof), timeout=65.0)
         else:
-            res = await asyncio.wait_for(func(prompt), timeout=15.0)
+            res = await asyncio.wait_for(func(prompt), timeout=60.0)
         
         latency = (time.perf_counter() - start) * 1000
         

@@ -207,7 +207,7 @@ OLLAMA_MODELS = [
     ).split(",") if m.strip()
 ]
 GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
-MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest").strip()
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "open-mistral-7b").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 # ── Chemins (suite) ──────────────────────────────────────────────────────────
