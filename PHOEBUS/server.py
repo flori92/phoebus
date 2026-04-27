@@ -57,8 +57,11 @@ except ImportError:
 # ── Sécurité WebSocket ─────────────────────────────────────────────────────
 
 def verify_token(provided_token):
-    # Authentification désactivée par l'utilisateur
-    return True
+    if not PHOEBUS_WS_TOKEN or PHOEBUS_WS_TOKEN in {"CHANGE_ME", "VOTRE_TOKEN_ICI", "CHANGE_MOI_IMMEDIATEMENT"}:
+        return True
+    if not provided_token:
+        return False
+    return hmac.compare_digest(str(provided_token), str(PHOEBUS_WS_TOKEN))
 
 
 def _payload_text(data: dict, *keys: str) -> str:

@@ -229,7 +229,8 @@ IS_MACOS    = SYSTEM_NAME == "Darwin"
 DEFAULT_FRONTEND_PORT = 5173
 DEFAULT_WS_PORT       = 8765
 DEFAULT_MOBILE_PORT   = 8090
-WS_AUTH_REQUIRED      = False  # Option A : Authentification désactivée par l'utilisateur
+PHOEBUS_WS_TOKEN      = os.getenv("PHOEBUS_WS_TOKEN", "CHANGE_ME").strip()
+WS_AUTH_REQUIRED      = os.getenv("PHOEBUS_WS_AUTH_REQUIRED", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 # ── Géo / Météo ─────────────────────────────────────────────────────────────
 VILLE_PAR_DEFAUT = "Amilly"
