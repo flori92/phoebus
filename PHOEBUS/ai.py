@@ -243,6 +243,8 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "identifier_personne", "source": "pc/telephone"} (Reconnaissance de Floriace et de son humeur)\n\n'
         "OUTILS MAJORDOME :\n"
         '{"action": "timer", "minutes": 5, "secondes": 0, "label": "pâtes"}\n'
+        '{"action": "schedule_task", "instruction": "allume le salon", "recurrence": "daily", "time": "08:00"}\n'
+        '{"action": "list_scheduled_tasks"}\n'
         '{"action": "system_control", "type": "lock/sleep/empty_trash"} (Contrôle matériel du Mac)\n'
         '{"action": "redemarrer_phoebus"} (Redémarre le moteur PHOEBUS et se relance)\n'
         '{"action": "noter_etudiant", "nom": "Nom Etudiant", "statut": "present/absent/excuse", "date": "AAAA-MM-DD"}\n'
