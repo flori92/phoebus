@@ -527,7 +527,8 @@ def listen_and_process(main_loop):
                         # cas où l'écho arrive juste après que parler() a
                         # vidé current_PHOEBUS_speech.
                         if state.looks_like_own_echo(texte):
-                            print(f"[ECHO] Ignoré (auto-écho détecté) : {texte!r}")
+                            if debug_mic:
+                                print(f"[ECHO] Ignoré (auto-écho détecté) : {texte!r}")
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 
@@ -557,7 +558,8 @@ def listen_and_process(main_loop):
                                 is_echo = True
                                 
                         if is_echo:
-                            print(f"[MIC] Écho détecté et ignoré : \"{texte}\"")
+                            if debug_mic:
+                                print(f"[MIC] Écho détecté et ignoré : \"{texte}\"")
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 

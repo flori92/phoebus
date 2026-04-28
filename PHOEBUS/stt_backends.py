@@ -21,6 +21,7 @@ PHOEBUS_STT_VERIFY_BACKENDS = [
     if item.strip()
 ]
 PHOEBUS_STT_LOG = os.getenv("PHOEBUS_STT_LOG", "0").strip().lower() in {"1", "true", "yes", "on"}
+PHOEBUS_STT_DEBUG = os.getenv("PHOEBUS_STT_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 _backend_cache = None
@@ -198,13 +199,17 @@ def _should_verify(text: str) -> bool:
         return True
 
     intent = _intent_name(text)
-    words = text.split()
+    words = {
+        word.strip(".,!?;:()[]{}'\"").lower()
+        for word in text.split()
+        if word.strip(".,!?;:()[]{}'\"")
+    }
     if intent in {"heure", "date"}:
         return True
-    if len(words) <= 5 and any(
-        marker in text.lower()
-        for marker in ("heure", "date", "météo", "meteo", "temps", "jour")
-    ):
+    if len(words) <= 5 and words.intersection({
+        "heure", "date", "météo", "meteo", "temps",
+        "jour", "journée", "journee", "demain",
+    }):
         return True
     return False
 
@@ -312,7 +317,8 @@ def recognize_with_verification(audio_data, primary=None) -> str:
             try:
                 text = (fn(audio_data) or "").strip()
             except Exception as e:
-                print(f"[STT] Vérification {backend} échouée : {e}")
+                if PHOEBUS_STT_DEBUG:
+                    print(f"[STT] Vérification {backend} échouée : {e}")
                 text = ""
             candidates.append(SttCandidate(backend, text, _intent_name(text)))
 

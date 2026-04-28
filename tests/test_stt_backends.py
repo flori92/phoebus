@@ -27,3 +27,11 @@ def test_stt_verification_garde_primary_si_pas_de_meilleure_intention():
 
 def test_stt_verification_se_declenche_si_primary_vide():
     assert _should_verify("") is True
+
+
+def test_stt_verification_ne_confond_pas_bonjour_avec_jour():
+    assert _should_verify("Bonjour.") is False
+
+
+def test_stt_verification_declenche_sur_jour_comme_mot():
+    assert _should_verify("quel jour") is True
