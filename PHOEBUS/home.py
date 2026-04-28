@@ -353,7 +353,7 @@ def geocoder_ville(ville):
     return None, None, ville, ""
 
 
-def get_meteo_actuelle(ville=None):
+def get_meteo_actuelle(ville=None, periode=None):
     try:
         nom_ville = ville or VILLE_PAR_DEFAUT
         lat, lon, nom_affiche, pays = geocoder_ville(nom_ville)
@@ -372,7 +372,21 @@ def get_meteo_actuelle(ville=None):
         code = cur.get("weathercode", 0)
         desc = CODES_METEO.get(code, "conditions inconnues")
         temp = round(float(cur.get("temperature_2m", 0)))
-        return f"À {nom_affiche}, il fait {temp} degrés et le ciel est {desc}. C'est tout."
+
+        daily = data.get("daily") or {}
+        if periode == "journee" and daily.get("temperature_2m_max"):
+            temp_max = round(float(daily["temperature_2m_max"][0]))
+            temp_min = round(float(daily["temperature_2m_min"][0]))
+            pluie = float((daily.get("precipitation_sum") or [0])[0] or 0)
+            vent = round(float((daily.get("wind_speed_10m_max") or [0])[0] or 0))
+            desc_jour = CODES_METEO.get((daily.get("weathercode") or [code])[0], desc)
+            return (
+                f"À {nom_affiche} aujourd'hui, le ciel est {desc_jour}. "
+                f"Il fait {temp} degrés maintenant, avec {temp_min} à {temp_max} degrés prévus. "
+                f"Pluie prévue : {pluie:g} millimètres. Vent maximum : {vent} kilomètres heure."
+            )
+
+        return f"À {nom_affiche}, il fait {temp} degrés et le ciel est {desc}."
     except Exception as e:
         print(f"[METEO] Erreur : {e}")
         return "Je n'arrive pas à récupérer la météo pour le moment."

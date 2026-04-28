@@ -42,10 +42,28 @@ _RE_ALLUME = re.compile(rf"^{_WAKE_PREFIX}(?:allume|éclaire|lumiere|lumière).+
 _RE_ETEINS = re.compile(rf"^{_WAKE_PREFIX}(?:éteins|eteins|coupe).+?(?P<piece>{_PIECE_PATTERN})$")
 _RE_HEURE = re.compile(rf"^{_WAKE_PREFIX}(?:quelle heure est[- ]il|il est quelle heure|tu as l[' ]heure)$")
 _RE_DATE = re.compile(rf"^{_WAKE_PREFIX}(?:quel jour (?:sommes|on est|est)|quelle (?:est la )?date)$")
-_RE_METEO = re.compile(rf"^{_WAKE_PREFIX}(?:quel temps|quelle météo|la météo|le temps|il fait quoi).+?(?P<ville>[a-zà-ÿ' -]+)?$")
 _RE_TIMER = re.compile(rf"^{_WAKE_PREFIX}(?:mets|lance|démarre|programme)?\s*(?:un\s+)?(?:minuteur|timer)\s*(?:de\s+)?(?P<n>\d+)\s*(?P<u>s|min|h)?(?:\s+pour\s+(?P<label>.+))?$")
 _RE_SYS_STATS = re.compile(rf"^{_WAKE_PREFIX}(?:état du système|utilisation cpu|niveau de batterie)$")
 _RE_SYS_CONTROL = re.compile(rf"^{_WAKE_PREFIX}(?P<type>verrouille|veille|coupe le son|remets le son|capture|corbeille)")
+
+_RE_WAKE_STRIP = re.compile(r"^(?:phoebus|phébus|fébus|febus|feubus|rebus)[, ]*", re.IGNORECASE)
+_RE_METEO_CITY = (
+    re.compile(r"(?:météo|meteo|temps|prévisions|previsions)(?:\s+(?:pour|à|a|sur|de|d'))\s+(?P<ville>[a-zà-ÿ' -]+)$"),
+    re.compile(r"quel temps fait[- ]il(?:\s+(?:à|a|sur))?\s+(?P<ville>[a-zà-ÿ' -]+)$"),
+)
+_METEO_MARKERS = (
+    "météo", "meteo", "quel temps", "le temps", "prévision", "prevision",
+    "prévisions", "previsions", "il fait quoi", "il va pleuvoir",
+    "va-t-il pleuvoir", "va t il pleuvoir",
+)
+_METEO_PERIOD_MARKERS = (
+    "aujourd", "journée", "journee", "ce matin", "cet après-midi",
+    "cet apres-midi", "ce soir", "du jour",
+)
+_METEO_CITY_STOPWORDS = (
+    "aujourd", "journée", "journee", "jour", "matin", "soir", "après-midi",
+    "apres-midi", "dehors", "ici", "maintenant",
+)
 
 class IntentResult:
     __slots__ = ("name", "reply", "confidence")
@@ -59,6 +77,30 @@ def _unite_to_seconds(n: int, unit: str) -> int:
     if u.startswith("s"): return n
     if u.startswith("h"): return n * 3600
     return n * 60
+
+
+def _detect_meteo(t: str) -> Optional[IntentResult]:
+    if not any(marker in t for marker in _METEO_MARKERS):
+        return None
+
+    sans_wake = _RE_WAKE_STRIP.sub("", t).strip()
+    ville = ""
+    for pattern in _RE_METEO_CITY:
+        m = pattern.search(sans_wake)
+        if not m:
+            continue
+        candidate = (m.group("ville") or "").strip(" ,")
+        candidate = re.sub(r"^(?:la|le|les|l'|de la|du|des)\s+", "", candidate).strip()
+        if candidate and not any(candidate.startswith(stop) for stop in _METEO_CITY_STOPWORDS):
+            ville = candidate
+            break
+
+    payload = {"action": "meteo"}
+    if ville:
+        payload["ville"] = ville
+    if any(marker in sans_wake for marker in _METEO_PERIOD_MARKERS):
+        payload["periode"] = "journee"
+    return IntentResult("meteo", json.dumps(payload))
 
 def detect(texte: str) -> Optional[IntentResult]:
     """Tente une reconnaissance locale. Renvoie None si incertain."""
@@ -84,10 +126,9 @@ def detect(texte: str) -> Optional[IntentResult]:
         return IntentResult("date", f"Nous sommes le {time.strftime('%A %d %B %Y')}.")
 
     # --- Météo ---
-    m = _RE_METEO.match(t)
-    if m:
-        v = (m.group("ville") or "").strip()
-        return IntentResult("meteo", json.dumps({"action": "meteo", "ville": v} if v else {"action": "meteo"}))
+    meteo = _detect_meteo(t)
+    if meteo:
+        return meteo
 
     # --- Timers ---
     m = _RE_TIMER.match(t)

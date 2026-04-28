@@ -1,19 +1,37 @@
 """Back-ends de reconnaissance vocale (STT) de PHOEBUS."""
+from dataclasses import dataclass
+import json
 import os
+import time
 
 # ── Désactivation des avertissements Hugging Face (Alternative au token) ──
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["HF_HUB_OFFLINE"] = "0" # Mettre à 1 une fois les modèles téléchargés
 
-from PHOEBUS.config import sr, groq_client
+from PHOEBUS.config import BASE_DIR, sr, groq_client
 
 
 PHOEBUS_STT_BACKEND = os.getenv("PHOEBUS_STT_BACKEND", "auto").strip().lower()  # auto | groq | google | whisper
 PHOEBUS_WHISPER_MODEL = os.getenv("PHOEBUS_WHISPER_MODEL", "base").strip()
+PHOEBUS_STT_VERIFY = os.getenv("PHOEBUS_STT_VERIFY", "1").strip().lower() in {"1", "true", "yes", "on"}
+PHOEBUS_STT_VERIFY_BACKENDS = [
+    item.strip().lower()
+    for item in os.getenv("PHOEBUS_STT_VERIFY_BACKENDS", "google,whisper").split(",")
+    if item.strip()
+]
+PHOEBUS_STT_LOG = os.getenv("PHOEBUS_STT_LOG", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 _backend_cache = None
+_factory_cache = {}
+
+
+@dataclass(frozen=True)
+class SttCandidate:
+    backend: str
+    text: str
+    intent: str = ""
 
 
 def _try_faster_whisper():
@@ -104,6 +122,24 @@ def _groq_recognize_factory():
     return recognize
 
 
+def _factory_for(name: str):
+    name = (name or "").strip().lower()
+    if name in _factory_cache:
+        return _factory_cache[name]
+
+    if name == "groq":
+        fn = _groq_recognize_factory()
+    elif name == "whisper":
+        fn = _try_faster_whisper()
+    elif name == "google":
+        fn = _google_recognize_factory()
+    else:
+        fn = None
+
+    _factory_cache[name] = fn
+    return fn
+
+
 def get_backend():
     """Renvoie (nom, fonction recognize). None si rien de disponible."""
     global _backend_cache
@@ -114,26 +150,168 @@ def get_backend():
     fn = None
 
     if PHOEBUS_STT_BACKEND == "groq":
-        fn = _groq_recognize_factory()
+        fn = _factory_for("groq")
         name = "groq" if fn else None
     elif PHOEBUS_STT_BACKEND == "whisper":
-        fn = _try_faster_whisper()
+        fn = _factory_for("whisper")
         name = "whisper" if fn else None
     elif PHOEBUS_STT_BACKEND == "google":
-        fn = _google_recognize_factory()
+        fn = _factory_for("google")
         name = "google" if fn else None
     else:  # auto
         # Ordre de préférence : groq (si clé dispo) -> faster-whisper (si installé) -> google
-        fn = _groq_recognize_factory()
+        fn = _factory_for("groq")
         if fn:
             name = "groq"
         else:
-            fn = _try_faster_whisper()
+            fn = _factory_for("whisper")
             if fn:
                 name = "whisper"
             else:
-                fn = _google_recognize_factory()
+                fn = _factory_for("google")
                 name = "google" if fn else None
 
     _backend_cache = (name, fn)
     return _backend_cache
+
+
+def _intent_name(text: str) -> str:
+    try:
+        from PHOEBUS.intent import detect
+        intent = detect(text)
+        return intent.name if intent else ""
+    except Exception:
+        return ""
+
+
+def _should_verify(text: str) -> bool:
+    if not PHOEBUS_STT_VERIFY:
+        return False
+    if not text:
+        return True
+
+    intent = _intent_name(text)
+    words = text.split()
+    if intent in {"heure", "date"}:
+        return True
+    if len(words) <= 5 and any(
+        marker in text.lower()
+        for marker in ("heure", "date", "météo", "meteo", "temps", "jour")
+    ):
+        return True
+    return False
+
+
+def _score_candidate(candidate: SttCandidate, primary: bool = False) -> float:
+    text = (candidate.text or "").strip()
+    if not text:
+        return -1000
+
+    t = text.lower()
+    score = 0.0
+    if primary:
+        score += 10.0
+
+    intent_weights = {
+        "meteo": 70.0,
+        "timer": 65.0,
+        "allume": 60.0,
+        "eteins": 60.0,
+        "system_stats": 55.0,
+        "heure": 45.0,
+        "date": 45.0,
+    }
+    score += intent_weights.get(candidate.intent, 20.0 if candidate.intent else 0.0)
+
+    if any(marker in t for marker in ("météo", "meteo", "quel temps", "le temps", "prévision", "prevision")):
+        score += 20.0
+    if any(marker in t for marker in ("heure", "quelle heure", "il est quelle heure")):
+        score += 8.0
+    if any(marker in t for marker in ("sous-titres", "abonnez-vous", "merci d'avoir regardé")):
+        score -= 80.0
+
+    return score + min(len(t), 80) / 100.0
+
+
+def _choose_candidate(candidates: list[SttCandidate]) -> tuple[SttCandidate, str]:
+    non_empty = [c for c in candidates if c.text.strip()]
+    if not non_empty:
+        return SttCandidate("", ""), "empty"
+    if len(non_empty) == 1:
+        return non_empty[0], "single"
+
+    scored = [
+        (_score_candidate(candidate, primary=(index == 0)), index, candidate)
+        for index, candidate in enumerate(non_empty)
+    ]
+    scored.sort(key=lambda item: item[0], reverse=True)
+    best_score, best_index, best = scored[0]
+    primary = non_empty[0]
+    primary_score = _score_candidate(primary, primary=True)
+
+    if best_index != 0 and best_score >= primary_score + 8:
+        return best, f"verified:{best.backend}"
+    return primary, "primary"
+
+
+def _log_transcription(candidates: list[SttCandidate], selected: SttCandidate, reason: str) -> None:
+    if not PHOEBUS_STT_LOG:
+        return
+    try:
+        log_path = BASE_DIR / "logs" / "voice_transcripts.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "candidates": [
+                {"backend": c.backend, "text": c.text, "intent": c.intent}
+                for c in candidates
+            ],
+            "selected": {"backend": selected.backend, "text": selected.text, "intent": selected.intent},
+            "reason": reason,
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def recognize_with_verification(audio_data, primary=None) -> str:
+    """Transcrit l'audio et vérifie les commandes courtes à fort risque de confusion.
+
+    Cas visé : le STT principal entend "quelle heure" alors que l'utilisateur a dit
+    "météo de la journée". On interroge alors un second back-end et on choisit la
+    transcription qui correspond à l'intention la plus plausible.
+    """
+    primary_name, primary_fn = primary or get_backend()
+    if not primary_fn:
+        return ""
+
+    candidates = []
+    try:
+        primary_text = (primary_fn(audio_data) or "").strip()
+    except Exception as e:
+        print(f"[STT] Erreur {primary_name} : {e}")
+        primary_text = ""
+
+    candidates.append(SttCandidate(primary_name or "primary", primary_text, _intent_name(primary_text)))
+
+    if _should_verify(primary_text):
+        for backend in PHOEBUS_STT_VERIFY_BACKENDS:
+            if backend == primary_name:
+                continue
+            fn = _factory_for(backend)
+            if not fn:
+                continue
+            try:
+                text = (fn(audio_data) or "").strip()
+            except Exception as e:
+                print(f"[STT] Vérification {backend} échouée : {e}")
+                text = ""
+            candidates.append(SttCandidate(backend, text, _intent_name(text)))
+
+    selected, reason = _choose_candidate(candidates)
+    _log_transcription(candidates, selected, reason)
+
+    if selected.backend != (primary_name or "primary"):
+        print(f"[STT] Correction {primary_name} → {selected.backend} : {primary_text!r} → {selected.text!r}")
+    return selected.text

@@ -22,7 +22,7 @@ from PHOEBUS.desktop import executer_action_pc
 from PHOEBUS.ai import demander_ia_vision
 from PHOEBUS.router import executer_commande_generique, traiter_reponse_ia
 from PHOEBUS.voice import parler
-from PHOEBUS.stt_backends import get_backend as get_stt_backend
+from PHOEBUS.stt_backends import get_backend as get_stt_backend, recognize_with_verification
 from PHOEBUS.clarify import transcription_incertaine
 from PHOEBUS import proactive
 
@@ -493,7 +493,7 @@ def listen_and_process(main_loop):
                         time.sleep(0.1)
 
                     try:
-                        texte = stt_recognize(audio)
+                        texte = recognize_with_verification(audio, primary=(stt_name, stt_recognize))
                         if not texte: raise sr.UnknownValueError()
                         
                         # ── Filtre anti-hallucination (Whisper/Groq) ───────────
@@ -785,7 +785,8 @@ async def main():
     asyncio.create_task(_warmup_ha())
 
     # ── Wake Word ─────────────────────────────────────────────
-    if PHOEBUS_WAKE_ENABLED and _WAKE_WORD_AVAILABLE:
+    separate_wake_enabled = os.getenv("PHOEBUS_SEPARATE_WAKE_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
+    if PHOEBUS_WAKE_ENABLED and separate_wake_enabled and _WAKE_WORD_AVAILABLE:
         def _on_wake_word():
             """Appelée par le thread wake word quand 'Hey PHOEBUS' est détecté."""
             if state.is_in_conversation():
@@ -796,11 +797,11 @@ async def main():
                 main_loop
             )
         _wake_word_module.start(_on_wake_word)
-        print("[WAKE] Détection wake word démarrée.")
-    elif PHOEBUS_WAKE_ENABLED:
+        print("[WAKE] Détection wake word séparée démarrée.")
+    elif PHOEBUS_WAKE_ENABLED and separate_wake_enabled:
         print("[WAKE] Module wake_word non disponible, détection désactivée.")
     else:
-        print("[WAKE] Détection séparée désactivée (micro réservé au STT principal).")
+        print("[WAKE] Wake word géré par le STT principal (micro unique).")
     # ──────────────────────────────────────────────────────────
 
     # Moteur de proactivité (silence, rappels, etc.) — tâche asyncio légère.

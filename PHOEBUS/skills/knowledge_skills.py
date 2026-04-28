@@ -10,7 +10,7 @@ import asyncio
 )
 async def skill_meteo(data: dict):
     ville = data.get("ville")
-    return _home.get_meteo_actuelle(ville)
+    return await asyncio.to_thread(_home.get_meteo_actuelle, ville, data.get("periode"))
 
 @skill(
     "alerte_meteo",
@@ -20,7 +20,7 @@ async def skill_meteo(data: dict):
 )
 async def skill_alerte_meteo(data: dict):
     ville = data.get("ville")
-    return _home.get_alertes_meteo(ville)
+    return await asyncio.to_thread(_home.get_alertes_meteo, ville)
 
 @skill(
     "recherche_web",
