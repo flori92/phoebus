@@ -58,6 +58,21 @@ class TestExecuterCommandeGenerique:
 
         assert "Il est" in result
 
+    @pytest.mark.asyncio
+    async def test_media_naturel_execute_recommandation_vod(self):
+        with (
+            patch("PHOEBUS.media.open_uri") as mock_open,
+            patch("PHOEBUS.media._search_suggestions", return_value=["The Nice Guys", "Intouchables"]),
+            patch("PHOEBUS.actions.parler", new_callable=AsyncMock) as mock_parler,
+            patch("PHOEBUS.router.stocker_souvenir"),
+        ):
+            result = await executer_commande_generique("je veux regarder un film comique", source="test")
+
+        assert result == "Action exécutée, Monsieur."
+        assert "justwatch.com" in mock_open.call_args.args[0]
+        mock_parler.assert_awaited_once()
+        assert "Propositions rapides" in mock_parler.await_args.args[0]
+
 
 class TestTraiterReponseIA:
     @pytest.mark.asyncio

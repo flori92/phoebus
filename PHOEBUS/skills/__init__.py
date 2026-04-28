@@ -12,5 +12,6 @@ import PHOEBUS.skills.creative_skills
 import PHOEBUS.skills.fully_kiosk_skills
 import PHOEBUS.skills.education_skills
 import PHOEBUS.skills.knowledge_skills
+import PHOEBUS.skills.media_skills
 
 __all__ = ["SKILL_REGISTRY", "execute_skill", "is_skill_registered", "describe_skill", "risk_of"]

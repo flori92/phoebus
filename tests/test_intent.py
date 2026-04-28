@@ -33,3 +33,24 @@ def test_meteo_ville_extrait_la_vraie_ville():
     payload = _payload("quel temps fait-il à Amilly")
 
     assert payload == {"action": "meteo", "ville": "amilly"}
+
+
+def test_media_film_comique_declenche_recommandations_vod():
+    payload = _payload("je veux regarder un film comique")
+
+    assert payload == {
+        "action": "media_recommendations",
+        "kind": "film",
+        "genre": "comedie",
+        "platform": "justwatch",
+        "open": True,
+    }
+
+
+def test_media_netflix_garde_plateforme_demandee():
+    payload = _payload("trouve-moi une série thriller sur Netflix")
+
+    assert payload["action"] == "media_recommendations"
+    assert payload["kind"] == "serie"
+    assert payload["genre"] == "thriller"
+    assert payload["platform"] == "netflix"

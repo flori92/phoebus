@@ -25,6 +25,28 @@ async def skill_agent_natif(data: dict) -> str:
 
     task = asyncio.create_task(_run_agent())
     state.register_background_task(task, label=f"agent_natif: {instruction[:60]}")
+
+
+@skill(
+    name="agent_planifie",
+    risk="high",
+    help_text="Planifie puis execute une tache complexe multi-etapes avec les outils disponibles",
+    describe=lambda d: f"planifier la tache : {d.get('instruction', 'Inconnue')[:40]}..."
+)
+async def skill_agent_planifie(data: dict) -> str:
+    instruction = data.get("instruction", "")
+    if not instruction:
+        return "Instruction manquante pour l'agent planifie."
+
+    from PHOEBUS.planner import orchestrer_agent_planifie
+
+    async def _run_planner():
+        res = await orchestrer_agent_planifie(instruction, parler=parler)
+        await parler(res)
+
+    task = asyncio.create_task(_run_planner())
+    state.register_background_task(task, label=f"agent_planifie: {instruction[:60]}")
+    return "Je lance le planificateur autonome."
 @skill(
     "demo",
     risk="low",

@@ -136,6 +136,16 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "youtube", "query": "titre ou sujet de la vidéo"}\n\n'
     )
     base += (
+        "\n\nMEDIA, FILMS, SERIES, VOD :\n"
+        "Si Floriace formule naturellement une envie de regarder quelque chose "
+        "(ex. \"je veux regarder un film comique\", \"trouve-moi une série thriller\", "
+        "\"on se met un film sur Netflix\"), transforme l'envie en action utile.\n"
+        '{"action": "media_recommendations", "kind": "film/serie/documentaire", '
+        '"genre": "comedie/action/science-fiction/horreur/thriller/animation/drame/famille", '
+        '"platform": "justwatch/netflix/prime/disney/canal/youtube", "open": true}\n'
+        "Utilise JustWatch par défaut pour rester sur des plateformes légales et trouver où regarder.\n\n"
+    )
+    base += (
         "\n\nSPORT :\n"
         '{"action": "sport_resultats", "equipe": "NOM", "ligue": "LIGUE"}\n'
         '{"action": "sport_classement", "ligue": "LIGUE"}\n'
@@ -161,7 +171,9 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "\n\nAUTONOMIE TOTALE (AGENT NATIF) :\n"
         "Tu es capable de TOUT faire sur cette machine. Si Floriace te demande une action "
         "qui n'est pas couverte par tes commandes API (Home Assistant, Google, etc.), "
-        "ne dis JAMAIS que tu ne peux pas le faire. Utilise IMMÉDIATEMENT l'Agent Natif.\n"
+        "ne dis JAMAIS que tu ne peux pas le faire. Pour une tâche multi-étapes, "
+        "utilise d'abord l'agent planifié. Pour une action système libre, utilise l'Agent Natif.\n"
+        '{"action": "agent_planifie", "instruction": "objectif complet à planifier et exécuter"}\n'
         "L'Agent Natif peut : installer des logiciels, modifier des fichiers système, "
         "chercher sur le web (via le navigateur), rédiger des mails via l'app locale, "
         "gérer les paramètres du Mac, automatiser n'importe quel logiciel.\n"
@@ -285,6 +297,7 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "d'inventer une réponse.\n"
         "REGLE D'OMNISCIENCE PRATIQUE : tu n'es PAS limité à ce que tu \"sais\". "
         "Tu as des OUTILS — utilise-les sans demander la permission :\n"
+        "- Envie naturelle d'un film, d'une série ou d'une VOD → media_recommendations.\n"
         "- Question factuelle (qui, quoi, définition, date) → knowledge_query.\n"
         "- Calcul exact, conversion, manipulation de dates/regex → python_run.\n"
         "- Question sur le LAN, devices connectés, contrôle d'objets → network_scan / mqtt_*.\n"

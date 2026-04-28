@@ -64,6 +64,35 @@ _METEO_CITY_STOPWORDS = (
     "aujourd", "journée", "journee", "jour", "matin", "soir", "après-midi",
     "apres-midi", "dehors", "ici", "maintenant",
 )
+_MEDIA_ACTION_MARKERS = (
+    "je veux regarder", "j'aimerais regarder", "jaimerais regarder",
+    "propose", "proposes", "recommande", "recommandes", "trouve moi",
+    "trouve-moi", "mets moi", "mets-moi", "lance moi", "lance-moi",
+    "on regarde", "envie de regarder",
+)
+_MEDIA_MARKERS = ("film", "films", "série", "serie", "documentaire", "vod", "streaming")
+_MEDIA_GENRES = {
+    "comedie": ("comique", "comiques", "drôle", "drole", "marrant", "humour", "comedie", "comédie"),
+    "action": ("action", "combat", "explosif"),
+    "science-fiction": ("science-fiction", "sci-fi", "sf", "futuriste"),
+    "horreur": ("horreur", "peur", "flippant", "épouvante", "epouvante"),
+    "thriller": ("thriller", "suspense", "policier"),
+    "animation": ("animation", "anime", "dessin animé", "dessin anime"),
+    "famille": ("famille", "familial", "en famille"),
+    "drame": ("drame", "dramatique"),
+}
+_MEDIA_PLATFORMS = {
+    "netflix": "netflix",
+    "prime video": "prime",
+    "amazon prime": "prime",
+    "prime": "prime",
+    "disney+": "disney",
+    "disney": "disney",
+    "canal+": "canal",
+    "canal": "canal",
+    "youtube": "youtube",
+    "justwatch": "justwatch",
+}
 
 class IntentResult:
     __slots__ = ("name", "reply", "confidence")
@@ -102,6 +131,40 @@ def _detect_meteo(t: str) -> Optional[IntentResult]:
         payload["periode"] = "journee"
     return IntentResult("meteo", json.dumps(payload))
 
+
+def _detect_media(t: str) -> Optional[IntentResult]:
+    if not any(marker in t for marker in _MEDIA_MARKERS):
+        return None
+    if not any(marker in t for marker in _MEDIA_ACTION_MARKERS):
+        return None
+
+    kind = "serie" if "série" in t or "serie" in t else "film"
+    if "documentaire" in t:
+        kind = "documentaire"
+
+    genre = ""
+    for genre_name, aliases in _MEDIA_GENRES.items():
+        if any(alias in t for alias in aliases):
+            genre = genre_name
+            break
+    if not genre:
+        genre = "comedie" if "film" in t else "recommandation"
+
+    platform = "justwatch"
+    for marker, value in _MEDIA_PLATFORMS.items():
+        if marker in t:
+            platform = value
+            break
+
+    payload = {
+        "action": "media_recommendations",
+        "kind": kind,
+        "genre": genre,
+        "platform": platform,
+        "open": True,
+    }
+    return IntentResult("media_recommendations", json.dumps(payload))
+
 def detect(texte: str) -> Optional[IntentResult]:
     """Tente une reconnaissance locale. Renvoie None si incertain."""
     if not texte: return None
@@ -129,6 +192,10 @@ def detect(texte: str) -> Optional[IntentResult]:
     meteo = _detect_meteo(t)
     if meteo:
         return meteo
+
+    media = _detect_media(t)
+    if media:
+        return media
 
     # --- Timers ---
     m = _RE_TIMER.match(t)

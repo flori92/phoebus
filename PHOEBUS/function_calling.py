@@ -117,6 +117,19 @@ CORE_FUNCTION_SCHEMAS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "media_recommendations",
+        "description": "Recommande un film, une serie ou un documentaire et ouvre une plateforme VOD legale.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["film", "serie", "documentaire"]},
+                "genre": {"type": "string", "description": "comedie, action, thriller, horreur, science-fiction..."},
+                "platform": {"type": "string", "description": "justwatch, netflix, prime, disney, canal, youtube"},
+                "open": {"type": "boolean", "description": "Ouvrir la plateforme dans le navigateur"},
+            },
+        },
+    },
+    {
         "name": "agent_planifie",
         "description": "Lance l'agent planificateur pour une tâche complexe multi-étapes.",
         "parameters": {

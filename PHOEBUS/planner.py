@@ -38,6 +38,7 @@ demande complexe de Floriace et tu dois produire un PLAN d'exécution en
 Tu connais ces actions (liste non exhaustive) :
   ha_lumiere, ha_prise, ha_temperature, ha_thermostat, ha_scene, ha_alarme,
   meteo, recherche_web, create_doc, write_doc, create_sheet, send_email,
+  media_recommendations,
   read_emails, read_calendar, timer_set, shell (via agent natif),
   ouvrir_dossier, lister_dossier, chercher_fichier.
 
