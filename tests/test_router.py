@@ -96,6 +96,16 @@ class TestExecuterCommandeGenerique:
         }
 
     @pytest.mark.asyncio
+    async def test_action_deterministe_sans_llm_retourne_json(self):
+        rep = await route_request("configure mon application Spotify", source="test")
+
+        payload = json.loads(rep)
+        assert payload == {
+            "action": "agent_planifie",
+            "instruction": "configure mon application Spotify",
+        }
+
+    @pytest.mark.asyncio
     async def test_reponse_incapable_bascule_sur_fallback(self):
         with patch("PHOEBUS.router.demander_ia", new_callable=AsyncMock) as mock_ia:
             mock_ia.return_value = "Je ne peux pas accéder à cette information."

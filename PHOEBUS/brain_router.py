@@ -46,8 +46,18 @@ def configured_order() -> list[str]:
 
 
 def configured_mode() -> str:
-    mode = os.getenv("PHOEBUS_BRAIN_MODE", "balanced").strip().lower()
-    return mode if mode in {"balanced", "speed", "smart", "privacy"} else "balanced"
+    mode = os.getenv("PHOEBUS_BRAIN_MODE", "local_first").strip().lower()
+    valid = {"balanced", "speed", "smart", "privacy", "local_first"}
+    return mode if mode in valid else "local_first"
+
+
+def local_first_enabled() -> bool:
+    return os.getenv("PHOEBUS_LOCAL_FIRST", "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def build_profile(texte: str, streaming: bool = False, in_conversation: bool = False) -> BrainProfile:
@@ -204,10 +214,12 @@ def rank_provider_names(
     base = [p for p in (list(order) if order else configured_order()) if p in available_set]
     mode = mode or configured_mode()
 
-    if profile.preferred_provider:
-        base = _move_first(base, profile.preferred_provider)
-    elif mode == "privacy":
+    if mode == "privacy":
         base = _move_first(base, "ollama")
+    elif (mode == "local_first" or local_first_enabled()) and not profile.needs_realtime:
+        base = _move_first(base, "ollama")
+    elif profile.preferred_provider:
+        base = _move_first(base, profile.preferred_provider)
     elif mode == "speed" or profile.priority == "fast":
         # Groq est souvent le meilleur compromis latence pour les reponses texte.
         base = _move_first(base, "groq")

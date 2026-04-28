@@ -11,6 +11,7 @@ from PHOEBUS.config_pydantic import (
     get_config,
     reload_config
 )
+from PHOEBUS.brain_router import build_profile, rank_provider_names
 
 
 class TestLLMConfig:
@@ -106,3 +107,34 @@ class TestConfigSingleton:
         config1 = get_config()
         config2 = reload_config()
         assert config1 is not config2
+
+
+def test_brain_router_priorise_local_first(monkeypatch):
+    monkeypatch.setenv("PHOEBUS_BRAIN_MODE", "local_first")
+    monkeypatch.setenv("PHOEBUS_LOCAL_FIRST", "1")
+
+    profile = build_profile("explique moi la virtualisation")
+    order = rank_provider_names(
+        profile,
+        available=["gemini", "groq", "ollama"],
+        order=["gemini", "groq", "ollama"],
+        metrics={},
+    )
+
+    assert order[0] == "ollama"
+
+
+def test_brain_router_garde_preferred_provider_pour_temps_reel(monkeypatch):
+    monkeypatch.setenv("PHOEBUS_BRAIN_MODE", "local_first")
+    monkeypatch.setenv("PHOEBUS_LOCAL_FIRST", "1")
+
+    profile = build_profile("donne-moi la météo aujourd'hui")
+    order = rank_provider_names(
+        profile,
+        available=["arena", "groq", "ollama"],
+        order=["groq", "arena", "ollama"],
+        metrics={},
+    )
+
+    assert profile.needs_realtime is True
+    assert order[0] == "arena"

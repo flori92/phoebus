@@ -3,6 +3,7 @@
 import json
 import asyncio
 import base64
+import os
 import requests
 import time
 from datetime import datetime
@@ -36,6 +37,7 @@ except ImportError:
     _timeline_ctx = None
 
 _ARENA_MODELS_CACHE = {"ts": 0.0, "ids": []}
+_OLLAMA_HEALTH_CACHE = {"ts": 0.0, "ok": False}
 
 def construire_system_prompt(texte_utilisateur="", minimal=False):
     contexte_memoire = construire_contexte_memoire()
@@ -412,6 +414,8 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
 async def demander_ollama(texte):
     if not OLLAMA_MODELS:
         return None
+    if not _ollama_is_reachable():
+        return None
     try:
         # Prompt système UNIFIÉ (même que Gemini).
         system_prompt = construire_system_prompt(texte) + (
@@ -426,13 +430,12 @@ async def demander_ollama(texte):
         last_err = None
         for model_name in OLLAMA_MODELS:
             try:
-                # On utilise un timeout plus long (60s) car Ollama peut être lent à charger le modèle
-                # On utilise asyncio.to_thread pour ne pas bloquer la boucle
+                timeout_s = float(os.getenv("PHOEBUS_OLLAMA_TIMEOUT", "8"))
                 resp = await asyncio.to_thread(
                     requests.post, 
                     f"{OLLAMA_URL}/api/chat", 
                     json={"model": model_name, "messages": messages, "stream": False}, 
-                    timeout=60
+                    timeout=timeout_s,
                 )
                 if resp.status_code == 200:
                     rep = resp.json().get("message", {}).get("content", "")
@@ -450,6 +453,21 @@ async def demander_ollama(texte):
         if "Connection" not in str(e): # On évite de spammer si Ollama est juste éteint
             print(f"[ERREUR OLLAMA] {e}")
         return None
+
+
+def _ollama_is_reachable() -> bool:
+    now = time.time()
+    ttl = float(os.getenv("PHOEBUS_OLLAMA_HEALTH_TTL", "20"))
+    if now - float(_OLLAMA_HEALTH_CACHE.get("ts", 0) or 0) < ttl:
+        return bool(_OLLAMA_HEALTH_CACHE.get("ok"))
+    try:
+        timeout_s = float(os.getenv("PHOEBUS_OLLAMA_HEALTH_TIMEOUT", "0.6"))
+        resp = requests.get(f"{OLLAMA_URL}/api/tags", timeout=timeout_s)
+        ok = resp.status_code == 200
+    except Exception:
+        ok = False
+    _OLLAMA_HEALTH_CACHE.update({"ts": now, "ok": ok})
+    return ok
 
 
 async def demander_arena(texte, profile=None):

@@ -4,17 +4,19 @@ Texte → Intent → Sécurité → Skill → Réponse.
 import asyncio
 import json
 import os
+import time
 from typing import Optional, Any
 
 import PHOEBUS.state as state
-from PHOEBUS.intent import detect as detect_intent
 from PHOEBUS.ai import demander_ia, demander_ia_stream
 from PHOEBUS.audio_optimization import check_hallucination
 from PHOEBUS.voice import parler
 from PHOEBUS.security import audit_log, risk_level_for, describe_action, is_confirmation_text, is_cancellation_text
 from PHOEBUS.rag_memory import stocker_souvenir
-from PHOEBUS.natural_goals import resolve_pre_ai_goal, resolve_after_ai_failure
+from PHOEBUS.natural_goals import resolve_after_ai_failure
 from PHOEBUS.action_guard import ActionSequenceGuard
+from PHOEBUS.routing_policy import decide_route
+from PHOEBUS.observability import record_request
 
 # Constantes de délai
 AI_COMMAND_TIMEOUT = float(os.getenv("PHOEBUS_AI_COMMAND_TIMEOUT", "35.0"))
@@ -86,6 +88,8 @@ class _SpeechQueue:
 async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
     """Exécute une commande texte et renvoie la réponse textuelle finale."""
     if not texte: return ""
+    request_started = time.perf_counter()
+    request_ok = True
     
     state.mark_user_activity()
     meta_str = ""
@@ -136,15 +140,23 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
         return " ".join(full_text_parts).strip() or rep_finale_ia or ""
 
     except asyncio.TimeoutError:
+        request_ok = False
         msg = "Je réfléchis encore, Floriace. La réponse vocale arrive dès que le cerveau se débloque."
         await speech.say(msg)
         return msg
     except Exception as e:
+        request_ok = False
         print(f"[ROUTER] Erreur traitement {source} : {e}")
         msg = "J'ai eu un raté interne, Floriace, mais je reste opérationnel."
         await speech.say(msg)
         return msg
     finally:
+        record_request(
+            source=source,
+            duration_ms=(time.perf_counter() - request_started) * 1000,
+            ok=request_ok,
+            text_len=len(texte or ""),
+        )
         state.extend_conversation()
         speech.close()
 
@@ -165,22 +177,23 @@ async def route_request(
             print(f"[ROUTER] Hallucination rejetée ({confidence:.2f}) : '{texte}'")
             return ""
 
-    # Fast-path Intent local
-    intent = detect_intent(texte)
-    if intent is not None:
-        print(f"[ROUTER] Fast-path local : {intent.name}")
-        state.ajouter_historique("user", texte)
-        state.ajouter_historique("model", intent.reply)
-        if on_sentence and "{" not in intent.reply:
-            await on_sentence(intent.reply)
-        return intent.reply
+    decision = decide_route(texte, source=source)
+    print(f"[ROUTER] Route : {decision.route} ({decision.reason}, c={decision.confidence:.2f})")
 
-    goal = resolve_pre_ai_goal(texte)
-    if goal is not None:
-        print(f"[ROUTER] Objectif naturel : {goal.name} ({goal.reason})")
+    if decision.route == "simple" and decision.reply:
+        print(f"[ROUTER] Fast-path local : {decision.intent_name}")
         state.ajouter_historique("user", texte)
-        state.ajouter_historique("model", goal.reply)
-        return goal.reply
+        state.ajouter_historique("model", decision.reply)
+        if on_sentence and "{" not in decision.reply:
+            await on_sentence(decision.reply)
+        return decision.reply
+
+    if decision.payload is not None:
+        print(f"[ROUTER] Objectif déterministe : {decision.route} ({decision.reason})")
+        reply = decision.reply or json.dumps(decision.payload, ensure_ascii=False)
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", reply)
+        return reply
 
     # Intelligence Cloud / Hybride
     if on_sentence:

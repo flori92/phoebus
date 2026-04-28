@@ -28,11 +28,15 @@ from contextlib import asynccontextmanager, contextmanager
 from functools import wraps
 from typing import Callable, Deque, Dict
 
+from PHOEBUS.config import BASE_DIR
+
 
 # ── Buffer ─────────────────────────────────────────────────────────────────
 
 MAX_SAMPLES_PER_PHASE = 500
 _samples: Dict[str, Deque[float]] = {}
+REQUEST_METRICS_FILE = BASE_DIR / "logs" / "request_metrics.jsonl"
+_request_samples: Deque[dict] = deque(maxlen=200)
 
 
 def _record(phase: str, duration_ms: float) -> None:
@@ -45,6 +49,7 @@ def _record(phase: str, duration_ms: float) -> None:
 
 def reset() -> None:
     _samples.clear()
+    _request_samples.clear()
 
 
 # ── Instrumentation ───────────────────────────────────────────────────────
@@ -124,6 +129,50 @@ def snapshot() -> dict:
     return result
 
 
+def record_request(
+    *,
+    source: str,
+    duration_ms: float,
+    ok: bool = True,
+    route: str = "command",
+    text_len: int = 0,
+) -> None:
+    item = {
+        "ts": time.time(),
+        "source": source,
+        "route": route,
+        "duration_ms": round(float(duration_ms), 1),
+        "ok": bool(ok),
+        "text_len": int(text_len),
+    }
+    _request_samples.append(item)
+    try:
+        REQUEST_METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(REQUEST_METRICS_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        print(f"[METRICS] requête non enregistrée : {exc}")
+
+
+def request_snapshot(limit: int = 50) -> dict:
+    items = list(_request_samples)[-limit:]
+    if not items and REQUEST_METRICS_FILE.exists():
+        lines = REQUEST_METRICS_FILE.read_text(encoding="utf-8").splitlines()[-limit:]
+        for line in lines:
+            try:
+                items.append(json.loads(line))
+            except Exception:
+                continue
+    durations = sorted(float(item.get("duration_ms", 0) or 0) for item in items)
+    return {
+        "count": len(items),
+        "p50_ms": round(_percentile(durations, 0.50), 1) if durations else 0.0,
+        "p95_ms": round(_percentile(durations, 0.95), 1) if durations else 0.0,
+        "last": items[-1] if items else None,
+        "recent": items[-10:],
+    }
+
+
 def render_html() -> str:
     """Petite page HTML pour consultation navigateur."""
     snap = snapshot()
@@ -160,4 +209,7 @@ tr:last-child td{{border:none}}
 
 
 def render_json() -> str:
-    return json.dumps({"phases": snapshot(), "ts": time.time()}, ensure_ascii=False)
+    return json.dumps(
+        {"phases": snapshot(), "requests": request_snapshot(), "ts": time.time()},
+        ensure_ascii=False,
+    )

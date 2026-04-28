@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from PHOEBUS.config import BASE_DIR, GEMINI_API_KEY
+from PHOEBUS.memory_backends import sqlite_retrieval
 
 # On importe chromadb de façon optionnelle
 try:
@@ -90,13 +91,19 @@ def stocker_souvenir(texte: str, source: str = "conversation", importance: int =
     Stocke un événement dans la mémoire à long terme.
     source: 'conversation', 'vision_passive', 'system', etc.
     """
+    timestamp = datetime.now().isoformat()
+    fallback_ok = sqlite_retrieval.store_memory(
+        texte,
+        source=source,
+        importance=importance,
+        timestamp=timestamp,
+    )
+
     if not init_chroma():
-        return False
-    
+        return fallback_ok
+
     try:
         doc_id = f"mem_{int(time.time() * 1000)}"
-        timestamp = datetime.now().isoformat()
-        
         metadata = {
             "source": source,
             "timestamp": timestamp,
@@ -111,7 +118,7 @@ def stocker_souvenir(texte: str, source: str = "conversation", importance: int =
         return True
     except Exception as e:
         print(f"[RAG] Erreur d'écriture : {e}")
-        return False
+        return fallback_ok
 
 def consolider_souvenirs(max_age_days: int = 30, importance_min: int = 1):
     """Consolidation légère : supprime les souvenirs anciens et peu importants.
@@ -154,8 +161,8 @@ def rechercher_souvenirs(requete: str, n_results: int = 3):
     Recherche les souvenirs les plus pertinents par rapport à la requête.
     """
     if not init_chroma():
-        return ""
-        
+        return _format_sqlite_results(sqlite_retrieval.search_memory(requete, limit=n_results))
+
     try:
         results = _collection.query(
             query_texts=[requete],
@@ -163,7 +170,7 @@ def rechercher_souvenirs(requete: str, n_results: int = 3):
         )
         
         if not results or not results['documents'] or not results['documents'][0]:
-            return ""
+            return _format_sqlite_results(sqlite_retrieval.search_memory(requete, limit=n_results))
             
         souvenirs = []
         for i, doc in enumerate(results['documents'][0]):
@@ -175,4 +182,21 @@ def rechercher_souvenirs(requete: str, n_results: int = 3):
         return "\n".join(souvenirs)
     except Exception as e:
         print(f"[RAG] Erreur de recherche : {e}")
-        return ""
+        return _format_sqlite_results(sqlite_retrieval.search_memory(requete, limit=n_results))
+
+
+def _format_sqlite_results(rows):
+    souvenirs = []
+    for row in rows or []:
+        date_str = str(row.get("timestamp", ""))[:16].replace("T", " à ")
+        src = row.get("source", "sqlite")
+        souvenirs.append(f"- Le {date_str} (via {src}) : {row.get('text', '')}")
+    return "\n".join(souvenirs)
+
+
+def rag_status() -> dict:
+    return {
+        "chroma_available": CHROMA_AVAILABLE,
+        "chroma_ready": bool(_collection is not None),
+        "sqlite_fallback": sqlite_retrieval.status(),
+    }

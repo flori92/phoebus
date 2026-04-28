@@ -190,6 +190,58 @@ def _check_health_endpoint() -> CheckResult:
         return _warn("Endpoint /health", "non joignable", "normal si PHOEBUS n'est pas lancé")
 
 
+def _check_request_metrics() -> CheckResult:
+    try:
+        from PHOEBUS.observability import request_snapshot
+
+        snap = request_snapshot(limit=50)
+    except Exception as exc:
+        return _warn("Métriques requêtes", f"indisponibles: {exc}")
+    if not snap.get("count"):
+        return _warn("Métriques requêtes", "aucune requête enregistrée")
+    last = snap.get("last") or {}
+    return _ok(
+        "Métriques requêtes",
+        f"p50={snap['p50_ms']}ms p95={snap['p95_ms']}ms",
+        f"dernière={last.get('duration_ms')}ms source={last.get('source')}",
+    )
+
+
+def _check_agent_traces() -> CheckResult:
+    try:
+        from PHOEBUS.agent_runtime import recent_agent_runs
+
+        runs = recent_agent_runs(limit=1)
+    except Exception as exc:
+        return _warn("Traces agent", f"indisponibles: {exc}")
+    if not runs:
+        return _warn("Traces agent", "aucune trace agent")
+    run = runs[-1]
+    return _ok(
+        "Traces agent",
+        f"dernier run {run.get('status')}",
+        f"{len(run.get('steps') or [])} étape(s), {run.get('duration_ms')}ms",
+    )
+
+
+def _check_memory_backend() -> CheckResult:
+    try:
+        from PHOEBUS.rag_memory import rag_status
+
+        status = rag_status()
+    except Exception as exc:
+        return _warn("Mémoire retrieval", f"indisponible: {exc}")
+    fallback = status.get("sqlite_fallback") or {}
+    if fallback.get("available"):
+        chroma = "prêt" if status.get("chroma_ready") else "fallback actif"
+        return _ok(
+            "Mémoire retrieval",
+            chroma,
+            f"sqlite={fallback.get('count', 0)} souvenirs",
+        )
+    return _fail("Mémoire retrieval", "SQLite fallback indisponible")
+
+
 def run_checks() -> list[CheckResult]:
     checks = [_check_python()]
     checks.extend(_check_imports())
@@ -198,6 +250,9 @@ def run_checks() -> list[CheckResult]:
     checks.append(_check_runtime_singleton())
     checks.extend(_check_frontend())
     checks.append(_check_health_endpoint())
+    checks.append(_check_request_metrics())
+    checks.append(_check_agent_traces())
+    checks.append(_check_memory_backend())
     return checks
 
 

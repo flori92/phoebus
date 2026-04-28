@@ -18,6 +18,8 @@ le dispatcher standard) → on réutilise `executer_une_action` pour exécuter.
 """
 import asyncio
 import json
+import os
+import time
 from typing import List, Optional
 
 from PHOEBUS.config import client, types, MODELS_LIST
@@ -25,11 +27,19 @@ from PHOEBUS.llm_health import skip as llm_skip, record_failure as llm_fail, rec
 from PHOEBUS.observability import measure
 from PHOEBUS.security import audit_log
 from PHOEBUS.action_guard import ActionSequenceGuard
+from PHOEBUS.agent_runtime import start_agent_run
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
 
 
 # Plafonds de sécurité anti-boucle infinie.
-MAX_STEPS = 8
-MAX_REPLANS = 2
+MAX_STEPS = _int_env("PHOEBUS_AGENT_MAX_TURNS", 8)
+MAX_REPLANS = _int_env("PHOEBUS_AGENT_MAX_REPLANS", 2)
 
 
 PLANNER_PROMPT = """Tu es le planificateur interne de Jarvis. Tu reçois une
@@ -216,6 +226,7 @@ async def orchestrer_agent_planifie(instruction: str, parler=None) -> str:
     résumé. Si None, reste silencieux (l'action appelante fera l'annonce).
     """
     audit_log("planner_start", instruction=instruction[:200])
+    trace = start_agent_run(instruction, agent_type="planner", max_turns=MAX_STEPS)
 
     async def say(msg: str):
         if parler:
@@ -230,7 +241,9 @@ async def orchestrer_agent_planifie(instruction: str, parler=None) -> str:
 
     if not plan:
         audit_log("planner_no_plan", reason=goal)
-        return f"Je n'ai pas pu bâtir de plan : {goal}"
+        final = f"Je n'ai pas pu bâtir de plan : {goal}"
+        trace.finish("failed", final)
+        return final
 
     if len(plan) > MAX_STEPS:
         plan = plan[:MAX_STEPS]
@@ -247,13 +260,24 @@ async def orchestrer_agent_planifie(instruction: str, parler=None) -> str:
         verdict = action_guard.check(payload)
         if verdict.blocked:
             audit_log("planner_action_loop_blocked", step=step.get("step"), reason=verdict.reason)
+            trace.record_step(step, "blocked", reason=verdict.reason)
             await say("J'arrête ce plan : il répète les mêmes actions et risque de boucler.")
             break
+        started = time.perf_counter()
         res = await _run_step(step)
+        duration_ms = (time.perf_counter() - started) * 1000
         results.append(res)
 
         # Auto-critique.
         critique = await _ask_critic(step, res, goal)
+        status = "ok" if critique.get("ok", True) else "failed"
+        trace.record_step(
+            step,
+            status,
+            result=res,
+            reason=critique.get("reason", ""),
+            duration_ms=duration_ms,
+        )
         if not critique.get("ok", True):
             reason = critique.get("reason", "")
             audit_log("planner_step_failed", step=step.get("step"), reason=reason)
@@ -287,5 +311,9 @@ async def orchestrer_agent_planifie(instruction: str, parler=None) -> str:
     # Résumé final.
     audit_log("planner_end", steps_run=idx, replans=replans)
     if idx >= len(plan):
-        return f"Mission accomplie en {len(plan)} étapes, Monsieur."
-    return f"J'ai couvert {idx} étape(s) sur {len(plan)}. Dernier état : {results[-1] if results else '—'}."
+        final = f"Mission accomplie en {len(plan)} étapes, Monsieur."
+        trace.finish("completed", final)
+        return final
+    final = f"J'ai couvert {idx} étape(s) sur {len(plan)}. Dernier état : {results[-1] if results else '—'}."
+    trace.finish("partial", final)
+    return final
