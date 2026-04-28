@@ -119,9 +119,9 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
         )
 
         if not rep_finale_ia:
-            msg = "Je n'ai pas bien entendu, Floriace. Reformule-moi la demande."
-            await _parler_safe(msg)
-            return msg
+            # Si route_request a retourné "" (hallucination ou vide), on reste discret
+            # pour ne pas polluer l'ambiance avec des "Pardon ?".
+            return ""
 
         if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
             await traiter_reponse_ia(rep_finale_ia)

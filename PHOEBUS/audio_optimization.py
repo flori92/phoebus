@@ -55,8 +55,10 @@ KNOWN_HALLUCINATIONS = {
     "Sous-titres par Amara.org",
     "Merci de votre écoute",
     "Merci d'avoir regardé",
+    "Merci d'avoir regardé cette vidéo !",
     "Sous-titres par Amara",
     "sous-titres",
+    "Sous-titrage ST' 501",
     "Merci de nous regarder",
     "vidéo de YouTube",
     "YouTube",
@@ -72,10 +74,11 @@ KNOWN_HALLUCINATIONS = {
 }
 
 HALLUCINATION_PATTERNS = {
-    r"^(Merci|Thank you|Thanks).*de (votre|watching|visiting)",
-    r"(Sous-titres|Subtitles|Captions).*par (Amara|YouTube)",
-    r"(Abonnez-vous|Subscribe|Follow|Like)",
+    r"^(Merci|Thank you|Thanks).*(de|d'avoir|watching|visiting|regardé)",
+    r"(Sous-titres|Subtitles|Captions|Sous-titrage).*par (Amara|YouTube|ST')",
+    r"(Abonnez-vous|Subscribe|Follow|Like|Cliquez)",
     r"^\[.*\]$",  # Annotations de style [Musique]
+    r"ST' [0-9]+",
 }
 
 
@@ -106,7 +109,8 @@ class AcousticProcessor:
         self.vad_engine = None
         if WEBRTCVAD_AVAILABLE:
             try:
-                self.vad_engine = vad.VAD_AGGRESSIVENESS(self.vad_mode)
+                self.vad_engine = vad.Vad()
+                self.vad_engine.set_mode(self.vad_mode)
                 print(f"[AUDIO] WebRTC VAD chargé (aggressiveness={self.vad_mode})")
             except Exception as e:
                 print(f"[AUDIO] Erreur WebRTC VAD : {e}")

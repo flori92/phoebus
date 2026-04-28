@@ -260,6 +260,17 @@ async def parler(texte, keep_conversation=True):
     texte_tts = naturaliser(texte)
     print(f"[PHOEBUS] {texte_tts}")
 
+    if os.getenv("PHOEBUS_MUTE", "0") == "1":
+        # On ajoute quand même à l'historique et aux états web pour que l'interface bouge
+        if state.historique and len(state.historique) > 0:
+            if state.historique[-1].parts[0].text != texte:
+                state.ajouter_historique("model", f"[Info]: {texte}")
+        await state.send_web_state("speaking")
+        await state.send_web_expression(texte_tts, utterance_id=str(int(time.time() * 1000)))
+        await asyncio.sleep(0.1) # Petit délai pour simuler une activité
+        await state.send_web_state("idle")
+        return
+
     if state.historique and len(state.historique) > 0:
         if state.historique[-1].parts[0].text != texte:
             state.ajouter_historique("model", f"[Info retournée par l'action et énoncée à voix haute]: {texte}")
