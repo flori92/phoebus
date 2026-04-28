@@ -135,6 +135,8 @@ class BargeInMonitor(threading.Thread):
                         if count >= self.consecutive:
                             print(f"[MIC] Interruption détectée (RMS={rms})")
                             state.STOP_PARLER = True
+                            state.mark_user_activity()
+                            state.extend_conversation(seconds=state.BARGE_IN_CONVERSATION_SECONDS)
                             break
                     else:
                         count = 0
@@ -352,6 +354,8 @@ def monitor_claps():
                         if barge_in_streak >= state.BARGE_IN_CONSECUTIVE_CHUNKS:
                             print("[BARGE-IN] Interruption vocale détectée, PHOEBUS se tait.")
                             state.STOP_PARLER = True
+                            state.mark_user_activity()
+                            state.extend_conversation(seconds=state.BARGE_IN_CONVERSATION_SECONDS)
                             barge_in_streak = 0
                     else:
                         barge_in_streak = 0
