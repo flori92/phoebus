@@ -8,7 +8,7 @@ version = "2.0.0"
 description = "Assistant vocal local avec interface web Three.js"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Floriace", email = "floriace@example.com"}
 ]
@@ -16,13 +16,16 @@ keywords = ["voice", "assistant", "ai", "home-automation", "websocket"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Home Automation",
 ]
+
+[tool.setuptools.packages.find]
+include = ["PHOEBUS*"]
+exclude = ["tests*", "scripts*"]
 
 [project.optional-dependencies]
 dev = [

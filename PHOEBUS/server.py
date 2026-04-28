@@ -8,7 +8,6 @@ import http.server
 import socketserver
 import concurrent.futures
 import hmac
-import hashlib
 import os
 import sys
 
@@ -20,12 +19,20 @@ from PHOEBUS.config import (
 import PHOEBUS.state as state
 from PHOEBUS.security import audit_log, sanitize_action_data
 from PHOEBUS.desktop import executer_action_pc
-from PHOEBUS.ai import demander_ia, demander_ia_vision, demander_ia_stream
-from PHOEBUS.router import executer_commande_generique, traiter_reponse_ia, _parler_safe
-from PHOEBUS.voice import parler, monitor_claps
+from PHOEBUS.ai import demander_ia_vision
+from PHOEBUS.router import executer_commande_generique, traiter_reponse_ia
+from PHOEBUS.voice import parler
 from PHOEBUS.stt_backends import get_backend as get_stt_backend
 from PHOEBUS.clarify import transcription_incertaine
 from PHOEBUS import proactive
+
+
+async def _parler_safe(texte: str, keep_conversation: bool = True) -> None:
+    try:
+        await parler(texte, keep_conversation=keep_conversation)
+    except Exception as e:
+        print(f"[VOICE] parole ignorée après erreur : {e}")
+
 
 # Imports optionnels
 try:
@@ -695,7 +702,7 @@ async def system_self_healing():
             await asyncio.sleep(60) # Vérification toutes les minutes
             
             # Vérification de la santé des clients WebSocket
-            from PHOEBUS.state import CONNECTED_CLIENTS, get_authenticated_clients
+            from PHOEBUS.state import CONNECTED_CLIENTS
             if not CONNECTED_CLIENTS:
                 # Si aucune interface n'est connectée pendant longtemps, 
                 # on peut tenter un petit log de rappel
@@ -730,7 +737,7 @@ async def main():
     asyncio.create_task(run_telegram_bot(main_loop))
     # threading.Thread(target=monitor_claps, daemon=True).start()
 
-    from PHOEBUS.utils import launch_app, get_lan_ip
+    from PHOEBUS.utils import get_lan_ip
     lan_ip = get_lan_ip()
     print(f"[RESEAU] IP LAN : {lan_ip}")
     if PHOEBUS_WS_TOKEN and PHOEBUS_WS_TOKEN != "CHANGE_ME":

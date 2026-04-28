@@ -122,11 +122,13 @@ async def run_frontend():
             env = os.environ.copy()
             npm_dir = os.path.dirname(npm)
             env["PATH"] = npm_dir + os.pathsep + env.get("PATH", "")
+            env.setdefault("CI", "1")
             # On force le port 8080 pour correspondre à l'alias
             process = await asyncio.create_subprocess_exec(
                 npm, "run", "dev", "--", "--port", "8080", "--host", "0.0.0.0",
                 cwd=frontend_dir,
                 env=env,
+                stdin=subprocess.DEVNULL,
                 stdout=log_file,
                 stderr=log_file
             )

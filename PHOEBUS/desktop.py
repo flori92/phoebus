@@ -1,16 +1,13 @@
 # PHOEBUS/desktop.py
 """Agent desktop PHOEBUS — gestion fichiers, apps, YouTube, WhatsApp, volume."""
 import os
-import re
 import time
-import math
 import shutil
 import webbrowser
-import subprocess
 from pathlib import Path
 from datetime import datetime
 
-from PHOEBUS.config import EXTENSIONS, pyautogui, IS_WINDOWS
+from PHOEBUS.config import EXTENSIONS, pyautogui, IS_MACOS, IS_WINDOWS
 from PHOEBUS.utils import special_folder, open_path, launch_app, desktop_file, open_uri
 from PHOEBUS.security import audit_log
 from PHOEBUS.home import chercher_youtube

@@ -3,7 +3,6 @@ Tests pour la configuration Pydantic.
 """
 import pytest
 from unittest.mock import patch
-from pathlib import Path
 
 from PHOEBUS.config_pydantic import (
     LLMConfig,
@@ -19,7 +18,8 @@ class TestLLMConfig:
     
     def test_llm_config_empty(self):
         """Config LLM sans clés API."""
-        config = LLMConfig()
+        with patch.dict("os.environ", {}, clear=True):
+            config = LLMConfig()
         assert config.gemini_api_key is None
         assert config.groq_api_key is None
     
@@ -39,7 +39,7 @@ class TestServerConfig:
     
     def test_default_values(self):
         """Valeurs par défaut."""
-        config = ServerConfig()
+        config = ServerConfig(ws_token="test12345")
         assert config.ws_port == 8765
         assert config.mobile_port == 8080
         assert config.ws_auth_required is True
@@ -65,21 +65,26 @@ class TestPhoebusConfig:
     
     def test_is_production_development(self):
         """Détection environnement dev."""
-        config = PhoebusConfig(server=ServerConfig(ws_token="test12345"))
+        config = PhoebusConfig(server=ServerConfig(ws_token="test12345"), _env_file=None)
         assert config.is_production is False
     
     def test_is_production_true(self):
         """Détection environnement prod."""
-        config = PhoebusConfig(server=ServerConfig(ws_token="super-secure-token-123"))
+        config = PhoebusConfig(server=ServerConfig(ws_token="super-secure-token-123"), _env_file=None)
         assert config.is_production is True
     
     def test_get_available_providers(self):
         """Liste des providers disponibles."""
-        llm_config = LLMConfig(
-            gemini_api_key="key1",
-            groq_api_key="key2"
-        )
-        config = PhoebusConfig(llm=llm_config)
+        with patch.dict("os.environ", {}, clear=True):
+            llm_config = LLMConfig(
+                gemini_api_key="key1",
+                groq_api_key="key2"
+            )
+            config = PhoebusConfig(
+                llm=llm_config,
+                server=ServerConfig(ws_token="test12345"),
+                _env_file=None,
+            )
         providers = config.get_available_llm_providers()
         assert "gemini" in providers
         assert "groq" in providers
@@ -100,4 +105,4 @@ class TestConfigSingleton:
         """Reload crée nouvelle instance."""
         config1 = get_config()
         config2 = reload_config()
-        assert config1 is config2  # Même référence après reload
+        assert config1 is not config2

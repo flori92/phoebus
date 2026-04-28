@@ -23,7 +23,7 @@ echo "============================================================"
 while true; do
   echo "[WATCHDOG] Lancement de PHOEBUS..."
   # On passe --auto-restart pour éviter d'ouvrir 50 onglets dans le navigateur
-  .venv/bin/python main2.py --auto-restart || true
+  .venv/bin/python main2.py --auto-restart
   exit_code=$?
   
   if [ $exit_code -eq 0 ]; then

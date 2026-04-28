@@ -3,15 +3,15 @@
 Mémoire Vectorielle Long Terme (RAG) pour PHOEBUS.
 Permet d'indexer et de rechercher des souvenirs basés sur le contexte sémantique.
 """
-import os
+import shutil
 import time
 from datetime import datetime
+from pathlib import Path
 from PHOEBUS.config import BASE_DIR, GEMINI_API_KEY
 
 # On importe chromadb de façon optionnelle
 try:
     import chromadb
-    from chromadb.config import Settings
     CHROMA_AVAILABLE = True
 except ImportError:
     CHROMA_AVAILABLE = False
@@ -20,11 +20,33 @@ DB_PATH = str(BASE_DIR / "phoebus_vector_db")
 
 _chroma_client = None
 _collection = None
+_recovery_attempted = False
+
+
+def _is_recoverable_chroma_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "database disk image is malformed",
+            "rustbindingsapi",
+            "object has no attribute 'bindings'",
+            "sqlite",
+        )
+    )
+
+
+def _backup_corrupt_db() -> Path | None:
+    db_path = Path(DB_PATH)
+    if not db_path.exists():
+        return None
+    backup_path = db_path.with_name(f"{db_path.name}.corrupt-{datetime.now():%Y%m%d-%H%M%S}")
+    shutil.move(str(db_path), str(backup_path))
+    return backup_path
 
 def get_google_embedding_function():
     """Crée une fonction d'embedding utilisant l'API Google Gemini."""
     try:
-        import google.generativeai as genai
         from chromadb.utils.embedding_functions import GoogleGenerativeAiEmbeddingFunction
         if GEMINI_API_KEY and "votre_clé" not in GEMINI_API_KEY:
             return GoogleGenerativeAiEmbeddingFunction(api_key=GEMINI_API_KEY)
@@ -33,7 +55,7 @@ def get_google_embedding_function():
     return None
 
 def init_chroma():
-    global _chroma_client, _collection
+    global _chroma_client, _collection, _recovery_attempted
     if not CHROMA_AVAILABLE:
         return False
     try:
@@ -49,6 +71,17 @@ def init_chroma():
             )
         return True
     except Exception as e:
+        if not _recovery_attempted and _is_recoverable_chroma_error(e):
+            _recovery_attempted = True
+            _chroma_client = None
+            _collection = None
+            try:
+                backup_path = _backup_corrupt_db()
+                if backup_path:
+                    print(f"[RAG] Base ChromaDB corrompue sauvegardée : {backup_path}")
+                return init_chroma()
+            except Exception as recovery_error:
+                print(f"[RAG] Récupération ChromaDB impossible : {recovery_error}")
         print(f"[RAG] Erreur d'initialisation de ChromaDB : {e}")
         return False
 

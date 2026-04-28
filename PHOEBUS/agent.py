@@ -1,27 +1,33 @@
 # PHOEBUS/agent.py
 """Agent natif d'administration complète de la machine."""
 import os
-import time
+import shlex
 import asyncio
 import subprocess
 import json
 import base64
-from pathlib import Path
 
 from PHOEBUS.config import (
-    client, CHOSEN_MODEL, IS_WINDOWS, IS_MACOS, pyautogui, Image, types,
+    client, IS_WINDOWS, pyautogui, Image, types,
     groq_client, GROQ_MODEL, mistral_client, MISTRAL_MODEL
 )
 from PHOEBUS.security import audit_log
-from PHOEBUS.utils import normalize_text
-import PHOEBUS.state as state
 
 
 def executer_commande_shell(cmd: str) -> str:
-    """Exécute une commande shell arbitraire et renvoie la sortie."""
+    """Exécute une commande système simple sans shell implicite."""
     try:
+        if any(token in cmd for token in ("|", ">", "<", "&", ";", "`", "$(", "\n")):
+            audit_log("shell_execution_blocked", command=cmd, reason="shell_metacharacters")
+            return (
+                "Commande refusée: les opérateurs shell ne sont pas autorisés ici. "
+                "Utilisez une action python_script pour les traitements complexes."
+            )
+        args = shlex.split(cmd, posix=not IS_WINDOWS)
+        if not args:
+            return "Commande vide."
         audit_log("shell_execution", command=cmd)
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(args, capture_output=True, text=True, timeout=10)
         output = result.stdout + result.stderr
         if not output:
             output = "Commande exécutée avec succès (sans sortie)."

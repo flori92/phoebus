@@ -134,7 +134,6 @@ async def _alerte_meteo_urgente(parler):
 @rule
 async def _rappel_calendrier(parler):
     """Annonce les événements du calendrier 15 minutes avant leur début."""
-    global _rappel_rdv_cache
     if state.is_speaking or state.is_thinking:
         return
 

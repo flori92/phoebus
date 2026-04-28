@@ -1,124 +1,107 @@
-"""
-Tests pour le router de commandes PHOEBUS.
-"""
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-import json
+"""Tests pour le routeur central PHOEBUS."""
 
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+import PHOEBUS.state as state
 from PHOEBUS.router import (
-    extraire_json_de_reponse,
     executer_commande_generique,
-    traiter_reponse_ia
+    extraire_json_de_reponse,
+    traiter_reponse_ia,
 )
 
 
 class TestExtraireJson:
-    """Tests pour l'extraction JSON."""
-    
     def test_json_simple(self):
-        """JSON sans balises."""
         texte = '{"action": "test", "value": 123}'
-        result = extraire_json_de_reponse(texte)
-        assert result == {"action": "test", "value": 123}
-    
+        assert extraire_json_de_reponse(texte) == {"action": "test", "value": 123}
+
     def test_json_avec_backticks(self):
-        """JSON dans bloc markdown."""
         texte = """```json
         {"action": "test"}
         ```"""
-        result = extraire_json_de_reponse(texte)
-        assert result == {"action": "test"}
-    
+        assert extraire_json_de_reponse(texte) == {"action": "test"}
+
+    def test_json_avec_accolades_dans_string(self):
+        texte = '{"action": "note", "text": "a {b} c"}'
+        assert extraire_json_de_reponse(texte) == {"action": "note", "text": "a {b} c"}
+
     def test_json_invalide(self):
-        """JSON malformé."""
-        texte = '{"action": "test"'  # Manque fermeture
-        result = extraire_json_de_reponse(texte)
-        assert result is None
-    
+        assert extraire_json_de_reponse('{"action": "test"') is None
+
     def test_texte_sans_json(self):
-        """Texte sans JSON."""
-        texte = "Juste du texte normal"
-        result = extraire_json_de_reponse(texte)
-        assert result is None
+        assert extraire_json_de_reponse("Juste du texte normal") is None
 
 
-class TestExecuterCommande:
-    """Tests pour l'exécution des commandes."""
-    
+class TestExecuterCommandeGenerique:
     @pytest.mark.asyncio
-    async def test_commande_domotique(self):
-        """Commande domotique détectée."""
-        with patch("PHOEBUS.home.executer_action_ha") as mock_ha:
-            mock_ha.return_value = {"success": True}
-            
-            result = await executer_commande_generique({
-                "action": "home",
-                "entity_id": "light.salon",
-                "service": "turn_on"
-            })
-            
-            mock_ha.assert_called_once()
-            assert "success" in str(result)
-    
+    async def test_commande_texte_passe_par_route_request(self):
+        with (
+            patch("PHOEBUS.router.route_request", new_callable=AsyncMock) as mock_route,
+            patch("PHOEBUS.router.traiter_reponse_ia", new_callable=AsyncMock) as mock_traiter,
+            patch("PHOEBUS.router._parler_safe", new_callable=AsyncMock),
+        ):
+            mock_route.return_value = "Réponse test"
+            mock_traiter.return_value = False
+
+            result = await executer_commande_generique("bonjour", source="test")
+
+        assert result == "Réponse test"
+        mock_route.assert_awaited_once()
+        mock_traiter.assert_awaited_once_with("Réponse test")
+
     @pytest.mark.asyncio
-    async def test_commande_shell(self):
-        """Commande shell."""
-        with patch("PHOEBUS.agent.executer_commande_shell") as mock_shell:
-            mock_shell.return_value = "output test"
-            
-            result = await executer_commande_generique({
-                "action": "shell",
-                "command": "ls -la"
-            })
-            
-            mock_shell.assert_called_once_with("ls -la")
-            assert "output test" in str(result)
-    
-    @pytest.mark.asyncio
-    async def test_action_inconnue(self):
-        """Action non reconnue."""
-        result = await executer_commande_generique({
-            "action": "unknown_action"
-        })
-        
-        assert "inconnue" in str(result).lower() or "unknown" in str(result).lower()
+    async def test_fast_path_heure_repond_sans_llm(self):
+        with patch("PHOEBUS.router._parler_safe", new_callable=AsyncMock):
+            result = await executer_commande_generique("quelle heure est-il", source="test")
+
+        assert "Il est" in result
 
 
 class TestTraiterReponseIA:
-    """Tests pour le traitement des réponses IA."""
-    
     @pytest.mark.asyncio
-    async def test_reponse_avec_action(self):
-        """Réponse contenant une action."""
-        with patch("PHOEBUS.router.executer_commande_generique") as mock_exec:
-            mock_exec.return_value = "Action exécutée"
-            
-            reponse = '{"action": "home", "entity_id": "test"}\n\nTexte explicatif'
-            result = await traiter_reponse_ia(reponse, "123")
-            
-            mock_exec.assert_called_once()
-    
+    async def test_reponse_avec_action_execute_action_low_risk(self):
+        reponse = '{"action": "system_lock"}\n\nTexte explicatif'
+
+        with (
+            patch("PHOEBUS.actions.executer_une_action", new_callable=AsyncMock) as mock_action,
+            patch("PHOEBUS.router.stocker_souvenir"),
+        ):
+            result = await traiter_reponse_ia(reponse)
+
+        assert result is True
+        mock_action.assert_awaited_once_with({"action": "system_lock"})
+
     @pytest.mark.asyncio
-    async def test_reponse_sans_action(self):
-        """Réponse texte simple sans action."""
+    async def test_reponse_sans_action_est_parlee(self):
         reponse = "Juste une réponse textuelle"
-        result = await traiter_reponse_ia(reponse, "123")
-        
-        # Ne devrait pas lever d'exception
-        assert isinstance(result, str) or result is None
 
+        with (
+            patch("PHOEBUS.router.parler", new_callable=AsyncMock) as mock_parler,
+            patch("PHOEBUS.router.stocker_souvenir"),
+        ):
+            result = await traiter_reponse_ia(reponse)
 
-class TestSecurity:
-    """Tests pour la sécurité du router."""
-    
+        assert result is True
+        mock_parler.assert_awaited_once_with(reponse)
+
     @pytest.mark.asyncio
-    async def test_commande_dangereuse_bloquee(self):
-        """Commandes sensibles requièrent confirmation."""
-        with patch("PHOEBUS.security.audit_log") as mock_audit:
-            result = await executer_commande_generique({
-                "action": "shell",
-                "command": "rm -rf /"
-            })
-            
-            # Devrait être auditée
-            mock_audit.assert_called()
+    async def test_action_high_risk_demande_confirmation(self):
+        state.PENDING_CONFIRMATION = None
+        reponse = '{"action": "system_empty_trash"}'
+
+        try:
+            with (
+                patch("PHOEBUS.router.parler", new_callable=AsyncMock) as mock_parler,
+                patch("PHOEBUS.router.audit_log") as mock_audit,
+                patch("PHOEBUS.router.stocker_souvenir"),
+            ):
+                result = await traiter_reponse_ia(reponse)
+
+            assert result is True
+            assert state.PENDING_CONFIRMATION == {"action": "system_empty_trash"}
+            mock_parler.assert_awaited_once()
+            mock_audit.assert_called_once()
+        finally:
+            state.PENDING_CONFIRMATION = None

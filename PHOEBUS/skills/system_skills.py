@@ -1,3 +1,5 @@
+import os
+
 from PHOEBUS.skills.registry import skill
 from PHOEBUS.agent import orchestrer_agent_autonome
 import PHOEBUS.state as state

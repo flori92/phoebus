@@ -218,55 +218,15 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   let demoStartTime = 0;
   let demoBurstNextAt = 0;  // clock time of next forced burst
   const DEMO_DURATION = 10.0; // seconds
-// ── Demo state ─────────────────────────────────────────────────────────────
-let demoActive = false;
-let demoStartTime = 0;
-let demoBurstNextAt = 0;  // clock time of next forced burst
-const DEMO_DURATION = 10.0; // seconds
 
-// ── Animate ────────────────────────────────────────────────────────────────
-function animate() {
-  if (destroyed) return;
-  requestAnimationFrame(animate);
+  // ── Animate ────────────────────────────────────────────────────────────────
+  function animate() {
+    if (destroyed) return;
+    requestAnimationFrame(animate);
 
-  const t = clock.getElapsedTime();
-  const dt = Math.min(t - prevT, 0.05);
-  prevT = t;
-
-  // ── Demo expiry ──────────────────────────────────────────────────────────
-  if (demoActive && t - demoStartTime >= DEMO_DURATION) {
-    demoActive = false;
-  }
-
-  const demoElapsed = demoActive ? (t - demoStartTime) : -1;
-  // Phases: 0-2s=BigBang, 2-5s=Hypervortex, 5-7.5s=PulseRings, 7.5-10s=Collapse
-  const demoBigBang = demoActive && demoElapsed < 2.0;
-  const demoVortex = demoActive && demoElapsed >= 2.0 && demoElapsed < 5.0;
-  const demoPulse = demoActive && demoElapsed >= 5.0 && demoElapsed < 7.5;
-  const demoCollapse = demoActive && demoElapsed >= 7.5;
-
-  // ── Per-state targets ───────────────────────────────────────────────────
-  if (demoActive) {
-    if (demoBigBang) {
-      targetRadius = 40; targetSpeed = 1.0; targetBright = 1.0; targetSize = 0.75;
-      targetLineAmount = 1.0; targetElectronRate = 0.04;
-      targetVortex = 0.5; targetBreathAmp = 2.5;
-    } else if (demoVortex) {
-      targetRadius = 32; targetSpeed = 0.9; targetBright = 1.0; targetSize = 0.65;
-      targetLineAmount = 1.0; targetElectronRate = 0.04;
-      targetVortex = 4.5; targetBreathAmp = 2.0;
-    } else if (demoPulse) {
-      targetRadius = 28; targetSpeed = 0.7; targetBright = 0.95; targetSize = 0.55;
-      targetLineAmount = 0.9; targetElectronRate = 0.03;
-      targetVortex = 2.0; targetBreathAmp = 3.0;
-    } else {
-      // Collapse
-      targetRadius = 10; targetSpeed = 0.5; targetBright = 0.85; targetSize = 0.5;
-      targetLineAmount = 0.7; targetElectronRate = 0.015;
-      targetVortex = 1.0; targetBreathAmp = 0.5;
-    }
-  } else {
-    switch (state) {
+    const t = clock.getElapsedTime();
+    const dt = Math.min(t - prevT, 0.05);
+    prevT = t;
 
     // ── Solar palette update ────────────────────────────────────────────────
     // PHOEBUS adjusts its internal core colors based on the sun's position.

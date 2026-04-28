@@ -92,7 +92,8 @@ class PhoebusConfig(BaseSettings):
     @property
     def is_production(self) -> bool:
         """Vérifie si on est en production."""
-        return self.server.ws_token not in {"CHANGE_ME", "test"}
+        token = self.server.ws_token.strip().lower()
+        return token not in {"change_me", "test"} and not token.startswith("test")
     
     def get_available_llm_providers(self) -> List[str]:
         """Liste les providers LLM configurés."""

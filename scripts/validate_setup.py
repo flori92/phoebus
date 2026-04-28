@@ -5,6 +5,7 @@ Vérifie que tous les outils sont correctement installés.
 """
 import subprocess
 import sys
+from shutil import which
 from pathlib import Path
 
 
@@ -46,7 +47,9 @@ def check_package(package_name):
 
 def check_tool(command, tool_name):
     """Vérifie si un outil CLI est disponible."""
-    success, _, _ = run_cmd([command, "--version"], tool_name)
+    exe = Path(sys.executable).resolve().parent / command
+    resolved = str(exe) if exe.exists() else which(command) or command
+    success, _, _ = run_cmd([resolved, "--version"], tool_name)
     if success:
         print(f"✅ {tool_name}")
         return True
@@ -104,7 +107,10 @@ def main():
     
     # 5. Tests
     print("\n🧪 Tests:")
-    success, stdout, stderr = run_cmd(["python", "-m", "pytest", "tests/", "-v", "--tb=short"], "Tests")
+    success, stdout, stderr = run_cmd(
+        [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short"],
+        "Tests",
+    )
     if success:
         print("✅ Tests passent")
     else:

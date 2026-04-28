@@ -3,13 +3,10 @@ Texte → Intent → Sécurité → Skill → Réponse.
 """
 import asyncio
 import json
-import time
 import os
-import re
 from typing import Optional, Any
 
 import PHOEBUS.state as state
-from PHOEBUS.config import WS_AUTH_REQUIRED
 from PHOEBUS.intent import detect as detect_intent
 from PHOEBUS.ai import demander_ia, demander_ia_stream
 from PHOEBUS.audio_optimization import check_hallucination
@@ -19,6 +16,36 @@ from PHOEBUS.rag_memory import stocker_souvenir
 
 # Constantes de délai
 AI_COMMAND_TIMEOUT = float(os.getenv("PHOEBUS_AI_COMMAND_TIMEOUT", "35.0"))
+
+
+def _extraire_jsons_de_reponse(texte: str) -> list[dict[str, Any]]:
+    """Extrait les objets JSON présents dans une réponse texte ou Markdown."""
+    if not texte or "{" not in texte:
+        return []
+
+    decoder = json.JSONDecoder()
+    objets = []
+    index = 0
+    while index < len(texte):
+        start = texte.find("{", index)
+        if start == -1:
+            break
+        try:
+            parsed, end = decoder.raw_decode(texte[start:])
+        except json.JSONDecodeError:
+            index = start + 1
+            continue
+        if isinstance(parsed, dict):
+            objets.append(parsed)
+        index = start + max(end, 1)
+    return objets
+
+
+def extraire_json_de_reponse(texte: str) -> dict[str, Any] | None:
+    """Retourne le premier objet JSON trouvé dans une réponse IA."""
+    objets = _extraire_jsons_de_reponse(texte)
+    return objets[0] if objets else None
+
 
 async def _parler_safe(texte: str, keep_conversation: bool = True) -> None:
     try:
@@ -80,7 +107,6 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
     speech = _SpeechQueue()
 
     async def _on_sentence(s):
-        nonlocal spoken
         spoken["v"] = True
         full_text_parts.append(s)
         await speech.say(s)
@@ -148,7 +174,7 @@ async def route_request(
     else:
         return await demander_ia(texte)
 
-async def traiter_reponse_ia(reponse: str) -> bool:
+async def traiter_reponse_ia(reponse: str, _request_id: str | None = None) -> bool:
     """Analyse la réponse de l'IA, extrait le JSON et exécute les actions."""
     if not reponse: return False
 
@@ -176,23 +202,10 @@ async def traiter_reponse_ia(reponse: str) -> bool:
         if "{" in reponse and "}" in reponse:
             stocker_souvenir(f"Action JSON demandée : {reponse}", source="system", importance=2)
             
-            parties = []
-            brace_count = 0
-            start_idx = -1
-            for i, char in enumerate(reponse):
-                if char == "{":
-                    if brace_count == 0: start_idx = i
-                    brace_count += 1
-                elif char == "}":
-                    brace_count -= 1
-                    if brace_count == 0 and start_idx != -1:
-                        try:
-                            parties.append(json.loads(reponse[start_idx:i+1]))
-                        except: pass
-                        start_idx = -1
+            parties = _extraire_jsons_de_reponse(reponse)
             
             if parties:
-                from PHOEBUS.skills import is_skill_registered, describe_skill, execute_skill
+                from PHOEBUS.skills import is_skill_registered, describe_skill
                 from PHOEBUS.actions import executer_une_action
                 
                 for d in parties:

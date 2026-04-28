@@ -184,7 +184,7 @@ def enregistrer_voix(nom: str, audio_data) -> str:
 
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     import numpy as np
-    emb_path = PROFILES_DIR / f"{hashlib.md5(nom.encode()).hexdigest()}.npy"
+    emb_path = PROFILES_DIR / f"{hashlib.sha256(nom.encode()).hexdigest()}.npy"
     np.save(str(emb_path), emb)
 
     index = _load_index()
