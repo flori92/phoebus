@@ -38,9 +38,11 @@ async def _parler_safe(texte: str, keep_conversation: bool = True) -> None:
 # Imports optionnels
 try:
     from telegram import Update
+    from telegram.error import Conflict
     from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
     _TELEGRAM_AVAILABLE = True
 except ImportError:
+    Conflict = None
     _TELEGRAM_AVAILABLE = False
 
 # Imports optionnels des nouveaux modules
@@ -705,13 +707,34 @@ async def run_telegram_bot(main_loop):
     try:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
         app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+        conflict_event = asyncio.Event()
+        conflict_reported = False
+
+        def on_polling_error(exc):
+            nonlocal conflict_reported
+            if Conflict is not None and isinstance(exc, Conflict):
+                if not conflict_reported:
+                    conflict_reported = True
+                    print("[TELEGRAM] Conflit getUpdates : une autre instance utilise déjà ce bot. Telegram désactivé pour ce lancement.")
+                conflict_event.set()
+                return
+            print(f"[TELEGRAM] Erreur polling : {exc}")
+
         await app.initialize()
         await app.start()
-        await app.updater.start_polling()
+        await app.updater.start_polling(error_callback=on_polling_error, drop_pending_updates=True)
         print("[TELEGRAM] Bot opérationnel.")
-        # On garde la tâche en vie
-        while True:
-            await asyncio.sleep(3600)
+        while not conflict_event.is_set():
+            await asyncio.sleep(1)
+        try:
+            await app.updater.stop()
+        except Exception:
+            pass
+        try:
+            await app.stop()
+            await app.shutdown()
+        except Exception:
+            pass
     except Exception as e:
         print(f"[TELEGRAM] Erreur : {e}")
 

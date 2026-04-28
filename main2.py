@@ -6,6 +6,7 @@ Point d'entrée principal pour lancer l'assistant PHOEBUS et son interface web.
 import sys
 import asyncio
 import os
+import contextlib
 import shutil
 import subprocess
 import socket
@@ -22,6 +23,51 @@ os.environ.setdefault('LC_ALL', 'en_US.UTF-8')
 
 # Dossier racine du projet
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+_LOCK_FILE_HANDLE = None
+
+
+def acquire_single_instance_lock():
+    """Empêche plusieurs cœurs PHOEBUS de tourner en même temps."""
+    global _LOCK_FILE_HANDLE
+    if os.getenv("PHOEBUS_DISABLE_SINGLETON", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+
+    lock_path = os.getenv("PHOEBUS_LOCK_FILE", os.path.join(ROOT_DIR, ".phoebus.lock"))
+    os.makedirs(os.path.dirname(lock_path) or ROOT_DIR, exist_ok=True)
+    handle = open(lock_path, "a+", encoding="utf-8")
+
+    try:
+        import fcntl
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.seek(0)
+        owner = handle.read().strip() or "inconnu"
+        print(f"[SYSTEM] Une instance PHOEBUS est déjà active (PID {owner}). Lancement annulé.")
+        handle.close()
+        return False
+    except Exception as exc:
+        print(f"[SYSTEM] Verrou singleton indisponible ({exc}). Lancement poursuivi.")
+        _LOCK_FILE_HANDLE = handle
+        return True
+
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    _LOCK_FILE_HANDLE = handle
+    return True
+
+
+def release_single_instance_lock():
+    global _LOCK_FILE_HANDLE
+    if not _LOCK_FILE_HANDLE:
+        return
+    with contextlib.suppress(Exception):
+        import fcntl
+        fcntl.flock(_LOCK_FILE_HANDLE.fileno(), fcntl.LOCK_UN)
+    with contextlib.suppress(Exception):
+        _LOCK_FILE_HANDLE.close()
+    _LOCK_FILE_HANDLE = None
 
 # ── Auto-VENV Switch ────────────────────────────────────────────────────────
 def ensure_venv():
@@ -248,6 +294,8 @@ async def main():
 
     await asyncio.gather(*tasks)
 if __name__ == "__main__":
+    if not acquire_single_instance_lock():
+        sys.exit(0)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
@@ -260,3 +308,5 @@ if __name__ == "__main__":
             # On quitte avec un code d'erreur pour que le Watchdog relance
             sys.exit(1)
         sys.exit(0)
+    finally:
+        release_single_instance_lock()

@@ -1,9 +1,35 @@
 #!/usr/bin/env sh
 cd "$(dirname "$0")"
 
+existing_pids="$(pgrep -f '[m]ain2.py --auto-restart' 2>/dev/null || true)"
+if [ -n "$existing_pids" ]; then
+  echo "[WATCHDOG] PHOEBUS tourne déjà (PID: $(echo "$existing_pids" | tr '\n' ' ')). Nouveau lancement annulé."
+  echo "[WATCHDOG] Arrêtez l'instance existante avant de relancer."
+  exit 0
+fi
+
+LOCK_DIR="${TMPDIR:-/tmp}/phoebus-watchdog.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  if [ -f "$LOCK_DIR/pid" ] && kill -0 "$(cat "$LOCK_DIR/pid" 2>/dev/null)" 2>/dev/null; then
+    echo "[WATCHDOG] Un watchdog PHOEBUS est déjà actif (PID $(cat "$LOCK_DIR/pid"))."
+    exit 0
+  fi
+  rm -rf "$LOCK_DIR"
+  mkdir "$LOCK_DIR" || exit 1
+fi
+echo "$$" > "$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT INT TERM
+
 # --- AUTO-CLEANUP ---
-# Libère les ports bloqués par des instances précédentes (zombies)
-lsof -ti :8765,8090,8080 | xargs kill -9 2>/dev/null || true
+# Libère les ports bloqués par des processus orphelins, après vérification
+# qu'aucun core PHOEBUS actif n'est déjà lancé.
+stale_port_pids="$(lsof -ti :8765,8090,8080 2>/dev/null | sort -u | tr '\n' ' ')"
+if [ -n "$stale_port_pids" ]; then
+  echo "[WATCHDOG] Nettoyage de ports orphelins : $stale_port_pids"
+  kill $stale_port_pids 2>/dev/null || true
+  sleep 1
+  kill -9 $stale_port_pids 2>/dev/null || true
+fi
 # --------------------
 
 export PYTHONUTF8=1
