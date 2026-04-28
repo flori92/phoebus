@@ -24,6 +24,7 @@ from PHOEBUS.config import client, types, MODELS_LIST
 from PHOEBUS.llm_health import skip as llm_skip, record_failure as llm_fail, record_success as llm_ok
 from PHOEBUS.observability import measure
 from PHOEBUS.security import audit_log
+from PHOEBUS.action_guard import ActionSequenceGuard
 
 
 # Plafonds de sécurité anti-boucle infinie.
@@ -239,8 +240,15 @@ async def orchestrer_agent_planifie(instruction: str, parler=None) -> str:
     results: List[str] = []
     replans = 0
     idx = 0
+    action_guard = ActionSequenceGuard()
     while idx < len(plan):
         step = plan[idx]
+        payload = {"action": step.get("action"), **(step.get("args") or {})}
+        verdict = action_guard.check(payload)
+        if verdict.blocked:
+            audit_log("planner_action_loop_blocked", step=step.get("step"), reason=verdict.reason)
+            await say("J'arrête ce plan : il répète les mêmes actions et risque de boucler.")
+            break
         res = await _run_step(step)
         results.append(res)
 

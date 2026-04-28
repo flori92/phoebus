@@ -14,6 +14,7 @@ from PHOEBUS.voice import parler
 from PHOEBUS.security import audit_log, risk_level_for, describe_action, is_confirmation_text, is_cancellation_text
 from PHOEBUS.rag_memory import stocker_souvenir
 from PHOEBUS.natural_goals import resolve_pre_ai_goal, resolve_after_ai_failure
+from PHOEBUS.action_guard import ActionSequenceGuard
 
 # Constantes de délai
 AI_COMMAND_TIMEOUT = float(os.getenv("PHOEBUS_AI_COMMAND_TIMEOUT", "35.0"))
@@ -228,9 +229,16 @@ async def traiter_reponse_ia(reponse: str, _request_id: str | None = None) -> bo
             if parties:
                 from PHOEBUS.skills import is_skill_registered, describe_skill
                 from PHOEBUS.actions import executer_une_action
+                guard = ActionSequenceGuard()
                 
                 for d in parties:
                     action = d.get("action", "")
+                    verdict = guard.check(d)
+                    if verdict.blocked:
+                        audit_log("action_loop_blocked", action=action, reason=verdict.reason)
+                        await parler("Je bloque une répétition d'action pour éviter une boucle.")
+                        continue
+
                     risk = risk_level_for(action)
                     desc = describe_skill(action, d) if is_skill_registered(action) else describe_action(d)
 

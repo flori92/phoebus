@@ -168,3 +168,28 @@ class TestTraiterReponseIA:
             mock_audit.assert_called_once()
         finally:
             state.PENDING_CONFIRMATION = None
+
+    @pytest.mark.asyncio
+    async def test_actions_repetitives_sont_bloquees(self):
+        reponse = (
+            '{"action": "system_lock"}\n'
+            '{"action": "system_lock"}\n'
+            '{"action": "system_lock"}'
+        )
+
+        with (
+            patch("PHOEBUS.actions.executer_une_action", new_callable=AsyncMock) as mock_action,
+            patch("PHOEBUS.router.parler", new_callable=AsyncMock) as mock_parler,
+            patch("PHOEBUS.router.audit_log") as mock_audit,
+            patch("PHOEBUS.router.stocker_souvenir"),
+        ):
+            result = await traiter_reponse_ia(reponse)
+
+        assert result is True
+        assert mock_action.await_count == 2
+        mock_parler.assert_awaited_once()
+        mock_audit.assert_any_call(
+            "action_loop_blocked",
+            action="system_lock",
+            reason="action répétée 'system_lock' (3 fois)",
+        )

@@ -105,8 +105,13 @@ Sur Windows, utilisez `DÉMARRER_PHOEBUS.bat`.
 ## Diagnostic
 
 ```bash
+.venv/bin/python scripts/doctor.py
 .venv/bin/python scripts/diagnose.py
 ```
+
+`doctor.py` donne un diagnostic synthétique de l'environnement actif :
+dépendances voix/STT, configuration, runtime unique, frontend et endpoint
+`/health`. Ajoutez `--json` pour une sortie exploitable par un script.
 
 PyAudio est optionnel. S'il ne s'installe pas, le micro PC et les applaudissements
 sont desactives, mais le backend et l'interface mobile restent utilisables.
