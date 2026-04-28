@@ -2,15 +2,15 @@
 """
 Détection de Wake Word pour PHOEBUS — "Hey PHOEBUS" — 100% gratuit, 100% local.
 
-Cascade (du meilleur au plus léger, tout open-source) :
-  1. OpenWakeWord   MIT      — modèles ONNX pré-entraînés "hey_jarvis"
-                              pip install openwakeword onnxruntime
-  2. Vosk           Apache2  — STT offline ultra-précis avec keyword spotting
+Cascade (du meilleur au plus adapté pour "PHOEBUS", tout open-source) :
+  1. Vosk           Apache2  — STT offline ultra-précis avec keyword spotting
                               pip install vosk
                               + télécharger le modèle FR : voir commentaire ci-bas
-  3. Pocketsphinx   BSD      — léger, hors ligne, zero config
+  2. Pocketsphinx   BSD      — léger, hors ligne, zero config
                               pip install pocketsphinx
-  4. Fallback STT   —        — Google/Whisper sur clips courts (déjà installé)
+  3. Fallback STT   —        — Google/Whisper sur clips courts (déjà installé)
+  4. OpenWakeWord   MIT      — option explicite seulement (modèle "hey_jarvis")
+                              PHOEBUS_WAKE_BACKEND=oww
 
 Aucune clé API. Aucun compte. Aucun coût mensuel.
 
@@ -254,7 +254,7 @@ def _try_vosk() -> bool:
                     # Résultat partiel — peut déclencher sur un fragment clair
                     partial = _json.loads(rec.PartialResult())
                     texte_p = partial.get("partial", "").lower().strip()
-                    if texte_p in ("PHOEBUS", "hey PHOEBUS"):
+                    if texte_p in ("phoebus", "hey phoebus"):
                         logger.info(f"[WAKE] Vosk partial : '{texte_p}'")
                         _fire()
             except Exception as e:
@@ -362,7 +362,7 @@ def _run():
 
     backend = os.getenv("PHOEBUS_WAKE_BACKEND", "auto").strip().lower()
 
-    if backend == "oww" or backend == "auto":
+    if backend == "oww":
         if _try_oww():
             return
 
@@ -384,7 +384,7 @@ def start(callback):
     """Démarre la détection wake word dans un thread daemon.
 
     `callback` sera appelé sans argument à chaque déclenchement.
-    Ordre d'essai : OWW → Vosk → Pocketsphinx → Fallback STT.
+    Ordre d'essai par défaut : Vosk → Pocketsphinx → Fallback STT.
     Forcer un backend : PHOEBUS_WAKE_BACKEND=oww|vosk|pocketsphinx|stt dans .env
     """
     global _thread, _callback

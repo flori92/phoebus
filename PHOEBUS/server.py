@@ -597,6 +597,14 @@ def listen_and_process(main_loop):
                             if texte_l.startswith(w.lower()):
                                 cleaned_texte = texte[len(w):].strip(", ").strip()
                                 break
+
+                    if wake and not cleaned_texte.strip(" ,.!?:;"):
+                        state.extend_conversation(seconds=30)
+                        asyncio.run_coroutine_threadsafe(
+                            parler("Oui, je vous écoute.", keep_conversation=False),
+                            main_loop,
+                        )
+                        continue
                     
                     # "Mode iron man active" : raccourci direct.
                     if "mode iron man" in texte_l and "active" in texte_l:
