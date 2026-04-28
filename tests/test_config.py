@@ -1,0 +1,103 @@
+"""
+Tests pour la configuration Pydantic.
+"""
+import pytest
+from unittest.mock import patch
+from pathlib import Path
+
+from PHOEBUS.config_pydantic import (
+    LLMConfig,
+    ServerConfig,
+    PhoebusConfig,
+    get_config,
+    reload_config
+)
+
+
+class TestLLMConfig:
+    """Tests pour la configuration LLM."""
+    
+    def test_llm_config_empty(self):
+        """Config LLM sans clés API."""
+        config = LLMConfig()
+        assert config.gemini_api_key is None
+        assert config.groq_api_key is None
+    
+    def test_llm_config_with_keys(self):
+        """Config LLM avec clés."""
+        with patch.dict("os.environ", {
+            "GEMINI_API_KEY": "test-key",
+            "GROQ_API_KEY": "  spaced-key  "
+        }, clear=False):
+            config = LLMConfig()
+            assert config.gemini_api_key == "test-key"
+            assert config.groq_api_key == "spaced-key"  # Stripped
+
+
+class TestServerConfig:
+    """Tests pour la configuration serveur."""
+    
+    def test_default_values(self):
+        """Valeurs par défaut."""
+        config = ServerConfig()
+        assert config.ws_port == 8765
+        assert config.mobile_port == 8080
+        assert config.ws_auth_required is True
+    
+    def test_invalid_token(self):
+        """Token par défaut interdit."""
+        with pytest.raises(ValueError, match="Token par défaut non sécurisé"):
+            ServerConfig(ws_token="CHANGE_ME")
+    
+    def test_weak_token(self):
+        """Token trop court."""
+        with pytest.raises(ValueError, match="String should have at least 8 characters"):
+            ServerConfig(ws_token="short")
+    
+    def test_invalid_port(self):
+        """Port hors range."""
+        with pytest.raises(ValueError):
+            ServerConfig(ws_port=100)
+
+
+class TestPhoebusConfig:
+    """Tests pour la configuration globale."""
+    
+    def test_is_production_development(self):
+        """Détection environnement dev."""
+        config = PhoebusConfig(server=ServerConfig(ws_token="test12345"))
+        assert config.is_production is False
+    
+    def test_is_production_true(self):
+        """Détection environnement prod."""
+        config = PhoebusConfig(server=ServerConfig(ws_token="super-secure-token-123"))
+        assert config.is_production is True
+    
+    def test_get_available_providers(self):
+        """Liste des providers disponibles."""
+        llm_config = LLMConfig(
+            gemini_api_key="key1",
+            groq_api_key="key2"
+        )
+        config = PhoebusConfig(llm=llm_config)
+        providers = config.get_available_llm_providers()
+        assert "gemini" in providers
+        assert "groq" in providers
+        assert "mistral" not in providers
+
+
+class TestConfigSingleton:
+    """Tests pour le pattern singleton."""
+    
+    def test_singleton_instance(self):
+        """Même instance retournée."""
+        reload_config()  # Reset
+        config1 = get_config()
+        config2 = get_config()
+        assert config1 is config2
+    
+    def test_reload_creates_new_instance(self):
+        """Reload crée nouvelle instance."""
+        config1 = get_config()
+        config2 = reload_config()
+        assert config1 is config2  # Même référence après reload
