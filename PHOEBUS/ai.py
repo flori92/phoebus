@@ -244,48 +244,26 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "knowledge_query", "question": "Spinoza"}  \n'
         '  → dispatch automatique : Wikipedia pour les faits, Wolfram pour les calculs scientifiques,\n'
         '    GitHub pour des extraits de code, RSS pour les actualités fraîches.\n\n'
-        "CONTRÔLE SYSTÈME macOS (et Linux pour la plupart) :\n"
-        '{"action": "system_lock"}  → verrouille la session\n'
-        '{"action": "system_sleep"}  → met en veille\n'
-        '{"action": "system_volume", "percent": 60}  → règle volume système\n'
-        '{"action": "system_mute"} / {"action": "system_unmute"}\n'
-        '{"action": "system_notify", "title": "Rappel", "message": "..."}\n'
-        '{"action": "system_open_app", "name": "Safari"}\n'
-        '{"action": "system_quit_app", "name": "Safari"}\n'
-        '{"action": "system_screenshot"}\n'
-        '{"action": "system_brightness", "percent": 70}\n'
-        '{"action": "system_empty_trash"}  ← SENSIBLE, vidage irréversible\n\n'
-        "CAST MÉDIA (AirPlay Apple TV / Chromecast Google) :\n"
-        '{"action": "cast_list"}  → receivers détectés sur le LAN\n'
-        '{"action": "cast_youtube", "target": "Salon TV", "query": "interstellar trailer"}\n'
-        '{"action": "cast_play", "target": "Salon TV", "url": "http://..."}\n'
-        '{"action": "cast_stop", "target": "Salon TV"}\n\n'
-        "VISION CAMÉRA — utilise une vraie caméra physique pour observer le monde réel.\n"
-        "Choisis intelligemment la source selon ce qui est demandé :\n"
-        "- vision_camera_pc : webcam du Mac/PC. Idéal pour ce qui est devant Floriace.\n"
-        "- vision_camera_phone : caméra du téléphone via WebSocket. Idéal quand Floriace\n"
-        "  veut te montrer un objet précis, lire une étiquette, regarder ailleurs dans la pièce.\n"
-        "- vision_camera_ip : caméra réseau (URL HTTP/RTSP). Surveillance, doorbell.\n"
+        "CONTRÔLE SYSTÈME macOS / LINUX :\n"
+        '{"action": "system_control", "type": "lock/sleep/mute/unmute/empty_trash/volume_up/volume_down/screenshot"}\n'
+        '{"action": "system_control", "type": "volume", "percent": 60}\n'
+        '{"action": "launch_app", "name": "Safari"}\n\n'
+        "VISION — utilise une caméra physique ou l'écran pour observer.\n"
+        "- vision_camera_pc : webcam devant toi.\n"
+        "- vision_camera_phone : caméra de son téléphone.\n"
+        "- voir_ecran : analyse ce qui se passe sur l'écran du Mac.\n"
         '{"action": "vision_camera_pc", "question": "que vois-tu", "deep": false}\n'
-        '{"action": "vision_camera_phone", "question": "que dit cette étiquette", "facing": "environment", "deep": true}\n'
-        '{"action": "vision_camera_ip", "url": "http://192.168.1.20/snapshot", "question": "qui est devant la porte"}\n'
-        '  → "deep": true bascule sur LMArena Claude pour les analyses fines (OCR, détails subtils).\n\n'
-        "VISION CAMERA (Utiliser la webcam ou caméra téléphone) :\n"
-        '{"action": "voir_camera", "instruction": "ce que tu dois observer", "source": "pc/telephone"}\n'
-        '{"action": "identifier_objet", "source": "pc/telephone"}  (Plus rapide pour nommer un truc)\n'
-        '{"action": "lire_texte", "source": "pc/telephone"}       (OCR : pour lire une étiquette, un livre, un écran)\n'
-        '{"action": "identifier_personne", "source": "pc/telephone"} (Reconnaissance de Floriace et de son humeur)\n\n'
+        '{"action": "vision_camera_phone", "question": "lis ce texte", "facing": "environment", "deep": true}\n'
+        '{"action": "voir_ecran", "instruction": "où cliquer pour envoyer"}\n\n'
         "OUTILS MAJORDOME :\n"
         '{"action": "timer", "minutes": 5, "secondes": 0, "label": "pâtes"}\n'
         '{"action": "schedule_task", "instruction": "allume le salon", "recurrence": "daily", "time": "08:00"}\n'
         '{"action": "list_scheduled_tasks"}\n'
-        '{"action": "system_control", "type": "lock/sleep/empty_trash"} (Contrôle matériel du Mac)\n'
-        '{"action": "redemarrer_phoebus"} (Redémarre le moteur PHOEBUS et se relance)\n'
-        '{"action": "noter_etudiant", "nom": "Nom Etudiant", "statut": "present/absent/excuse", "date": "AAAA-MM-DD"}\n'
-        '{"action": "calculer_notes_etudiants"} (Génère le rapport final des notes sur 10)\n'
-        '{"action": "mode_interprete", "etat": "on/off", "langue": "langue"} (Traduction live de tout ce qu il entend)\n'
-        '{"action": "proactive_help"} (Analyse l écran pour anticiper un besoin d aide)\n'
-        '{"action": "metamorphose", "theme": "NOM", "forme": "vortex/matrix/web/energy/sphere", "couleurs": ["#hex1", "#hex2"]} (Super-pouvoir Polymorphe)\n\n'
+        '{"action": "redemarrer_phoebus"} (Se relance instantanément)\n'
+        '{"action": "noter_etudiant", "nom": "Nom", "statut": "present/absent/excuse"}\n'
+        '{"action": "calculer_notes_etudiants"}\n'
+        '{"action": "mode_local", "etat": "on/off"} (Bascule sur IA Ollama locale)\n'
+        '{"action": "metamorphose", "theme": "matrix", "forme": "vortex", "couleurs": ["#00ff00"]}\n\n'
         "OUTILS CRÉATIFS :\n"
         '{"action": "create_presentation", "topic": "Virtualisation Cloud", "slides": [{"title": "Introduction", "body": "Définition du Cloud..."}, {"title": "Hyperviseurs", "body": "Type 1 vs Type 2..."}]} (Génère un PowerPoint)\n'
         '{"action": "generate_image", "prompt": "Un robot majordome futuriste style Iron Man"} (Génère une image)\n\n'

@@ -4,6 +4,8 @@ Texte → Intent → Sécurité → Skill → Réponse.
 import asyncio
 import json
 import time
+import os
+import re
 from typing import Optional, Any
 
 import PHOEBUS.state as state
@@ -11,6 +13,107 @@ from PHOEBUS.config import WS_AUTH_REQUIRED
 from PHOEBUS.intent import detect as detect_intent
 from PHOEBUS.ai import demander_ia, demander_ia_stream
 from PHOEBUS.audio_optimization import check_hallucination
+from PHOEBUS.voice import parler
+from PHOEBUS.security import audit_log, risk_level_for, describe_action, is_confirmation_text, is_cancellation_text
+from PHOEBUS.rag_memory import stocker_souvenir
+
+# Constantes de délai
+AI_COMMAND_TIMEOUT = float(os.getenv("PHOEBUS_AI_COMMAND_TIMEOUT", "35.0"))
+
+async def _parler_safe(texte: str, keep_conversation: bool = True) -> None:
+    try:
+        await parler(texte, keep_conversation=keep_conversation)
+    except Exception as e:
+        print(f"[VOICE] parole ignorée après erreur : {e}")
+
+class _SpeechQueue:
+    """File de parole non bloquante: le LLM continue pendant que PHOEBUS parle."""
+    def __init__(self):
+        self._queue = asyncio.Queue()
+        self._task = None
+
+    async def say(self, texte: str) -> None:
+        if not texte or not texte.strip():
+            return
+        if self._task is None:
+            self._task = asyncio.create_task(self._run())
+        self._queue.put_nowait(texte)
+
+    async def _run(self) -> None:
+        while True:
+            texte = await self._queue.get()
+            if texte is None:
+                self._queue.task_done()
+                return
+            try:
+                await _parler_safe(texte)
+            finally:
+                self._queue.task_done()
+
+    def close(self) -> None:
+        if self._task is not None and not self._task.done():
+            self._queue.put_nowait(None)
+
+async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
+    """Exécute une commande texte et renvoie la réponse textuelle finale."""
+    if not texte: return ""
+    
+    state.mark_user_activity()
+    meta_str = ""
+    if metadata:
+        m = metadata
+        meta_str = f" [Batt: {m.get('battery')}% | Loc: {m.get('location')} | Focus: {m.get('focus')}]"
+    
+    print(f"[ROUTER:{source.upper()}{meta_str}] {texte}")
+    
+    contexte_ios = ""
+    if metadata:
+        contexte_ios = (
+            f"\n[INFO APPAREIL] Batterie: {metadata.get('battery')}% | "
+            f"Position: {metadata.get('location')} | "
+            f"Mode de concentration: {metadata.get('focus')}\n"
+        )
+
+    query_enrichie = contexte_ios + texte
+    full_text_parts = []
+    spoken = {"v": False}
+    speech = _SpeechQueue()
+
+    async def _on_sentence(s):
+        nonlocal spoken
+        spoken["v"] = True
+        full_text_parts.append(s)
+        await speech.say(s)
+
+    try:
+        rep_finale_ia = await asyncio.wait_for(
+            route_request(query_enrichie, source=source, metadata=metadata, on_sentence=_on_sentence),
+            timeout=AI_COMMAND_TIMEOUT,
+        )
+
+        if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
+            await traiter_reponse_ia(rep_finale_ia)
+            return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
+
+        if not spoken["v"] and rep_finale_ia:
+            if not await traiter_reponse_ia(rep_finale_ia):
+                await speech.say(rep_finale_ia)
+                return rep_finale_ia
+
+        return " ".join(full_text_parts).strip() or rep_finale_ia or ""
+
+    except asyncio.TimeoutError:
+        msg = "Je réfléchis encore, Floriace. La réponse vocale arrive dès que le cerveau se débloque."
+        await speech.say(msg)
+        return msg
+    except Exception as e:
+        print(f"[ROUTER] Erreur traitement {source} : {e}")
+        msg = "J'ai eu un raté interne, Floriace, mais je reste opérationnel."
+        await speech.say(msg)
+        return msg
+    finally:
+        state.extend_conversation()
+        speech.close()
 
 async def route_request(
     texte: str,
@@ -19,44 +122,112 @@ async def route_request(
     metadata: Optional[dict] = None,
     on_sentence: Optional[Any] = None,
 ) -> str:
-    """Route une requête utilisateur vers le bon moteur d'exécution."""
+    """Route une requête utilisateur vers le bon moteur (Intent ou IA)."""
     if not texte or not texte.strip():
         return ""
 
-    # 1. Nettoyage et vérification hallucination
-    texte = texte.strip()
-    if source == "voice":
+    if source in ("voice", "voix"):
         is_hallucination, confidence = check_hallucination(texte)
         if is_hallucination:
-            print(f"[ROUTER] Hallucination détectée ({confidence:.2f}) : '{texte}' → Rejet.")
+            print(f"[ROUTER] Hallucination rejetée ({confidence:.2f}) : '{texte}'")
             return ""
 
-    print(f"[ROUTER] Traitement requête ({source}) : '{texte}'")
-
-    # 2. Gérer confirmation en attente
-    if state.PENDING_CONFIRMATION:
-        # La logique de confirmation sera migrée ici plus tard
-        pass
-
-    # 3. Fast-path Intent local
+    # Fast-path Intent local
     intent = detect_intent(texte)
     if intent is not None:
         print(f"[ROUTER] Fast-path local : {intent.name}")
         state.ajouter_historique("user", texte)
         state.ajouter_historique("model", intent.reply)
-        if on_sentence:
+        if on_sentence and "{" not in intent.reply:
             await on_sentence(intent.reply)
         return intent.reply
 
-    # 4. Intelligence Cloud / Hybride
+    # Intelligence Cloud / Hybride
     if on_sentence:
-        # Mode streaming si supporté
-        reponse_complete = await demander_ia_stream(texte, on_sentence=on_sentence)
+        return await demander_ia_stream(texte, on_sentence=on_sentence)
     else:
-        reponse_complete = await demander_ia(texte)
+        return await demander_ia(texte)
 
-    # 5. Extraction et exécution des actions JSON
-    # La fonction executer_commande_generique s'en charge déjà dans ai.py
-    # mais nous allons progressivement centraliser cela ici.
+async def traiter_reponse_ia(reponse: str) -> bool:
+    """Analyse la réponse de l'IA, extrait le JSON et exécute les actions."""
+    if not reponse: return False
 
-    return reponse_complete
+    try:
+        # 1. Gestion des confirmations en attente
+        if state.PENDING_CONFIRMATION:
+            if is_confirmation_text(reponse):
+                await parler("Action confirmée, Floriace. J'exécute.")
+                d = state.PENDING_CONFIRMATION
+                state.PENDING_CONFIRMATION = None
+                audit_log("sensitive_action_confirmed", action=d.get("action"))
+                from PHOEBUS.actions import executer_une_action
+                await executer_une_action(d)
+                return True
+            elif is_cancellation_text(reponse):
+                await parler("Action annulée, Monsieur.")
+                audit_log("sensitive_action_cancelled", action=state.PENDING_CONFIRMATION.get("action"))
+                state.PENDING_CONFIRMATION = None
+                return True
+            else:
+                await parler("En attente de votre confirmation. Dites 'PHOEBUS je confirme' ou 'Annule'.")
+                return True
+
+        # 2. Extraction JSON robuste
+        if "{" in reponse and "}" in reponse:
+            stocker_souvenir(f"Action JSON demandée : {reponse}", source="system", importance=2)
+            
+            parties = []
+            brace_count = 0
+            start_idx = -1
+            for i, char in enumerate(reponse):
+                if char == "{":
+                    if brace_count == 0: start_idx = i
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0 and start_idx != -1:
+                        try:
+                            parties.append(json.loads(reponse[start_idx:i+1]))
+                        except: pass
+                        start_idx = -1
+            
+            if parties:
+                from PHOEBUS.skills import is_skill_registered, describe_skill, execute_skill
+                from PHOEBUS.actions import executer_une_action
+                
+                for d in parties:
+                    action = d.get("action", "")
+                    risk = risk_level_for(action)
+                    desc = describe_skill(action, d) if is_skill_registered(action) else describe_action(d)
+
+                    if risk == "high":
+                        await parler(f"Vous me demandez de {desc}. C'est une action sensible, vous confirmez ?")
+                        state.PENDING_CONFIRMATION = d
+                        audit_log("sensitive_action_pending", action=action, description=desc, risk=risk)
+                        return True
+
+                    if risk == "medium":
+                        await parler(f"J'applique : {desc}.")
+                        await asyncio.sleep(1.2)
+                        if state.STOP_PARLER:
+                            state.STOP_PARLER = False
+                            await parler("D'accord, j'annule.")
+                            audit_log("medium_action_aborted", action=action, description=desc)
+                            continue
+                        audit_log("medium_action_executed", action=action, description=desc)
+                        await executer_une_action(d)
+                    else:
+                        await executer_une_action(d)
+                return True
+
+        # 3. Réponse naturelle
+        if len(reponse.strip()) > 2:
+            stocker_souvenir(f"PHOEBUS a dit : {reponse}", source="conversation", importance=1)
+            await parler(reponse)
+            return True
+
+    except Exception as e:
+        print(f"[ROUTER] Erreur traitement IA : {e}")
+        await parler("Il y a eu un petit raté dans mon interprétation, Monsieur.")
+
+    return False

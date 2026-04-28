@@ -1,6 +1,7 @@
 from PHOEBUS.skills.registry import skill
 from PHOEBUS import vision as _vision
 import asyncio
+import PHOEBUS.state as state
 
 @skill(
     "vision_camera_pc",
@@ -39,3 +40,82 @@ async def vision_camera_ip(data: dict):
     img = await _vision.capturer_ip_camera(url=url)
     if not img: return "Impossible de récupérer l'image de la caméra réseau."
     return await _vision.analyser_image(img, question=q)
+
+@skill(
+    "voir_camera",
+    risk="low",
+    help_text="Utilise une caméra spécifique pour observer",
+    describe=lambda d: f"Regarder via la caméra {d.get('source', 'pc')}"
+)
+async def skill_voir_camera(data: dict):
+    ins = data.get("instruction", "Que vois-tu devant toi ?")
+    src = data.get("source", "pc")
+    return await _vision.voir_camera(ins, src)
+
+@skill(
+    "identifier_objet",
+    risk="low",
+    help_text="Identifie un objet devant la caméra",
+    describe=lambda d: f"Identifier un objet via {d.get('source', 'pc')}"
+)
+async def skill_identifier_objet(data: dict):
+    src = data.get("source", "pc")
+    return await _vision.identifier_objet(src)
+
+@skill(
+    "lire_texte",
+    risk="low",
+    help_text="Effectue une lecture OCR sur l'image caméra",
+    describe=lambda d: f"Lire le texte via {d.get('source', 'pc')}"
+)
+async def skill_lire_texte(data: dict):
+    src = data.get("source", "pc")
+    return await _vision.lire_texte_objet(src)
+
+@skill(
+    "identifier_personne",
+    risk="low",
+    help_text="Reconnaît la personne devant la caméra",
+    describe=lambda d: f"Identifier la personne via {d.get('source', 'pc')}"
+)
+async def skill_identifier_personne(data: dict):
+    src = data.get("source", "pc")
+    return await _vision.identifier_personne(src)
+
+@skill(
+    "voir_ecran",
+    risk="high",
+    help_text="Prend une capture d'écran et effectue une action visuelle",
+    describe=lambda d: f"Analyser l'écran pour : {d.get('instruction')}"
+)
+async def skill_voir_ecran(data: dict):
+    ins = data.get("instruction", "")
+    if not ins: return "Aucune instruction pour l'écran."
+    return await _vision.PHOEBUS_vision_cliquer(ins)
+
+@skill(
+    "vision_ecrire",
+    risk="high",
+    help_text="Écrit du texte dans une zone de l'écran",
+    describe=lambda d: f"Écrire '{d.get('texte')}' sur l'écran"
+)
+async def skill_vision_ecrire(data: dict):
+    ins = data.get("instruction", "")
+    txt = data.get("texte", "")
+    if not ins or not txt: return "Instruction ou texte manquant."
+    return await _vision.PHOEBUS_vision_ecrire(ins, txt)
+
+@skill(
+    "proactive_help",
+    risk="low",
+    help_text="Analyse l'écran pour proposer une aide proactive",
+    describe=lambda _: "Analyse proactive de l'écran"
+)
+async def skill_proactive_help(data: dict):
+    state.is_proactive = True
+    await state.send_web_state("proactive")
+    res = await _vision.analyse_contexte_ecran()
+    state.is_proactive = False
+    if not res:
+        await state.send_web_state("idle")
+    return res

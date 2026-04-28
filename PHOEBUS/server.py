@@ -21,7 +21,7 @@ import PHOEBUS.state as state
 from PHOEBUS.security import audit_log, sanitize_action_data
 from PHOEBUS.desktop import executer_action_pc
 from PHOEBUS.ai import demander_ia, demander_ia_vision, demander_ia_stream
-from PHOEBUS.actions import traiter_reponse_ia
+from PHOEBUS.router import executer_commande_generique, traiter_reponse_ia
 from PHOEBUS.voice import parler, monitor_claps
 from PHOEBUS.stt_backends import get_backend as get_stt_backend
 from PHOEBUS.clarify import transcription_incertaine

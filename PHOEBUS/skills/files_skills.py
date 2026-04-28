@@ -1,6 +1,7 @@
 from PHOEBUS.skills.registry import skill
 from PHOEBUS import desktop as _desktop
 import asyncio
+import os
 
 @skill(
     "ouvrir_dossier",
@@ -34,43 +35,72 @@ async def chercher_fichier(data: dict):
     return await asyncio.to_thread(_desktop.chercher_fichier, nom)
 
 @skill(
+    "creer_dossier",
+    risk="low",
+    help_text="Crée un nouveau dossier",
+    describe=lambda d: f"Créer le dossier {d.get('nom')}"
+)
+async def skill_creer_dossier(data: dict):
+    nom = data.get("nom")
+    if not nom: return "Nom du dossier manquant."
+    ok, msg = _desktop.creer_sous_dossier(nom)
+    return msg
+
+@skill(
+    "renommer_fichier",
+    risk="high",
+    help_text="Renomme un fichier ou un dossier",
+    describe=lambda d: f"Renommer {d.get('ancien')} en {d.get('nouveau')}"
+)
+async def skill_renommer_fichier(data: dict):
+    ancien = data.get("ancien")
+    nouveau = data.get("nouveau")
+    if not ancien or not nouveau: return "Informations de renommage manquantes."
+    ok, msg = _desktop.renommer_fichier(ancien, nouveau)
+    return msg
+
+@skill(
+    "deplacer_fichier",
+    risk="high",
+    help_text="Déplace un fichier vers une destination",
+    describe=lambda d: f"Déplacer {d.get('fichier')} vers {d.get('destination')}"
+)
+async def skill_deplacer_fichier(data: dict):
+    fichier = data.get("fichier")
+    dest = data.get("destination")
+    if not fichier or not dest: return "Informations de déplacement manquantes."
+    ok, msg = _desktop.deplacer_fichier(fichier, dest)
+    return msg
+
+@skill(
+    "trier_par_type",
+    risk="medium",
+    help_text="Trie les fichiers par extension",
+    describe=lambda _: "Trier les fichiers par type"
+)
+async def skill_trier_type(data: dict):
+    ok, msg = _desktop.trier_par_type()
+    return msg
+
+@skill(
+    "trier_par_date",
+    risk="medium",
+    help_text="Trie les fichiers par date de modification",
+    describe=lambda _: "Trier les fichiers par date"
+)
+async def skill_trier_date(data: dict):
+    ok, msg = _desktop.trier_par_date()
+    return msg
+
+@skill(
     "trier_complet",
     risk="medium",
     help_text="Organise et range automatiquement les fichiers du dossier actuel dans des sous-dossiers par type",
     describe=lambda _: "Organiser intelligemment vos fichiers par catégories"
 )
 async def trier_complet(data: dict):
-    from PHOEBUS.desktop import lister_dossier
-    import shutil
-    
-    EXTENSIONS_MAP = {
-        "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg"],
-        "Videos": [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".webm"],
-        "Musique": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a"],
-        "Documents": [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".rtf", ".csv"],
-        "Archives": [".zip", ".rar", ".7z", ".tar", ".gz"],
-        "Code": [".py", ".js", ".html", ".css", ".java", ".cpp", ".c", ".json", ".sh", ".ts"]
-    }
-    
-    current_dir = os.getcwd()
-    fichiers = [f for f in os.listdir(current_dir) if os.path.isfile(os.path.join(current_dir, f))]
-    
-    compteurs = {}
-    for f in fichiers:
-        ext = os.path.splitext(f)[1].lower()
-        found_cat = "Autres"
-        for cat, list_ext in EXTENSIONS_MAP.items():
-            if ext in list_ext:
-                found_cat = cat
-                break
-        
-        target_dir = os.path.join(current_dir, found_cat)
-        os.makedirs(target_dir, exist_ok=True)
-        shutil.move(os.path.join(current_dir, f), os.path.join(target_dir, f))
-        compteurs[found_cat] = compteurs.get(found_cat, 0) + 1
-        
-    res = "Rangement terminé. " + ", ".join([f"{v} {k}" for k, v in compteurs.items()])
-    return res
+    ok, msg = _desktop.trier_par_type_puis_date()
+    return msg
 
 @skill(
     "system_control",
