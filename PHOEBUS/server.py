@@ -505,6 +505,14 @@ def listen_and_process(main_loop):
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 
+                        # ── Filtre de confiance acoustique (Super-Pouvoir #1) ──
+                        from PHOEBUS.audio_optimization import check_hallucination
+                        is_hall, confidence = check_hallucination(texte)
+                        if is_hall:
+                            print(f"[MIC] Hallucination acoustique ignorée (confiance={confidence:.2f}) : \"{texte}\"")
+                            asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                            continue
+
                         # ── Anti-écho secondaire : deque(10) des dernières
                         # utterances + cooldown post-parole 1.4s. Couche
                         # complémentaire de la détection ci-dessous (qui se

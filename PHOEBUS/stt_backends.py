@@ -95,29 +95,36 @@ def _groq_recognize_factory():
         return None
 
     import tempfile
+    import numpy as np
+    import io
+
     def recognize(audio_data):
-        wav_bytes = audio_data.get_wav_data()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            f.write(wav_bytes)
-            path = f.name
+        # ── VAD Logic local pour Groq ──
+        # On s'assure d'avoir du 16kHz pour le calcul d'énergie
+        wav_bytes = audio_data.get_wav_data(convert_rate=16000, convert_width=2)
+        audio_array = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        
+        # Seuil d'énergie pour ignorer le silence (Whisper hallucine sur le silence)
+        energy = np.max(np.abs(audio_array))
+        if energy < 0.04: 
+            return ""
+
+        # On utilise le format original pour l'envoi à l'API (plus haute qualité possible)
+        api_wav = audio_data.get_wav_data()
+        
         try:
-            with open(path, "rb") as file:
-                # Groq API demande un tuple (nom_fichier, bytes) ou un file-like object
-                transcription = groq_client.audio.transcriptions.create(
-                    file=(os.path.basename(path), file.read()),
-                    model="whisper-large-v3",
-                    language="fr",
-                    response_format="text"
-                )
+            # Groq API demande un tuple (nom_fichier, bytes) ou un file-like object
+            transcription = groq_client.audio.transcriptions.create(
+                file=("input.wav", api_wav),
+                model="whisper-large-v3",
+                language="fr",
+                prompt="PHOEBUS, assistant vocal d'élite. Bonjour Floriace.",
+                response_format="text"
+            )
             return transcription.strip()
         except Exception as e:
             print(f"[STT] Erreur Groq : {e}")
             return ""
-        finally:
-            try:
-                os.remove(path)
-            except Exception:
-                pass
 
     return recognize
 
