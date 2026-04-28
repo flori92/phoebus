@@ -52,6 +52,41 @@ DEFAULT_RISK_BY_ACTION = {
     "vision_camera_pc": "medium",
     "vision_camera_phone": "medium",
     "vision_camera_ip": "medium",
+    # Réseau : low (lecture passive ou ping). Wake-on-LAN reste low car
+    # bénin (allume une machine, pas destructif).
+    "network_scan": "low",
+    "network_ping": "low",
+    "network_ping_sweep": "low",
+    "network_wake": "low",
+    "network_probe": "low",
+    # MQTT : medium quand on publie (peut allumer/changer un device),
+    # low quand on lit.
+    "mqtt_publish": "medium",
+    "mqtt_subscribe": "low",
+    "mqtt_discover": "low",
+    # Code Python : medium — sandbox audit en amont mais on annonce.
+    "python_run": "medium",
+    # Connaissance externe : low (lectures publiques).
+    "knowledge_query": "low",
+    # Système Mac : verrouillage et veille = low (réversibles trivialement).
+    "system_lock": "low",
+    "system_sleep": "low",
+    "system_volume": "low",
+    "system_mute": "low",
+    "system_unmute": "low",
+    "system_notify": "low",
+    "system_brightness": "low",
+    "system_open_app": "low",
+    "system_screenshot": "low",
+    # Vider la corbeille = HIGH (destructif !).
+    "system_empty_trash": "high",
+    # Quitter une app = medium (peut perdre du travail non sauvegardé).
+    "system_quit_app": "medium",
+    # Cast media : low — lecture vidéo, pas destructif.
+    "cast_list": "low",
+    "cast_play": "low",
+    "cast_youtube": "low",
+    "cast_stop": "low",
 }
 
 # Conservé pour compat descendante — dérivé du dict ci-dessus.

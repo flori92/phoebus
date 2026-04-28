@@ -226,6 +226,40 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "VISION WEBSOCKET (Interactions basiques depuis navigateur):\n"
         '{"action": "voir_ecran", "instruction": "ou cliquer EXACTEMENT"}\n'
         '{"action": "vision_ecrire", "instruction": "ou cliquer", "texte": "texte"}\n\n'
+        "RÉSEAU LAN — découverte et contrôle des appareils sur le même réseau Wi-Fi/Ethernet :\n"
+        '{"action": "network_scan", "refresh": false}  → liste tous les devices (mDNS+ARP)\n'
+        '{"action": "network_ping", "ip": "192.168.1.X"}\n'
+        '{"action": "network_ping_sweep"}  → balaye le subnet (lent, 10-30s)\n'
+        '{"action": "network_wake", "mac": "aa:bb:cc:dd:ee:ff"}  → Wake-on-LAN\n'
+        '{"action": "network_probe", "ip": "192.168.1.X"}  → ports/services ouverts\n\n'
+        "OBJETS CONNECTÉS via MQTT (Tasmota, Shelly, ESP32, Zigbee2MQTT...) :\n"
+        '{"action": "mqtt_publish", "topic": "cmnd/lampe/POWER", "payload": "ON"}\n'
+        '{"action": "mqtt_subscribe", "topic": "stat/lampe/POWER"}\n'
+        '{"action": "mqtt_discover"}  → liste les topics actifs sur le broker\n\n'
+        "CODE PYTHON (calcul, conversion, scripting déterministe) :\n"
+        '{"action": "python_run", "code": "import math; print(math.pi)"}  \n'
+        '  → modules autorisés : math, statistics, random, datetime, json, hashlib, secrets, decimal, fractions, itertools, base64, re, etc.\n'
+        '  → utilise-le quand le calcul doit être EXACT (pas approximé par toi).\n\n'
+        "CONNAISSANCE EXTERNE (Wikipedia / Wolfram Alpha / GitHub / actualités RSS) :\n"
+        '{"action": "knowledge_query", "question": "Spinoza"}  \n'
+        '  → dispatch automatique : Wikipedia pour les faits, Wolfram pour les calculs scientifiques,\n'
+        '    GitHub pour des extraits de code, RSS pour les actualités fraîches.\n\n'
+        "CONTRÔLE SYSTÈME macOS (et Linux pour la plupart) :\n"
+        '{"action": "system_lock"}  → verrouille la session\n'
+        '{"action": "system_sleep"}  → met en veille\n'
+        '{"action": "system_volume", "percent": 60}  → règle volume système\n'
+        '{"action": "system_mute"} / {"action": "system_unmute"}\n'
+        '{"action": "system_notify", "title": "Rappel", "message": "..."}\n'
+        '{"action": "system_open_app", "name": "Safari"}\n'
+        '{"action": "system_quit_app", "name": "Safari"}\n'
+        '{"action": "system_screenshot"}\n'
+        '{"action": "system_brightness", "percent": 70}\n'
+        '{"action": "system_empty_trash"}  ← SENSIBLE, vidage irréversible\n\n'
+        "CAST MÉDIA (AirPlay Apple TV / Chromecast Google) :\n"
+        '{"action": "cast_list"}  → receivers détectés sur le LAN\n'
+        '{"action": "cast_youtube", "target": "Salon TV", "query": "interstellar trailer"}\n'
+        '{"action": "cast_play", "target": "Salon TV", "url": "http://..."}\n'
+        '{"action": "cast_stop", "target": "Salon TV"}\n\n'
         "VISION CAMÉRA — utilise une vraie caméra physique pour observer le monde réel.\n"
         "Choisis intelligemment la source selon ce qui est demandé :\n"
         "- vision_camera_pc : webcam du Mac/PC. Idéal pour ce qui est devant Floriace.\n"
@@ -270,7 +304,22 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "question courte et précise pour lever le doute. Tu peux proposer deux options si c'est utile.\n"
         "REGLE D'AUDITION : si ce que tu reçois ressemble à une transcription bancale "
         "(mot isolé étrange, syllabes décousues), demande gentiment de répéter plutôt que "
-        "d'inventer une réponse."
+        "d'inventer une réponse.\n"
+        "REGLE D'OMNISCIENCE PRATIQUE : tu n'es PAS limité à ce que tu \"sais\". "
+        "Tu as des OUTILS — utilise-les sans demander la permission :\n"
+        "- Question factuelle (qui, quoi, définition, date) → knowledge_query.\n"
+        "- Calcul exact, conversion, manipulation de dates/regex → python_run.\n"
+        "- Question sur le LAN, devices connectés, contrôle d'objets → network_scan / mqtt_*.\n"
+        "- Action sur le Mac (volume, ouvrir une app, capture, veille) → system_*.\n"
+        "- Diffusion média sur TV/enceinte → cast_*.\n"
+        "- Voir l'environnement → vision_camera_pc/phone/ip.\n"
+        "Ne dis JAMAIS \"je ne peux pas accéder à ça\" ou \"je n'ai pas l'information\" "
+        "sans avoir d'abord essayé l'outil approprié. Si une commande échoue, dis-le "
+        "honnêtement avec la raison, mais ESSAIE.\n"
+        "REGLE DE RÉACTIVITÉ : pour les commandes évidentes, réponds par le JSON SANS "
+        "préambule (\"Je vais...\", \"Bien sûr Floriace...\"). Le JSON déclenche l'action, "
+        "et le confirmateur d'action te répondra avec le résultat. Pour la conversation "
+        "naturelle, sois direct, percutant, va à l'essentiel."
     )
     return base
 

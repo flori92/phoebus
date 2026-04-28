@@ -614,6 +614,199 @@ async def executer_une_action(d):
         return
 
     # ── PLAYWRIGHT (automatisation navigateur) ───────────────────────────────
+    # ── RÉSEAU LAN (découverte + WOL + ping) ─────────────────────────────────
+    elif action == "network_scan":
+        from PHOEBUS import network as _net
+        devices = await _net.discover(refresh=bool(d.get("refresh")))
+        if not devices:
+            await parler("Je n'ai vu aucun appareil sur le réseau.")
+            return
+        # Résumé court parlé : compte + premiers exemples notables.
+        nb = len(devices)
+        sample = []
+        for dev in devices:
+            label = _net.label_for_device(dev)
+            services = [s.get("type", "") for s in (dev.get("services") or [])]
+            tag = ""
+            if any("airplay" in s for s in services):
+                tag = " (Apple TV)"
+            elif any("googlecast" in s for s in services):
+                tag = " (Chromecast)"
+            elif any("printer" in s or "ipp" in s for s in services):
+                tag = " (imprimante)"
+            elif any("hue" in s for s in services):
+                tag = " (Philips Hue)"
+            sample.append(label + tag)
+            if len(sample) >= 6:
+                break
+        await parler(f"J'ai détecté {nb} appareils sur le réseau, dont : "
+                     + ", ".join(sample) + ".")
+        return
+
+    elif action == "network_ping_sweep":
+        from PHOEBUS import network as _net
+        await parler("Je balaie le sous-réseau, ça prend quelques secondes.")
+        ips = await _net.ping_sweep(d.get("subnet"))
+        await parler(f"{len(ips)} adresses répondent au ping.")
+        return
+
+    elif action == "network_ping":
+        from PHOEBUS import network as _net
+        ip = d.get("ip", "")
+        if not ip:
+            await parler("Je n'ai pas d'adresse IP à pinger.")
+            return
+        ok = await _net._ping_one(ip, timeout_s=2.0)
+        await parler(f"{ip} {'répond' if ok else 'ne répond pas'}.")
+        return
+
+    elif action == "network_wake":
+        from PHOEBUS import network as _net
+        mac = d.get("mac", "")
+        if not mac:
+            await parler("Il me faut l'adresse MAC à réveiller.")
+            return
+        ok = await asyncio.to_thread(_net.wake_on_lan, mac, d.get("broadcast", "255.255.255.255"))
+        await parler("Magic packet envoyé." if ok else "Réveil refusé : MAC invalide.")
+        return
+
+    elif action == "network_probe":
+        from PHOEBUS import network as _net
+        ip = d.get("ip", "")
+        if not ip:
+            await parler("Je n'ai pas d'adresse IP à sonder.")
+            return
+        services = await _net.probe_services(ip)
+        if not services:
+            await parler(f"{ip} ne semble exposer aucun service standard.")
+            return
+        services_str = ", ".join(f"{name}({port})" for port, name in services.items())
+        await parler(f"Sur {ip}, j'ai détecté : {services_str}.")
+        return
+
+    # ── MQTT (objets connectés directs) ──────────────────────────────────────
+    elif action == "mqtt_publish":
+        from PHOEBUS import mqtt_skill as _mq
+        topic = d.get("topic", "")
+        payload = str(d.get("payload", ""))
+        msg = await asyncio.to_thread(_mq.publish, topic, payload,
+                                      int(d.get("qos", 0)),
+                                      bool(d.get("retain", False)))
+        await parler(msg)
+        return
+
+    elif action == "mqtt_subscribe":
+        from PHOEBUS import mqtt_skill as _mq
+        topic = d.get("topic", "")
+        wait = float(d.get("wait_s", 5.0))
+        msg = await asyncio.to_thread(_mq.subscribe, topic, wait)
+        await parler(msg)
+        return
+
+    elif action == "mqtt_discover":
+        from PHOEBUS import mqtt_skill as _mq
+        wait = float(d.get("wait_s", 10.0))
+        await parler("J'écoute le broker MQTT, un instant.")
+        msg = await asyncio.to_thread(_mq.discover, wait)
+        await parler(msg)
+        return
+
+    # ── CODE PYTHON (calculer / scripter à la volée) ─────────────────────────
+    elif action == "python_run":
+        from PHOEBUS import code_runner as _cr
+        code = d.get("code", "")
+        result = await _cr.run_python(code, timeout_s=float(d.get("timeout_s", 5.0)))
+        await parler(_cr.format_result_for_speech(result))
+        return
+
+    # ── CONNAISSANCE (Wikipedia / Wolfram / GitHub / RSS) ─────────────────────
+    elif action == "knowledge_query":
+        from PHOEBUS import knowledge as _kn
+        question = d.get("question") or d.get("query", "")
+        if not question:
+            await parler("Quelle question dois-je creuser ?")
+            return
+        rep = await _kn.query(question)
+        await parler(rep or "Je n'ai rien trouvé là-dessus.")
+        return
+
+    # ── CONTRÔLE SYSTÈME (macOS principalement) ──────────────────────────────
+    elif action == "system_lock":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.lock_screen())
+        return
+    elif action == "system_sleep":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.sleep_now())
+        return
+    elif action == "system_empty_trash":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.empty_trash())
+        return
+    elif action == "system_volume":
+        from PHOEBUS import system_control as _sc
+        v = int(d.get("percent", d.get("volume", 50)))
+        await parler(await _sc.set_volume(v))
+        return
+    elif action == "system_mute":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.mute())
+        return
+    elif action == "system_unmute":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.unmute())
+        return
+    elif action == "system_notify":
+        from PHOEBUS import system_control as _sc
+        title = d.get("title", "PHOEBUS")
+        message = d.get("message", "")
+        await parler(await _sc.notify(title, message))
+        return
+    elif action == "system_open_app":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.open_app(d.get("name", "")))
+        return
+    elif action == "system_quit_app":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.quit_app(d.get("name", "")))
+        return
+    elif action == "system_screenshot":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.screenshot(d.get("path", "/tmp/phoebus_shot.png")))
+        return
+    elif action == "system_brightness":
+        from PHOEBUS import system_control as _sc
+        await parler(await _sc.set_brightness(int(d.get("percent", 60))))
+        return
+
+    # ── CAST MÉDIA (AirPlay / Chromecast) ────────────────────────────────────
+    elif action == "cast_list":
+        from PHOEBUS import cast as _cast
+        receivers = await _cast.list_receivers()
+        if not receivers:
+            await parler("Aucun receiver AirPlay ou Chromecast détecté.")
+            return
+        names = ", ".join(f"{r['name']} ({r['kind']})" for r in receivers[:6])
+        await parler(f"Receivers disponibles : {names}.")
+        return
+    elif action == "cast_play":
+        from PHOEBUS import cast as _cast
+        target = d.get("target", "")
+        url = d.get("url", "")
+        kind = d.get("kind")
+        await parler(await _cast.cast_play(target, url, kind))
+        return
+    elif action == "cast_youtube":
+        from PHOEBUS import cast as _cast
+        target = d.get("target", "")
+        q = d.get("query") or d.get("url", "")
+        await parler(await _cast.cast_youtube(target, q))
+        return
+    elif action == "cast_stop":
+        from PHOEBUS import cast as _cast
+        await parler(await _cast.cast_stop(d.get("target", "")))
+        return
+
     elif action == "playwright_run":
         from PHOEBUS import playwright_skill as _pw
         script = d.get("script", "")

@@ -282,6 +282,57 @@ def test_brain_router_prefers_arena_for_deep_thinking():
     assert ranked[0] == "arena"
 
 
+def test_network_intents():
+    from PHOEBUS.intent import detect
+    assert detect("scanne le réseau").name == "network_scan"
+    assert detect("liste le wifi").name == "network_scan"
+    assert detect("ping 192.168.1.20").name == "network_ping"
+    r = detect("réveille aa:bb:cc:dd:ee:ff")
+    assert r is not None and r.name == "network_wake"
+
+
+def test_system_intents():
+    from PHOEBUS.intent import detect
+    assert detect("verrouille la session").name == "system_lock"
+    assert detect("verrouille").name == "system_lock"
+    assert detect("vide la corbeille").name == "system_empty_trash"
+    assert detect("coupe le son").name == "system_mute"
+    assert detect("rétablis le son").name == "system_unmute"
+    assert detect("mets le volume système à 40").name == "system_volume"
+    assert detect("capture d'écran").name == "system_screenshot"
+
+
+def test_knowledge_intent_dispatch():
+    from PHOEBUS.intent import detect
+    r = detect("c'est quoi la photosynthèse")
+    assert r is not None and r.name == "knowledge_query"
+    r = detect("qui est Spinoza")
+    assert r is not None and r.name == "knowledge_query"
+    assert detect("donne-moi les actualités").name == "news"
+
+
+def test_code_runner_audit_blocks_dangerous():
+    from PHOEBUS.code_runner import _audit
+    # Imports interdits
+    assert _audit("import os\nos.system('ls')") is not None
+    assert _audit("import subprocess") is not None
+    assert _audit("__import__('os')") is not None
+    assert _audit("eval('1+1')") is not None
+    # Code légitime passe
+    assert _audit("import math\nprint(math.pi)") is None
+    assert _audit("import datetime\nprint(datetime.date.today())") is None
+
+
+def test_knowledge_query_dispatcher_classifies():
+    from PHOEBUS.knowledge import _looks_like_calc, _looks_like_news, _looks_like_code
+    assert _looks_like_calc("convertis 3500 USD en EUR")
+    assert _looks_like_calc("calcule 2 + 2 * 3")
+    assert _looks_like_news("donne-moi les actualités")
+    assert _looks_like_code("trouve un exemple de code Python")
+    assert not _looks_like_calc("qui est Bach")
+    assert not _looks_like_news("explique-moi la relativité")
+
+
 def test_camera_intent_routing():
     """Les intents caméra doivent être bien classés (PC vs téléphone vs IP)."""
     from PHOEBUS.intent import detect
@@ -349,6 +400,11 @@ def _run_all():
         test_observability_records_and_renders,
         test_brain_router_prefers_arena_for_deep_thinking,
         test_camera_intent_routing,
+        test_network_intents,
+        test_system_intents,
+        test_knowledge_intent_dispatch,
+        test_code_runner_audit_blocks_dangerous,
+        test_knowledge_query_dispatcher_classifies,
     ]
     failed = 0
     for fn in tests:
