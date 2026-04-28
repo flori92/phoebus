@@ -13,6 +13,7 @@ from PHOEBUS.audio_optimization import check_hallucination
 from PHOEBUS.voice import parler
 from PHOEBUS.security import audit_log, risk_level_for, describe_action, is_confirmation_text, is_cancellation_text
 from PHOEBUS.rag_memory import stocker_souvenir
+from PHOEBUS.natural_goals import resolve_pre_ai_goal, resolve_after_ai_failure
 
 # Constantes de délai
 AI_COMMAND_TIMEOUT = float(os.getenv("PHOEBUS_AI_COMMAND_TIMEOUT", "35.0"))
@@ -117,6 +118,11 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
             timeout=AI_COMMAND_TIMEOUT,
         )
 
+        if not rep_finale_ia:
+            msg = "Je n'ai pas bien entendu, Floriace. Reformule-moi la demande."
+            await _parler_safe(msg)
+            return msg
+
         if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
             await traiter_reponse_ia(rep_finale_ia)
             return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
@@ -168,11 +174,26 @@ async def route_request(
             await on_sentence(intent.reply)
         return intent.reply
 
+    goal = resolve_pre_ai_goal(texte)
+    if goal is not None:
+        print(f"[ROUTER] Objectif naturel : {goal.name} ({goal.reason})")
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", goal.reply)
+        return goal.reply
+
     # Intelligence Cloud / Hybride
     if on_sentence:
-        return await demander_ia_stream(texte, on_sentence=on_sentence)
+        rep = await demander_ia_stream(texte, on_sentence=on_sentence)
     else:
-        return await demander_ia(texte)
+        rep = await demander_ia(texte)
+
+    fallback = resolve_after_ai_failure(texte, rep or "")
+    if fallback is not None:
+        print(f"[ROUTER] Fallback objectif : {fallback.name} ({fallback.reason})")
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", fallback.reply)
+        return fallback.reply
+    return rep
 
 async def traiter_reponse_ia(reponse: str, _request_id: str | None = None) -> bool:
     """Analyse la réponse de l'IA, extrait le JSON et exécute les actions."""

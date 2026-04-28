@@ -1,5 +1,6 @@
 """Tests pour le routeur central PHOEBUS."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,6 +9,7 @@ import PHOEBUS.state as state
 from PHOEBUS.router import (
     executer_commande_generique,
     extraire_json_de_reponse,
+    route_request,
     traiter_reponse_ia,
 )
 
@@ -72,6 +74,52 @@ class TestExecuterCommandeGenerique:
         assert "justwatch.com" in mock_open.call_args.args[0]
         mock_parler.assert_awaited_once()
         assert "Propositions rapides" in mock_parler.await_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_recherche_naturelle_passe_par_objectif_web(self):
+        rep = await route_request("trouve-moi un bon casque bluetooth", source="test")
+
+        payload = json.loads(rep)
+        assert payload == {
+            "action": "recherche_web",
+            "query": "trouve-moi un bon casque bluetooth",
+        }
+
+    @pytest.mark.asyncio
+    async def test_action_naturelle_passe_par_planificateur(self):
+        rep = await route_request("je veux installer VLC sur mon Mac", source="test")
+
+        payload = json.loads(rep)
+        assert payload == {
+            "action": "agent_planifie",
+            "instruction": "je veux installer VLC sur mon Mac",
+        }
+
+    @pytest.mark.asyncio
+    async def test_reponse_incapable_bascule_sur_fallback(self):
+        with patch("PHOEBUS.router.demander_ia", new_callable=AsyncMock) as mock_ia:
+            mock_ia.return_value = "Je ne peux pas accéder à cette information."
+
+            rep = await route_request("explique moi la virtualisation", source="test")
+
+        payload = json.loads(rep)
+        assert payload == {
+            "action": "knowledge_query",
+            "question": "explique moi la virtualisation",
+        }
+
+    @pytest.mark.asyncio
+    async def test_reponse_vide_demande_reformulation(self):
+        with (
+            patch("PHOEBUS.router.route_request", new_callable=AsyncMock) as mock_route,
+            patch("PHOEBUS.router._parler_safe", new_callable=AsyncMock) as mock_parler,
+        ):
+            mock_route.return_value = ""
+
+            result = await executer_commande_generique("sous-titres", source="test")
+
+        assert "pas bien entendu" in result
+        mock_parler.assert_awaited_once()
 
 
 class TestTraiterReponseIA:

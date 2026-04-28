@@ -797,6 +797,13 @@ async def demander_ia_stream(texte, on_sentence=None):
     silencieux sur `demander_ia` classique.
     """
     from PHOEBUS.sentence_splitter import split_streaming
+    from PHOEBUS.natural_goals import looks_like_incapable_response
+
+    async def _emit_fallback_text(rep: str) -> None:
+        if not on_sentence or not rep or "{" in rep or looks_like_incapable_response(rep):
+            return
+        for s in split_streaming(rep + " ")[0]:
+            await on_sentence(s)
 
     state.is_thinking = True
     state.mark_user_activity()
@@ -821,16 +828,12 @@ async def demander_ia_stream(texte, on_sentence=None):
         # meilleur choix disponible, sinon Groq/Mistral répondent souvent plus vite.
         if not client or not types:
             rep = await demander_ia(texte)
-            if on_sentence and rep and "{" not in rep:
-                for s in split_streaming(rep + " ")[0]:
-                    await on_sentence(s)
+            await _emit_fallback_text(rep)
             return rep
 
         if not order or order[0] != "gemini":
             rep = await demander_ia(texte)
-            if on_sentence and rep and "{" not in rep:
-                for s in split_streaming(rep + " ")[0]:
-                    await on_sentence(s)
+            await _emit_fallback_text(rep)
             return rep
 
         # Vérifier si Gemini est en cooldown — deux sources :
@@ -843,9 +846,7 @@ async def demander_ia_stream(texte, on_sentence=None):
         if cooldown_until > time.time() or llm_skip("gemini"):
             # Gemini est en cooldown (quota exhausted, etc.) : skip au non-streaming
             rep = await demander_ia(texte)
-            if on_sentence and rep and "{" not in rep:
-                for s in split_streaming(rep + " ")[0]:
-                    await on_sentence(s)
+            await _emit_fallback_text(rep)
             return rep
 
         prompt_actuel = construire_system_prompt(texte)
@@ -934,9 +935,7 @@ async def demander_ia_stream(texte, on_sentence=None):
             llm_fail("gemini", last_err)
         print(f"[STREAM] Gemini KO ({llm_reason(str(last_err))}) — repli non-streaming.")
         rep = await demander_ia(texte)
-        if on_sentence and rep and "{" not in rep:
-            for s in split_streaming(rep + " ")[0]:
-                await on_sentence(s)
+        await _emit_fallback_text(rep)
         return rep
     finally:
         state.is_thinking = False
