@@ -36,6 +36,122 @@ from PHOEBUS.vision import (
 from PHOEBUS.agent import orchestrer_agent_autonome
 from PHOEBUS.voice import parler
 from PHOEBUS.skills import is_skill_registered, execute_skill, describe_skill, risk_of
+import os
+import sys
+
+# Constantes de délai
+AI_COMMAND_TIMEOUT = float(os.getenv("PHOEBUS_AI_COMMAND_TIMEOUT", "35.0"))
+
+
+async def _parler_safe(texte: str, keep_conversation: bool = True) -> None:
+    try:
+        await parler(texte, keep_conversation=keep_conversation)
+    except Exception as e:
+        print(f"[VOICE] parole ignorée après erreur : {e}")
+
+
+class _SpeechQueue:
+    """File de parole non bloquante: le LLM continue pendant que PHOEBUS parle."""
+
+    def __init__(self):
+        self._queue = asyncio.Queue()
+        self._task = None
+
+    async def say(self, texte: str) -> None:
+        if not texte or not texte.strip():
+            return
+        if self._task is None:
+            self._task = asyncio.create_task(self._run())
+        self._queue.put_nowait(texte)
+
+    async def _run(self) -> None:
+        while True:
+            texte = await self._queue.get()
+            if texte is None:
+                self._queue.task_done()
+                return
+            try:
+                await _parler_safe(texte)
+            finally:
+                self._queue.task_done()
+
+    def close(self) -> None:
+        if self._task is not None and not self._task.done():
+            self._queue.put_nowait(None)
+
+
+async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
+    """Exécute une commande texte et renvoie la réponse textuelle finale."""
+    if not texte: return ""
+    
+    state.mark_user_activity()
+    meta_str = ""
+    if metadata:
+        m = metadata
+        meta_str = f" [Batt: {m.get('battery')}% | Loc: {m.get('location')} | Focus: {m.get('focus')}]"
+    
+    print(f"[{source.upper()}{meta_str}] {texte}")
+    
+    # On injecte les métadonnées dans le contexte pour l'IA
+    contexte_ios = ""
+    if metadata:
+        contexte_ios = (
+            f"\n[INFO IPHONE] Batterie: {metadata.get('battery')}% | "
+            f"Position: {metadata.get('location')} | "
+            f"Mode de concentration: {metadata.get('focus')}\n"
+        )
+
+    query_enrichie = contexte_ios + texte
+
+    # Pour collecter la réponse textuelle
+    full_text_parts = []
+
+    spoken = {"v": False}
+    speech = _SpeechQueue()
+
+    async def _on_sentence(s):
+        nonlocal spoken
+        spoken["v"] = True
+        full_text_parts.append(s)
+        await speech.say(s)
+
+    try:
+        from PHOEBUS.router import route_request
+        # On utilise le router centralisé (PHOEBUS 3.0)
+        rep_finale_ia = await asyncio.wait_for(
+            route_request(query_enrichie, source=source, metadata=metadata, on_sentence=_on_sentence),
+            timeout=AI_COMMAND_TIMEOUT,
+        )
+
+        # Cas 1 : C'est du JSON (Action technique)
+        if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
+            await traiter_reponse_ia(rep_finale_ia)
+            # On renvoie une confirmation courte si c'est une commande muette.
+            return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
+
+        # Cas 2 : Réponse textuelle normale
+        if not spoken["v"] and rep_finale_ia:
+            # Si le streaming a échoué mais qu'on a une réponse brute.
+            if not await traiter_reponse_ia(rep_finale_ia):
+                await speech.say(rep_finale_ia)
+                return rep_finale_ia
+
+        return " ".join(full_text_parts).strip() or rep_finale_ia or ""
+
+    except asyncio.TimeoutError:
+        msg = "Je réfléchis encore, Floriace. La réponse vocale arrive dès que le cerveau se débloque."
+        await speech.say(msg)
+        return msg
+    except Exception as e:
+        print(f"[COMMANDE] Erreur traitement {source} : {e}")
+        msg = "J'ai eu un raté interne, Floriace, mais je reste opérationnel."
+        await speech.say(msg)
+        return msg
+    finally:
+        # On reste à l'écoute après une commande externe et on laisse la file
+        # audio terminer en arrière-plan.
+        state.extend_conversation()
+        speech.close()
 
 # Imports optionnels des nouveaux modules
 try:

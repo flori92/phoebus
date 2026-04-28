@@ -10,7 +10,6 @@ import PHOEBUS.state as state
 from PHOEBUS.config import WS_AUTH_REQUIRED
 from PHOEBUS.intent import detect as detect_intent
 from PHOEBUS.ai import demander_ia, demander_ia_stream
-from PHOEBUS.actions import executer_commande_generique
 from PHOEBUS.audio_optimization import check_hallucination
 
 async def route_request(
