@@ -23,7 +23,7 @@ from PHOEBUS.ai import demander_ia_vision
 from PHOEBUS.router import executer_commande_generique, traiter_reponse_ia
 from PHOEBUS.voice import parler
 from PHOEBUS.stt_backends import get_backend as get_stt_backend, recognize_with_verification
-from PHOEBUS.clarify import transcription_incertaine
+from PHOEBUS.clarify import transcription_incertaine, transcription_bruit_media
 from PHOEBUS import proactive
 
 
@@ -446,6 +446,7 @@ def listen_and_process(main_loop):
         print("[MIC] Aucun back-end STT disponible.")
         return
     print(f"[MIC] Back-end STT actif : {stt_name}")
+    debug_mic = os.getenv("PHOEBUS_DEBUG_MIC", "0").strip().lower() in {"1", "true", "yes", "on"}
 
     r = sr.Recognizer()
     # On ajuste les paramètres pour être moins sensible au bruit de fond/silence
@@ -482,7 +483,8 @@ def listen_and_process(main_loop):
                     # On réduit le timeout pour boucler plus souvent et rester réactif
                     try:
                         audio = r.listen(source, timeout=5, phrase_time_limit=12)
-                        print("[MIC] Audio capturé, transcription en cours...")
+                        if debug_mic:
+                            print("[MIC] Audio capturé, transcription en cours...")
                     except sr.WaitTimeoutError:
                         # Timeout normal quand personne ne parle, on continue simplement
                         continue
@@ -500,8 +502,13 @@ def listen_and_process(main_loop):
                         from PHOEBUS.utils import normalize_text
                         this_clean = normalize_text(texte)
                         
-                        if this_clean in HALLUCINATIONS_STT or len(this_clean) < 2:
-                            # print(f"[MIC] Hallucination ignorée : \"{texte}\"")
+                        if (
+                            this_clean in HALLUCINATIONS_STT
+                            or transcription_bruit_media(texte)
+                            or len(this_clean) < 2
+                        ):
+                            if debug_mic:
+                                print(f"[MIC] Bruit média/STT ignoré : \"{texte}\"")
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 
@@ -562,7 +569,19 @@ def listen_and_process(main_loop):
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
-                    # On ne passe en 'thinking' que si on a vraiment du texte à traiter
+                    texte_l = texte.lower()
+                    # Liste élargie pour pallier les erreurs de transcription (phonétique proche)
+                    WAKE_WORDS = ["PHOEBUS", "phébus", "fébus", "febus", "feubus", "rebus"]
+                    wake = any(w.lower() in texte_l for w in WAKE_WORDS)
+                    en_conversation = state.is_in_conversation()
+
+                    if not (wake or en_conversation):
+                        # Trop de bruit ambiant ? On réinitialise l'état et on continue.
+                        state.is_listening = False
+                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                        continue
+
+                    # On ne passe en 'thinking' que si le texte est adressé à PHOEBUS.
                     asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
                     print(f"\n[VOUS] {texte}")
 
@@ -577,7 +596,7 @@ def listen_and_process(main_loop):
 
                     # Transcription trop courte / charabia → on redemande
                     # plutôt que d'halluciner une réponse.
-                    if state.is_in_conversation() and transcription_incertaine(texte):
+                    if en_conversation and transcription_incertaine(texte):
                         asyncio.run_coroutine_threadsafe(
                             parler("Pardon, je n'ai pas bien compris. Vous pouvez répéter ?"),
                             main_loop,
@@ -586,17 +605,6 @@ def listen_and_process(main_loop):
                         continue
 
                     state.mark_user_activity()
-                    texte_l = texte.lower()
-                    # Liste élargie pour pallier les erreurs de transcription (phonétique proche)
-                    WAKE_WORDS = ["PHOEBUS", "phébus", "fébus", "febus", "feubus", "rebus"]
-                    wake = any(w.lower() in texte_l for w in WAKE_WORDS)
-                    en_conversation = state.is_in_conversation()
-
-                    if not (wake or en_conversation):
-                        # Trop de bruit ambiant ? On réinitialise l'état et on continue.
-                        state.is_listening = False
-                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
-                        continue
 
                     # On nettoie le texte pour l'IA (enlever le mot d'appel s'il est au début)
                     cleaned_texte = texte

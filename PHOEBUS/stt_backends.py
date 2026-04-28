@@ -20,7 +20,7 @@ PHOEBUS_STT_VERIFY_BACKENDS = [
     for item in os.getenv("PHOEBUS_STT_VERIFY_BACKENDS", "google,whisper").split(",")
     if item.strip()
 ]
-PHOEBUS_STT_LOG = os.getenv("PHOEBUS_STT_LOG", "1").strip().lower() in {"1", "true", "yes", "on"}
+PHOEBUS_STT_LOG = os.getenv("PHOEBUS_STT_LOG", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 _backend_cache = None

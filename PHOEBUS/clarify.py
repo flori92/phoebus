@@ -16,6 +16,41 @@ _MOTS_COURTS_IGNORE = {
 }
 
 _TOKENS_BLABLA = re.compile(r"[a-zA-ZÀ-ÿ']+")
+_MEDIA_NOISE_PATTERNS = (
+    r"^merci d avoir regarde\b",
+    r"^merci de nous regarder\b",
+    r"^merci de votre ecoute\b",
+    r"^sous titr(?:age|es?)\b",
+    r"\bst\s*\d+\b",
+    r"\bsubtitles?\b",
+    r"\bcaptions?\b",
+    r"\bamara\b",
+    r"\byoutube\b",
+    r"\babonnez vous\b",
+    r"\bcliquez ici\b",
+)
+
+
+def _compact_transcription(texte: str) -> str:
+    from PHOEBUS.utils import normalize_text
+
+    t = normalize_text(texte)
+    t = re.sub(r"[^\w\s]", " ", t, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def transcription_bruit_media(texte: str) -> bool:
+    """Détecte les transcriptions typiques de vidéo/sous-titres à ignorer."""
+    if not texte:
+        return True
+    raw = str(texte).strip()
+    if not raw or set(raw) <= {".", "…", " "}:
+        return True
+
+    t = _compact_transcription(raw)
+    if not t:
+        return True
+    return any(re.search(pattern, t, re.IGNORECASE) for pattern in _MEDIA_NOISE_PATTERNS)
 
 
 def transcription_incertaine(texte: str) -> bool:

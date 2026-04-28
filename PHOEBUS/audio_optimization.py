@@ -220,8 +220,11 @@ class AcousticProcessor:
             float entre 0.0 (hallucination probable) et 1.0 (confiance haute)
         """
         import re
+        from PHOEBUS.clarify import transcription_bruit_media
         
         text = transcription.strip()
+        if transcription_bruit_media(text):
+            return 0.0
         
         # 1. Vérifier liste connue d'hallucinations
         if text in KNOWN_HALLUCINATIONS:

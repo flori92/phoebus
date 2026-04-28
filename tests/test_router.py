@@ -109,7 +109,7 @@ class TestExecuterCommandeGenerique:
         }
 
     @pytest.mark.asyncio
-    async def test_reponse_vide_demande_reformulation(self):
+    async def test_reponse_vide_reste_silencieuse(self):
         with (
             patch("PHOEBUS.router.route_request", new_callable=AsyncMock) as mock_route,
             patch("PHOEBUS.router._parler_safe", new_callable=AsyncMock) as mock_parler,
@@ -118,8 +118,8 @@ class TestExecuterCommandeGenerique:
 
             result = await executer_commande_generique("sous-titres", source="test")
 
-        assert "pas bien entendu" in result
-        mock_parler.assert_awaited_once()
+        assert result == ""
+        mock_parler.assert_not_awaited()
 
 
 class TestTraiterReponseIA:

@@ -2,6 +2,7 @@
 """Synthèse vocale (TTS), reconnaissance (STT) et logique de fallback local."""
 import platform
 import audioop
+import os
 import re
 import math
 import time
