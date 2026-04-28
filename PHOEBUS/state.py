@@ -22,6 +22,20 @@ PENDING_SCREEN_CAPTURES = {}
 # Captures caméra téléphone en attente : {req_id: asyncio.Future}
 PENDING_PHONE_CAPTURES = {}
 
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 # ── Flags globaux ───────────────────────────────────────────────────────────
 interface_deja_connectee = False
 _skip_pc_audio = False
@@ -48,7 +62,7 @@ INTERPRETE_LANGUE_CIBLE = "anglais"
 # ─────────
 # Pendant cette fenêtre, le mot-clé "PHOEBUS" n'est plus requis : on enchaîne
 # naturellement avec des échanges suivis, comme avec un humain.
-CONVERSATION_WINDOW_SECONDS = 10
+CONVERSATION_WINDOW_SECONDS = _float_env("PHOEBUS_CONVERSATION_WINDOW_SECONDS", 45.0)
 conversation_deadline_ts = 0.0
 
 # ── Activité utilisateur / silence ─────────────────────────────────────────
@@ -56,24 +70,14 @@ conversation_deadline_ts = 0.0
 last_user_activity_ts = 0.0
 silence_ping_sent = False  # Évite de repinger en boucle après un long silence.
 
-def _int_env(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
-def _float_env(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
 
 # ── Barge-in (interruption de PHOEBUS par la voix) ─────────────────────────
 BARGE_IN_THRESHOLD = _int_env("PHOEBUS_BARGE_IN_THRESHOLD", 4500)
 BARGE_IN_CONSECUTIVE_CHUNKS = _int_env("PHOEBUS_BARGE_IN_CONSECUTIVE_CHUNKS", 4)
-BARGE_IN_CONVERSATION_SECONDS = _float_env("PHOEBUS_BARGE_IN_CONVERSATION_SECONDS", 30.0)
+BARGE_IN_CONVERSATION_SECONDS = _float_env(
+    "PHOEBUS_BARGE_IN_CONVERSATION_SECONDS",
+    CONVERSATION_WINDOW_SECONDS,
+)
 
 # ── Anti-Écho (PHOEBUS ne se parle pas à lui-même) ─────────────────────────
 last_PHOEBUS_speech = ""    # Texte exact du dernier bloc prononcé

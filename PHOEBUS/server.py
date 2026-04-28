@@ -24,6 +24,7 @@ from PHOEBUS.router import executer_commande_generique, traiter_reponse_ia
 from PHOEBUS.voice import parler
 from PHOEBUS.stt_backends import get_backend as get_stt_backend, recognize_with_verification
 from PHOEBUS.clarify import transcription_incertaine, transcription_bruit_media
+from PHOEBUS.wake_utils import has_wake_word, strip_wake_word, is_stop_conversation
 from PHOEBUS import proactive
 
 
@@ -572,13 +573,13 @@ def listen_and_process(main_loop):
                         continue
 
                     texte_l = texte.lower()
-                    # Liste élargie pour pallier les erreurs de transcription (phonétique proche)
-                    WAKE_WORDS = ["PHOEBUS", "phébus", "fébus", "febus", "feubus", "rebus"]
-                    wake = any(w.lower() in texte_l for w in WAKE_WORDS)
+                    wake = has_wake_word(texte)
                     en_conversation = state.is_in_conversation()
 
                     if not (wake or en_conversation):
                         # Trop de bruit ambiant ? On réinitialise l'état et on continue.
+                        if debug_mic:
+                            print(f"[MIC] Hors wake/conversation ignoré : \"{texte}\"")
                         state.is_listening = False
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
@@ -608,18 +609,24 @@ def listen_and_process(main_loop):
 
                     state.mark_user_activity()
 
-                    # On nettoie le texte pour l'IA (enlever le mot d'appel s'il est au début)
-                    cleaned_texte = texte
-                    if wake and not en_conversation:
-                        for w in WAKE_WORDS:
-                            if texte_l.startswith(w.lower()):
-                                cleaned_texte = texte[len(w):].strip(", ").strip()
-                                break
+                    # "stop / tais-toi / laisse tomber" pendant une conversation :
+                    # on ferme la fenêtre pour redevenir discret.
+                    if en_conversation and is_stop_conversation(texte):
+                        state.end_conversation()
+                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                        continue
+
+                    # On nettoie le texte pour l'IA : le mot d'appel peut être au
+                    # début ("Phoebus météo") ou au milieu ("Bonjour Phoebus").
+                    cleaned_texte = strip_wake_word(texte) if wake else texte
 
                     if wake and not cleaned_texte.strip(" ,.!?:;"):
-                        state.extend_conversation(seconds=30)
+                        state.extend_conversation()
+                        prompt = "Oui, je vous écoute."
+                        if any(m in texte_l for m in ("bonjour", "salut", "coucou")):
+                            prompt = "Bonjour Floriace, je vous écoute."
                         asyncio.run_coroutine_threadsafe(
-                            parler("Oui, je vous écoute.", keep_conversation=False),
+                            parler(prompt, keep_conversation=False),
                             main_loop,
                         )
                         continue
@@ -629,18 +636,6 @@ def listen_and_process(main_loop):
                         state.MODE_IRON_MAN = True
                         asyncio.run_coroutine_threadsafe(parler("Mode Iron Man activé."), main_loop)
                         state.extend_conversation()
-                        continue
-
-                    # "stop / tais-toi / laisse tomber" pendant une conversation :
-                    # on ferme la fenêtre pour redevenir discret.
-                    if en_conversation and not wake and any(
-                        m in texte_l for m in (
-                            "laisse tomber", "laisse-moi", "tais-toi", "chut",
-                            "stop phoebus", "merci phoebus", "c'est bon phoebus",
-                        )
-                    ):
-                        state.end_conversation()
-                        asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
                     # ── MODE INTERPRÈTE ── (Priorité haute)
@@ -809,7 +804,7 @@ async def main():
             """Appelée par le thread wake word quand 'Hey PHOEBUS' est détecté."""
             if state.is_in_conversation():
                 return  # Déjà en mode conversation, inutile de réactiver
-            state.extend_conversation(seconds=30)
+            state.extend_conversation()
             asyncio.run_coroutine_threadsafe(
                 parler("Oui, je vous écoute.", keep_conversation=False),
                 main_loop
