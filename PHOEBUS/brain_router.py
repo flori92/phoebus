@@ -16,8 +16,8 @@ from typing import Iterable, Optional
 
 from PHOEBUS.config import BASE_DIR
 
-PROVIDERS = ("gemini", "groq", "mistral", "arena", "openai", "ollama")
-DEFAULT_ORDER = ("mistral", "gemini", "groq", "arena", "openai", "ollama")
+PROVIDERS = ("gemini", "groq", "grok", "mistral", "arena", "openai", "ollama")
+DEFAULT_ORDER = ("mistral", "gemini", "groq", "grok", "arena", "openai", "ollama")
 METRICS_FILE = BASE_DIR / "logs" / "ai_router_metrics.json"
 FAIL_COOLDOWN_SECONDS = 45
 QUOTA_COOLDOWN_SECONDS = 3600  # 1 heure pour les erreurs de quota (429)
@@ -93,7 +93,7 @@ def build_profile(
         "meteo",
         "météo",
     )
-    x_markers = ("sur x", "twitter", "x.com", "elon")
+    x_markers = ("sur x", "twitter", "x.com", "grok", "elon")
     command_markers = (
         "allume",
         "eteins",
@@ -126,7 +126,7 @@ def build_profile(
     )
 
     needs_realtime = any(m in t for m in realtime_markers)
-    preferred = "arena" if any(m in t for m in x_markers) else None
+    preferred = "grok" if any(m in t for m in x_markers) else None
 
     if any(m in t for m in command_markers):
         kind = "command"
@@ -257,6 +257,8 @@ def rank_provider_names(
         base = _move_first(base, "ollama")
     elif profile.preferred_provider:
         base = _move_first(base, profile.preferred_provider)
+        if profile.preferred_provider == "grok" and "grok" not in available_set and "arena" in base:
+            base = _move_first(base, "arena")
     elif mode == "speed":
         # Groq est souvent le meilleur compromis latence pour les reponses texte.
         base = _move_first(base, "groq")

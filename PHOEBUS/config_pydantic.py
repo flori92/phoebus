@@ -16,6 +16,7 @@ class LLMConfig(BaseSettings):
 
     gemini_api_key: Optional[str] = Field(default=None, description="Clé API Gemini")
     groq_api_key: Optional[str] = Field(default=None, description="Clé API Groq")
+    xai_api_key: Optional[str] = Field(default=None, description="Clé API xAI/Grok")
     mistral_api_key: Optional[str] = Field(default=None, description="Clé API Mistral")
     openai_api_key: Optional[str] = Field(default=None, description="Clé API OpenAI")
 
@@ -88,6 +89,8 @@ class PhoebusConfig(BaseSettings):
             providers.append("gemini")
         if self.llm.groq_api_key:
             providers.append("groq")
+        if self.llm.xai_api_key:
+            providers.append("grok")
         if self.llm.mistral_api_key:
             providers.append("mistral")
         if self.llm.openai_api_key:

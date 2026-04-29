@@ -32,6 +32,7 @@ PHOEBUS route maintenant chaque requete vers le meilleur cerveau disponible:
 - fast-path local pour les commandes evidentes (domotique, heure, date)
 - Gemini pour les requetes complexes, la recherche outillee et la vision
 - Groq pour les reponses texte tres rapides
+- Grok/xAI pour les sujets X/Twitter, les requetes temps reel orientees actualite
 - Arena via LMArenaBridge local pour acceder aux modeles gratuits exposes par LM Arena
 - Mistral comme cerveau francophone/europeen secondaire
 - OpenAI (GPT-4o) comme fournisseur de secours
@@ -55,7 +56,7 @@ Configurez le comportement dans `.env`:
 
 ```bash
 PHOEBUS_BRAIN_MODE=balanced   # balanced | speed | smart | privacy
-PHOEBUS_BRAIN_ORDER=gemini,groq,arena,mistral,openai,ollama
+PHOEBUS_BRAIN_ORDER=gemini,groq,grok,arena,mistral,openai,ollama
 ```
 
 Les metriques de latence/echec sont stockees dans `logs/ai_router_metrics.json`.
@@ -126,7 +127,7 @@ Le fichier versionne est `phoebus_devices.example.json`. La copie locale
 
 ## Securite
 
-- websocket local sans appairage par token
+- websocket local avec pairing par appareil, sans token dans l'URL
 - journal d'audit JSONL dans `logs/audit.jsonl`
 - confirmation vocale obligatoire pour les actions sensibles
 - secrets locaux ignores par Git (`.env`, `credentials.json`, `phoebus_devices.json`)

@@ -16,10 +16,8 @@ from PHOEBUS.config import (
     PHOEBUS_WAKE_ENABLED,
 )
 import PHOEBUS.state as state
-from PHOEBUS.security import audit_log, sanitize_action_data
-from PHOEBUS.desktop import executer_action_pc
-from PHOEBUS.ai import demander_ia_vision
-from PHOEBUS.router import executer_commande_generique, traiter_reponse_ia
+from PHOEBUS.router import executer_commande_generique
+from PHOEBUS.adapters.websocket import ws_handler as adapter_ws_handler
 from PHOEBUS.voice import parler
 from PHOEBUS.stt_backends import get_backend as get_stt_backend, recognize_with_verification
 from PHOEBUS.clarify import transcription_incertaine, transcription_bruit_media
@@ -63,12 +61,6 @@ except ImportError:
     _timeline_evt = None
 
 
-# ── Sécurité WebSocket ─────────────────────────────────────────────────────
-
-def verify_token(provided_token):
-    return True
-
-
 def _payload_text(data: dict, *keys: str) -> str:
     """Retourne le premier champ texte non vide d'une charge JSON."""
     for key in keys:
@@ -76,129 +68,6 @@ def _payload_text(data: dict, *keys: str) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
-
-
-# ── Gestionnaire WebSocket ─────────────────────────────────────────────────
-
-async def ws_handler(websocket):
-    if not websockets:
-        return
-
-    state.CONNECTED_CLIENTS.add(websocket)
-    client_ip = websocket.remote_address[0] if websocket.remote_address else "unknown"
-    
-    print(f"[WEB] Nouvelle connexion WebSocket depuis {client_ip}")
-
-    if WS_AUTH_REQUIRED:
-        await state.send_ws_json(websocket, {"action": "auth_required"})
-    else:
-        state.register_authenticated_client(websocket, {"client_type": "unknown", "client_name": "auto-auth"})
-        await state.send_ws_json(websocket, {"action": "auth_ok"})
-        if not state.interface_deja_connectee:
-            await parler("Interface connectée.", keep_conversation=False)
-            state.interface_deja_connectee = True
-
-    try:
-        async for message in websocket:
-            try:
-                data = json.loads(message)
-                # On accepte 'action' ou 'type' pour la compatibilité
-                action = data.get("action") or data.get("type")
-                
-                # --- Authentification ---
-                if action == "auth":
-                    client_type = data.get("client_type", "unknown")
-                    state.register_authenticated_client(websocket, data)
-                    await state.send_ws_json(websocket, {"action": "auth_ok"})
-                    audit_log("ws_client_identified", ip=client_ip, client_type=client_type)
-                    continue
-
-                if WS_AUTH_REQUIRED and websocket not in state.AUTHENTICATED_CLIENTS:
-                    await state.send_ws_json(websocket, {"action": "auth_required"})
-                    continue
-
-                # --- Actions authentifiées ---
-                safe_data = sanitize_action_data(data)
-                if action not in {"audio_chunk", "screen_capture_result", "pong", "audio_level"}:
-                    audit_log("ws_command_received", ip=client_ip, **safe_data)
-
-                if action == "ping":
-                    await state.send_ws_json(websocket, {"action": "pong"})
-                    
-                elif action == "test_vocal":
-                    await parler("Test vocal depuis l'interface web.")
-                    
-                elif action == "PHOEBUS_parler":
-                    txt = _payload_text(data, "text", "message", "command", "commande", "query")
-                    if txt: await parler(txt)
-                    
-                elif action == "stop_parler" or action == "stop_audio":
-                    state.STOP_PARLER = True
-                    
-                elif action == "demander_ia" or action == "mobile_command":
-                    question = _payload_text(data, "text", "message", "command", "commande", "query", "question")
-                    if question:
-                        reponse_texte = await executer_commande_generique(question, source="web")
-                        if reponse_texte:
-                            await state.send_ws_json(
-                                websocket,
-                                {"action": "PHOEBUS_response", "text": reponse_texte},
-                            )
-
-                elif action == "demander_ia_vision":
-                    question = _payload_text(data, "text", "message", "question", "query")
-                    img_b64 = data.get("image", "")
-                    if question and img_b64:
-                        state.extend_conversation()
-                        state.mark_user_activity()
-                        rep = await demander_ia_vision(question, img_b64)
-                        if not await traiter_reponse_ia(rep):
-                            await parler(rep)
-                        state.extend_conversation()
-                            
-                elif action == "action_pc":
-                    cmd = _payload_text(data, "commande", "command", "text", "message", "query")
-                    res = executer_action_pc(cmd)
-                    if res: await parler(res)
-                    
-                elif action == "set_skip_audio":
-                    state._skip_pc_audio = bool(data.get("value", False))
-                    print(f"[WEB] Skip PC Audio : {state._skip_pc_audio}")
-                    
-                elif action == "screen_capture_result":
-                    req_id = data.get("id")
-                    img_b64 = data.get("image")
-                    if req_id in state.PENDING_SCREEN_CAPTURES:
-                        fut = state.PENDING_SCREEN_CAPTURES.pop(req_id)
-                        if not fut.done():
-                            fut.set_result(img_b64)
-
-                elif action == "phone_camera_result":
-                    # Frame caméra téléphone retournée par mobile/app.js.
-                    req_id = data.get("id")
-                    img_b64 = data.get("image")
-                    if req_id in state.PENDING_PHONE_CAPTURES:
-                        fut = state.PENDING_PHONE_CAPTURES.pop(req_id)
-                        if not fut.done():
-                            fut.set_result(img_b64)
-
-                elif action == "audio_chunk":
-                    pass
-
-            except json.JSONDecodeError:
-                print(f"[WEB] Message JSON invalide : {message[:50]}...")
-            except Exception as e:
-                print(f"[WEB] Erreur traitement WS : {e}")
-
-    except websockets.exceptions.ConnectionClosed:
-        pass
-    finally:
-        meta = state.unregister_client(websocket)
-        audit_log("ws_client_disconnected", ip=client_ip, **meta)
-        if meta.get("client_type") == "web_dashboard" and state.interface_deja_connectee:
-            if not any(m.get("client_type") == "web_dashboard" for m in state.CLIENT_META.values()):
-                state.interface_deja_connectee = False
-                print("[WEB] Interface deconnectee.")
 
 
 async def start_websocket_server():
@@ -211,8 +80,8 @@ async def start_websocket_server():
             # On utilise le port fixe 8765 pour être synchro avec le frontend.
             print(f"[WEB] Serveur WebSocket sur ws://0.0.0.0:{port}")
             if WS_AUTH_REQUIRED:
-                print("[WEB] AUTHENTIFICATION REQUISE (Token actif).")
-            async with websockets.serve(ws_handler, "0.0.0.0", port):
+                print("[WEB] Pairing WebSocket local actif.")
+            async with websockets.serve(adapter_ws_handler, "0.0.0.0", port):
                 await asyncio.Future()
         except Exception as e:
             print(f"[WEB] Erreur WebSocket (port {DEFAULT_WS_PORT} probablement occupé) : {e}")

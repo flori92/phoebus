@@ -141,7 +141,7 @@ def audit_log(event, **details):
 def sanitize_action_data(data):
     safe = {}
     for key, value in dict(data or {}).items():
-        if key in {"token", "content", "audio_b64"}:
+        if key in {"token", "secret", "pair_secret", "content", "audio_b64"}:
             safe[key] = "<redacted>"
         elif isinstance(value, str) and len(value) > 160:
             safe[key] = value[:157] + "..."

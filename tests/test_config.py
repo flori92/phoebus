@@ -29,12 +29,17 @@ class TestLLMConfig:
         """Config LLM avec clés."""
         with patch.dict(
             "os.environ",
-            {"GEMINI_API_KEY": "test-key", "GROQ_API_KEY": "  spaced-key  "},
+            {
+                "GEMINI_API_KEY": "test-key",
+                "GROQ_API_KEY": "  spaced-key  ",
+                "XAI_API_KEY": "xai-key",
+            },
             clear=False,
         ):
             config = LLMConfig()
             assert config.gemini_api_key == "test-key"
             assert config.groq_api_key == "spaced-key"  # Stripped
+            assert config.xai_api_key == "xai-key"
 
 
 class TestServerConfig:
@@ -71,7 +76,7 @@ class TestPhoebusConfig:
     def test_get_available_providers(self):
         """Liste des providers disponibles."""
         with patch.dict("os.environ", {}, clear=True):
-            llm_config = LLMConfig(gemini_api_key="key1", groq_api_key="key2")
+            llm_config = LLMConfig(gemini_api_key="key1", groq_api_key="key2", xai_api_key="key3")
             config = PhoebusConfig(
                 llm=llm_config,
                 server=ServerConfig(),
@@ -80,6 +85,7 @@ class TestPhoebusConfig:
         providers = config.get_available_llm_providers()
         assert "gemini" in providers
         assert "groq" in providers
+        assert "grok" in providers
         assert "mistral" not in providers
 
 
@@ -159,5 +165,21 @@ def test_brain_router_priorise_arena_pour_x_sans_cle_dediee(monkeypatch):
         metrics={},
     )
 
-    assert profile.preferred_provider == "arena"
+    assert profile.preferred_provider == "grok"
     assert order[0] == "arena"
+
+
+def test_brain_router_priorise_grok_quand_disponible(monkeypatch):
+    monkeypatch.setenv("PHOEBUS_BRAIN_MODE", "balanced")
+    monkeypatch.setenv("PHOEBUS_LOCAL_FIRST", "0")
+
+    profile = build_profile("résume les tendances sur X autour de l'IA")
+    order = rank_provider_names(
+        profile,
+        available=["gemini", "grok", "arena", "groq"],
+        order=["gemini", "groq", "arena", "grok"],
+        metrics={},
+    )
+
+    assert profile.preferred_provider == "grok"
+    assert order[0] == "grok"

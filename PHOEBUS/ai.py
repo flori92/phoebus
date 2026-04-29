@@ -23,6 +23,7 @@ from PHOEBUS.config import (
     types,
     GROQ_MODEL,
     GROK_MODEL,
+    GROK_MODEL_CANDIDATES,
     MISTRAL_MODEL,
     OPENAI_MODEL,
     ARENA_URL,
@@ -62,6 +63,7 @@ except ImportError:
     _timeline_ctx = None
 
 _ARENA_MODELS_CACHE = {"ts": 0.0, "ids": []}
+_GROK_MODELS_CACHE = {"ts": 0.0, "ids": []}
 _OLLAMA_HEALTH_CACHE = {"ts": 0.0, "ok": False}
 
 
@@ -720,12 +722,13 @@ async def demander_grok(texte):
     if not xai_client:
         return None
     try:
+        model = await _resolve_grok_model()
         system_prompt = construire_system_prompt(texte)
         messages = _messages_openai(system_prompt, texte)
         
         response = await asyncio.to_thread(
             xai_client.chat.completions.create,
-            model=GROK_MODEL,
+            model=model,
             messages=messages,
             temperature=0.7,
         )
@@ -736,6 +739,50 @@ async def demander_grok(texte):
     except Exception as e:
         print(f"[ERREUR GROK] {e}")
         return None
+
+
+async def _grok_model_ids():
+    if not xai_client:
+        return []
+    now = time.monotonic()
+    cached_ids = _GROK_MODELS_CACHE.get("ids") or []
+    if cached_ids and now - float(_GROK_MODELS_CACHE.get("ts", 0.0)) < 1800:
+        return cached_ids
+    try:
+        models = await asyncio.to_thread(xai_client.models.list)
+        ids = [m.id for m in getattr(models, "data", []) if getattr(m, "id", None)]
+        if ids:
+            _GROK_MODELS_CACHE["ids"] = ids
+            _GROK_MODELS_CACHE["ts"] = now
+        return ids
+    except Exception as e:
+        print(f"[GROK] Liste des modeles indisponible, fallback statique : {e}")
+        return cached_ids
+
+
+async def _resolve_grok_model():
+    candidates = [GROK_MODEL, *GROK_MODEL_CANDIDATES]
+    candidates = [m for i, m in enumerate(candidates) if m and m not in candidates[:i]]
+    ids = await _grok_model_ids()
+    if not ids:
+        return candidates[0]
+
+    by_lower = {mid.lower(): mid for mid in ids}
+    for candidate in candidates:
+        match = by_lower.get(candidate.lower())
+        if match:
+            return match
+
+    usable = [
+        mid
+        for mid in ids
+        if "grok" in mid.lower() and not any(skip in mid.lower() for skip in ("image", "video"))
+    ]
+    for preferred in ("4.20", "4-fast", "4-1-fast", "4-", "3"):
+        for mid in usable:
+            if preferred in mid:
+                return mid
+    return usable[0] if usable else candidates[0]
 
 
 async def demander_ia(texte):

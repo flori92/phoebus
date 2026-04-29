@@ -11,6 +11,7 @@ import PHOEBUS.state as state
 from PHOEBUS.config import BASE_DIR, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 from PHOEBUS.llm_health import status as llm_status
 from PHOEBUS.observability import request_snapshot, snapshot as phase_snapshot, trace_snapshot
+from PHOEBUS.brain_router import available_provider_names
 
 
 def _port_open(host: str, port: int, timeout: float = 0.2) -> bool:
@@ -30,8 +31,11 @@ def _json_file(path: Path) -> dict:
 
 def diagnostics_snapshot() -> dict:
     ai_metrics = _json_file(BASE_DIR / "logs" / "ai_router_metrics.json")
+    active_provider_names = set(available_provider_names())
     providers = {}
     for name, item in ai_metrics.items():
+        if name not in active_provider_names:
+            continue
         calls = int(item.get("calls", 0) or 0)
         success = int(item.get("success", 0) or 0)
         failures = int(item.get("failure", 0) or 0)
@@ -73,9 +77,7 @@ def diagnostics_snapshot() -> dict:
                 "configured": bool(TELEGRAM_TOKEN),
                 "restricted_chat": bool(TELEGRAM_CHAT_ID),
             },
-            "websocket_auth": {
-                "enabled": bool(getattr(state, "WS_AUTH_REQUIRED", False)),
-            },
+            "websocket_auth": _websocket_auth_status(),
         },
         "skills": {
             "count": len(skills),
@@ -91,3 +93,11 @@ def diagnostics_snapshot() -> dict:
             "traces": trace_snapshot(),
         },
     }
+
+
+def _websocket_auth_status() -> dict:
+    try:
+        from PHOEBUS.ws_pairing import pairing_status
+        return pairing_status()
+    except Exception:
+        return {"enabled": False, "paired_devices": 0}

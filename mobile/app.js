@@ -40,18 +40,11 @@ if (typeof createOrb === "function") {
   }
 }
 
-// ── HTTPS Warning ───────────────────────────────────────────────────────────
-if (window.location.protocol !== "https:" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-  const warning = document.getElementById("https-warning");
-  if (warning) {
-    warning.style.display = "block";
-    const closeBtn = document.getElementById("close-warning-btn");
-    if (closeBtn) {
-      closeBtn.addEventListener("click", () => {
-        warning.style.display = "none";
-      });
-    }
-  }
+// Le micro permanent est porte par le backend. Le navigateur reste une voie
+// best-effort, sans alerte visible si sa permission est refusee.
+const browserMicWarning = document.getElementById("https-warning");
+if (browserMicWarning) {
+  browserMicWarning.style.display = "none";
 }
 
 // ── État de l'application ───────────────────────────────────────────────────
@@ -60,6 +53,8 @@ let ws           = null;
 let isListening  = false;
 let reconnectTimer = null;
 const faceRoot = document.documentElement;
+const PAIR_DEVICE_ID_KEY = "PHOEBUS_PAIR_DEVICE_ID";
+const PAIR_SECRET_KEY = "PHOEBUS_PAIR_SECRET";
 
 function removeLegacyTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -1130,6 +1125,8 @@ function connectWS() {
       type: "auth",
       client_type: "mobile",
       client_name: navigator.userAgent.slice(0, 80),
+      pair_device_id: window.localStorage.getItem(PAIR_DEVICE_ID_KEY) || "",
+      pair_secret: window.localStorage.getItem(PAIR_SECRET_KEY) || "",
     }));
   });
 
@@ -1144,6 +1141,10 @@ function connectWS() {
       }
 
       if (data.action === "auth_ok") {
+        if (data.pair_device_id && data.pair_secret) {
+          window.localStorage.setItem(PAIR_DEVICE_ID_KEY, data.pair_device_id);
+          window.localStorage.setItem(PAIR_SECRET_KEY, data.pair_secret);
+        }
         setConnected(true);
         userTextEl.textContent = "";
         return;
@@ -1361,6 +1362,8 @@ let dispatchCommandTimer = null;
 let capturedFinalText = "";
 let suppressNextEndDispatch = false;
 let browserMicRetryAfter = 0;
+let browserSpeechBlocked = false;
+let browserSpeechBlockedLogged = false;
 
 function shouldDispatchVoiceCommand(text) {
   const value = (text || "").trim();
@@ -1371,6 +1374,7 @@ function canAutoListen() {
   return (
     autoListenEnabled &&
     recognition &&
+    !browserSpeechBlocked &&
     ws &&
     ws.readyState === WebSocket.OPEN &&
     Date.now() >= browserMicRetryAfter &&
@@ -1386,12 +1390,18 @@ function startRecognition(reason = "auto") {
     recognition.start();
     console.log("[STT] Démarrage micro :", reason);
   } catch (e) {
+    const name = e && e.name ? e.name : "";
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      blockBrowserSpeech("start-denied");
+      return;
+    }
     console.warn("[STT] Impossible de démarrer :", e);
     scheduleListenRestart(1200);
   }
 }
 
 function scheduleListenRestart(delay = 650) {
+  if (browserSpeechBlocked) return;
   if (restartListenTimer) clearTimeout(restartListenTimer);
   restartListenTimer = setTimeout(() => {
     restartListenTimer = null;
@@ -1402,6 +1412,25 @@ function scheduleListenRestart(delay = 650) {
     }
     startRecognition("restart");
   }, delay);
+}
+
+function blockBrowserSpeech(reason = "permission-denied") {
+  browserSpeechBlocked = true;
+  autoListenEnabled = false;
+  browserMicRetryAfter = Number.MAX_SAFE_INTEGER;
+  if (restartListenTimer) {
+    clearTimeout(restartListenTimer);
+    restartListenTimer = null;
+  }
+  if (!browserSpeechBlockedLogged) {
+    browserSpeechBlockedLogged = true;
+    console.info("[STT] Micro navigateur indisponible, écoute backend conservée :", reason);
+  }
+  isListening = false;
+  recognitionHadError = false;
+  userTextEl.textContent = "";
+  statusEl.textContent = "en attente";
+  applyState("idle");
 }
 
 function dispatchCapturedText(text) {
@@ -1510,20 +1539,17 @@ if (SpeechRecognition) {
   });
 
   recognition.addEventListener("error", (event) => {
-    console.warn("[STT] Erreur :", event.error);
     isListening = false;
     recognitionHadError = true;
     applyState("idle");
 
-    if (event.error === "not-allowed") {
-      browserMicRetryAfter = Date.now() + 10000;
-      userTextEl.textContent = "";
-      statusEl.textContent = "en attente";
-      scheduleListenRestart(10000);
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      blockBrowserSpeech(event.error);
     } else if (event.error === "no-speech") {
       userTextEl.textContent = "";
       scheduleListenRestart(500);
     } else {
+      console.warn("[STT] Erreur :", event.error);
       userTextEl.textContent = "";
       statusEl.textContent = "en attente";
       scheduleListenRestart(1200);
@@ -1542,6 +1568,8 @@ micBtn.addEventListener("click", () => {
   if (!recognition) return;
 
   autoListenEnabled = true;
+  browserSpeechBlocked = false;
+  browserMicRetryAfter = 0;
   if (currentState === "thinking" || currentState === "speaking") {
     scheduleListenRestart(800);
     return;

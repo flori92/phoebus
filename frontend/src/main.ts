@@ -911,6 +911,8 @@ let pendingExpressionId = "";
 let lastExpressionText = "";
 let lastExpressionAt = 0;
 let lastExpressionId = "";
+const PAIR_DEVICE_ID_KEY = "PHOEBUS_PAIR_DEVICE_ID";
+const PAIR_SECRET_KEY = "PHOEBUS_PAIR_SECRET";
 
 function removeLegacyTokenFromUrl(): void {
   const params = new URLSearchParams(window.location.search);
@@ -1003,6 +1005,8 @@ function sendAuth(): void {
       type: "auth",
       client_type: "web",
       client_name: window.navigator.userAgent.slice(0, 80),
+      pair_device_id: window.localStorage.getItem(PAIR_DEVICE_ID_KEY) || "",
+      pair_secret: window.localStorage.getItem(PAIR_SECRET_KEY) || "",
     })
   );
 }
@@ -1091,6 +1095,8 @@ function connect(): void {
         volume?: number;
         id?: string;
         text?: string;
+        pair_device_id?: string;
+        pair_secret?: string;
         backend?: string;
         frames?: TimedLipsyncFrame[];
       };
@@ -1104,6 +1110,10 @@ function connect(): void {
         return;
       }
       if (data.action === "auth_ok") {
+        if (data.pair_device_id && data.pair_secret) {
+          window.localStorage.setItem(PAIR_DEVICE_ID_KEY, data.pair_device_id);
+          window.localStorage.setItem(PAIR_SECRET_KEY, data.pair_secret);
+        }
         setConnected(true);
         return;
       }

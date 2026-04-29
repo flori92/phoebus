@@ -149,8 +149,17 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 PHOEBUS_WS_TOKEN = os.getenv("PHOEBUS_WS_TOKEN", "CHANGE_ME").strip()
 
 # ── Modèles ─────────────────────────────────────────────────────────────────
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-reasoning")
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-reasoning").strip()
+GROK_MODEL_CANDIDATES = [
+    m.strip()
+    for m in os.getenv(
+        "GROK_MODEL_CANDIDATES",
+        "grok-4.20-reasoning,grok-4.20-0309-reasoning,grok-4-fast-reasoning,grok-4-1-fast-reasoning,grok-4-0709,grok-3",
+    ).split(",")
+    if m.strip()
+]
 PHOEBUS_AUDIT_FILE = os.getenv("PHOEBUS_AUDIT_FILE", "logs/audit.jsonl").strip()
+PHOEBUS_DEVICES_FILE = os.getenv("PHOEBUS_DEVICES_FILE", "phoebus_devices.json").strip()
 PHOEBUS_WAKE_ENABLED = os.getenv("PHOEBUS_WAKE_ENABLED", "0").strip().lower() in {
     "1",
     "true",
