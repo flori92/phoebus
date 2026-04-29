@@ -12,6 +12,7 @@ Ou directement :
 
     python3 scripts/tests/test_dialogue.py
 """
+
 import os
 import sys
 import time
@@ -25,6 +26,7 @@ if ROOT not in sys.path:
 
 def test_clarify_transcription_incertaine():
     from PHOEBUS.clarify import transcription_incertaine
+
     assert transcription_incertaine("") is True
     assert transcription_incertaine("...") is True
     assert transcription_incertaine("zz") is True
@@ -36,6 +38,7 @@ def test_clarify_transcription_incertaine():
 
 def test_clarify_demande_ambigue():
     from PHOEBUS.clarify import demande_ambigue, question_pour_clarifier
+
     assert demande_ambigue("allume") is True
     assert demande_ambigue("éteins") is True
     assert demande_ambigue("ouvre") is True
@@ -63,6 +66,7 @@ def test_risk_levels():
 
 def test_conversation_window():
     import PHOEBUS.state as st
+
     st.end_conversation()
     assert st.is_in_conversation() is False
     st.extend_conversation(2)
@@ -73,6 +77,7 @@ def test_conversation_window():
 
 def test_registre_detection():
     from PHOEBUS.memory import detecter_registre
+
     assert detecter_registre("tu peux allumer la lumière ?") == "tu"
     assert detecter_registre("pouvez-vous me dire l'heure ?") == "vous"
     assert detecter_registre("bref, salut") is None
@@ -92,6 +97,7 @@ def test_skill_registry():
 
 def test_naturaliser_markdown():
     from PHOEBUS.text_shaping import naturaliser
+
     assert "**" not in naturaliser("c'est **très** bien")
     assert "`" not in naturaliser("voici `code` ici")
     # Le contenu reste.
@@ -100,6 +106,7 @@ def test_naturaliser_markdown():
 
 def test_naturaliser_abreviations():
     from PHOEBUS.text_shaping import naturaliser
+
     assert "Monsieur Favi" in naturaliser("M. Favi est là")
     assert "par exemple" in naturaliser("p. ex. ceci").lower()
     assert "c'est-à-dire" in naturaliser("c.-à-d. ceci")
@@ -107,6 +114,7 @@ def test_naturaliser_abreviations():
 
 def test_naturaliser_unites():
     from PHOEBUS.text_shaping import naturaliser
+
     assert "degrés" in naturaliser("Il fait 25°C")
     assert "pour cent" in naturaliser("à 80%")
     assert "euros" in naturaliser("ça fait 12€")
@@ -115,6 +123,7 @@ def test_naturaliser_unites():
 
 def test_naturaliser_respiration():
     from PHOEBUS.text_shaping import naturaliser
+
     # Ajoute une virgule après "donc" suivi d'un espace+minuscule.
     out = naturaliser("donc voici la réponse")
     assert "donc," in out.lower()
@@ -122,12 +131,14 @@ def test_naturaliser_respiration():
 
 def test_naturaliser_idempotent():
     from PHOEBUS.text_shaping import naturaliser
+
     t = "M. Favi, donc il fait 20°C **aujourd'hui**."
     assert naturaliser(naturaliser(t)) == naturaliser(t)
 
 
 def test_intent_fast_path():
     from PHOEBUS.intent import detect
+
     # Commandes reconnues
     r = detect("PHOEBUS, allume la lumière du salon")
     assert r is not None and r.name == "allumer" and '"salon"' in r.reply
@@ -144,6 +155,7 @@ def test_intent_fast_path():
 
 def test_sentence_splitter():
     from PHOEBUS.sentence_splitter import split, split_streaming
+
     r = split("Bonjour Floriace. Comment allez-vous ?")
     assert len(r) == 2
     # Abréviations ne coupent pas (M. Favi reste dans la 1re phrase).
@@ -157,6 +169,7 @@ def test_sentence_splitter():
 
 def test_correction_detection():
     from PHOEBUS.memory_unified import looks_like_correction
+
     assert looks_like_correction("Non, je voulais dire Lyon")
     assert looks_like_correction("tu te trompes")
     assert not looks_like_correction("merci PHOEBUS")
@@ -165,6 +178,7 @@ def test_correction_detection():
 
 def test_response_cache_key_stability():
     from PHOEBUS.response_cache import _cache_key
+
     # Même texte, même voix → même clé (déterministe).
     k1 = _cache_key("Bonjour Floriace.", "fr-FR-Remy", "auto")
     k2 = _cache_key("Bonjour Floriace.", "fr-FR-Remy", "auto")
@@ -179,28 +193,35 @@ def test_brain_router_profiles_and_ranking():
 
     p = build_profile("donne-moi les dernières nouvelles sur X", streaming=False)
     assert p.needs_realtime is True
-    assert p.preferred_provider == "grok"
-    assert rank_provider_names(
-        p,
-        available=["gemini", "groq", "grok", "ollama"],
-        order=["gemini", "groq", "grok", "ollama"],
-        mode="balanced",
-        metrics={},
-    )[0] == "grok"
+    assert p.preferred_provider == "arena"
+    assert (
+        rank_provider_names(
+            p,
+            available=["gemini", "groq", "arena", "ollama"],
+            order=["gemini", "groq", "arena", "ollama"],
+            mode="balanced",
+            metrics={},
+        )[0]
+        == "arena"
+    )
 
     p = build_profile("bonjour", streaming=True)
     assert p.priority == "fast"
-    assert rank_provider_names(
-        p,
-        available=["gemini", "groq", "ollama"],
-        order=["gemini", "groq", "ollama"],
-        mode="speed",
-        metrics={},
-    )[0] == "groq"
+    assert (
+        rank_provider_names(
+            p,
+            available=["gemini", "groq", "ollama"],
+            order=["gemini", "groq", "ollama"],
+            mode="speed",
+            metrics={},
+        )[0]
+        == "groq"
+    )
 
 
 def test_echo_detection():
     import PHOEBUS.state as st
+
     st.recent_PHOEBUS_utterances.clear()
     st.post_speak_until_ts = 0
     st.mark_spoke("Bonjour Floriace, comment allez vous ?")
@@ -211,13 +232,18 @@ def test_echo_detection():
 
 def test_llm_health_circuit_breaker():
     from PHOEBUS.llm_health import (
-        record_failure, skip, record_success, _parse_retry_delay,
+        record_failure,
+        skip,
+        record_success,
+        _parse_retry_delay,
     )
+
     assert _parse_retry_delay("retryDelay: 42.5s") == 42.5
     assert _parse_retry_delay("bla bla") is None
 
     class FakeErr(Exception):
         pass
+
     record_failure("test_prov", FakeErr("429 RESOURCE_EXHAUSTED retryDelay: 5s"))
     assert skip("test_prov") is True
     record_success("test_prov")
@@ -227,11 +253,15 @@ def test_llm_health_circuit_breaker():
 def test_timer_intent_and_parsing():
     from PHOEBUS.intent import detect
     import json
+
     r = detect("mets un minuteur de 3 minutes pour le thé")
     assert r is not None and r.name == "timer_set"
     payload = json.loads(r.reply)
     assert payload["duration_s"] == 180
-    assert "thé" in (payload.get("label") or "").lower() or "the" in (payload.get("label") or "").lower()
+    assert (
+        "thé" in (payload.get("label") or "").lower()
+        or "the" in (payload.get("label") or "").lower()
+    )
 
     r = detect("rappelle-moi dans 2 heures de sortir les poubelles")
     assert r is not None and r.name == "rappel_set"
@@ -242,6 +272,7 @@ def test_timer_intent_and_parsing():
 
 def test_spotify_intents_dont_clash_with_domotique():
     from PHOEBUS.intent import detect
+
     # Domotique gagne sur Spotify
     assert detect("allume le salon").name == "allumer"
     assert detect("éteins la cuisine").name == "eteindre"
@@ -253,8 +284,9 @@ def test_spotify_intents_dont_clash_with_domotique():
 
 def test_planner_json_extract():
     from PHOEBUS.planner import _extract_json
+
     assert _extract_json('{"plan": [], "summary": "ok"}') == {"plan": [], "summary": "ok"}
-    wrapped = "```json\n{\"plan\": []}\n```"
+    wrapped = '```json\n{"plan": []}\n```'
     assert _extract_json(wrapped) == {"plan": []}
     assert _extract_json('bla bla {"a": 1} fin') == {"a": 1}
     # Accolades dans les strings ne cassent pas le parseur.
@@ -284,6 +316,7 @@ def test_brain_router_prefers_arena_for_deep_thinking():
 
 def test_network_intents():
     from PHOEBUS.intent import detect
+
     assert detect("scanne le réseau").name == "network_scan"
     assert detect("liste le wifi").name == "network_scan"
     assert detect("ping 192.168.1.20").name == "network_ping"
@@ -293,6 +326,7 @@ def test_network_intents():
 
 def test_system_intents():
     from PHOEBUS.intent import detect
+
     assert detect("verrouille la session").name == "system_lock"
     assert detect("verrouille").name == "system_lock"
     assert detect("vide la corbeille").name == "system_empty_trash"
@@ -304,6 +338,7 @@ def test_system_intents():
 
 def test_knowledge_intent_dispatch():
     from PHOEBUS.intent import detect
+
     r = detect("c'est quoi la photosynthèse")
     assert r is not None and r.name == "knowledge_query"
     r = detect("qui est Spinoza")
@@ -313,6 +348,7 @@ def test_knowledge_intent_dispatch():
 
 def test_code_runner_audit_blocks_dangerous():
     from PHOEBUS.code_runner import _audit
+
     # Imports interdits
     assert _audit("import os\nos.system('ls')") is not None
     assert _audit("import subprocess") is not None
@@ -325,6 +361,7 @@ def test_code_runner_audit_blocks_dangerous():
 
 def test_knowledge_query_dispatcher_classifies():
     from PHOEBUS.knowledge import _looks_like_calc, _looks_like_news, _looks_like_code
+
     assert _looks_like_calc("convertis 3500 USD en EUR")
     assert _looks_like_calc("calcule 2 + 2 * 3")
     assert _looks_like_news("donne-moi les actualités")
@@ -336,6 +373,7 @@ def test_knowledge_query_dispatcher_classifies():
 def test_camera_intent_routing():
     """Les intents caméra doivent être bien classés (PC vs téléphone vs IP)."""
     from PHOEBUS.intent import detect
+
     cases = [
         ("regarde autour de toi", "vision_camera_pc"),
         ("que vois-tu", "vision_camera_pc"),
@@ -373,6 +411,7 @@ def test_observability_records_and_renders():
 
 
 # ── Exécution directe ─────────────────────────────────────────────────────
+
 
 def _run_all():
     tests = [

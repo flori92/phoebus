@@ -1,5 +1,6 @@
 # PHOEBUS/ai.py
 """Backends d'Intelligence Artificielle de PHOEBUS."""
+
 import json
 import asyncio
 import base64
@@ -9,18 +10,40 @@ import time
 from datetime import datetime
 
 from PHOEBUS.config import (
-    client, groq_client, mistral_client, openai_client,
-    arena_client, CHOSEN_MODEL, MODELS_LIST, OLLAMA_MODELS, OLLAMA_URL, types,
-    GROQ_MODEL, MISTRAL_MODEL, OPENAI_MODEL, ARENA_URL,
-    ARENA_MODEL, ARENA_DEEP_MODEL, ARENA_MODEL_CANDIDATES, ARENA_DEEP_MODEL_CANDIDATES,
+    client,
+    groq_client,
+    mistral_client,
+    openai_client,
+    arena_client,
+    CHOSEN_MODEL,
+    MODELS_LIST,
+    OLLAMA_MODELS,
+    OLLAMA_URL,
+    types,
+    GROQ_MODEL,
+    MISTRAL_MODEL,
+    OPENAI_MODEL,
+    ARENA_URL,
+    ARENA_MODEL,
+    ARENA_DEEP_MODEL,
+    ARENA_MODEL_CANDIDATES,
+    ARENA_DEEP_MODEL_CANDIDATES,
     ARENA_TIMEOUT,
 )
 import PHOEBUS.state as state
-from PHOEBUS.memory import construire_contexte_memoire, resumer_profil, noter_registre, detecter_registre
+from PHOEBUS.memory import (
+    construire_contexte_memoire,
+    resumer_profil,
+    noter_registre,
+    detecter_registre,
+)
 from PHOEBUS.config import CREATOR_INFO
 from PHOEBUS.brain_router import (
-    available_provider_names, build_profile, rank_provider_names,
-    record_provider_result, _load_metrics,
+    available_provider_names,
+    build_profile,
+    rank_provider_names,
+    record_provider_result,
+    _load_metrics,
 )
 from PHOEBUS.rag_memory import rechercher_souvenirs, stocker_souvenir
 from PHOEBUS.observability import timed
@@ -85,6 +108,7 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
     # --- Contexte Home Assistant dynamique (découverte live des entités) ---
     try:
         from PHOEBUS.home import resume_ha_context
+
         contexte_ha = resume_ha_context()
     except Exception:
         contexte_ha = ""
@@ -132,8 +156,7 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
             "- Si la demande nécessite une action (domotique, système, web, vision), ton TOUT PREMIER "
             "bloc de réponse DOIT ÊTRE LE JSON de la commande. Ne mets JAMAIS de texte avant le JSON.\n"
             "- Si la demande n'est pas une commande, réponds uniquement en texte naturel.\n"
-            "- Ne mentionne jamais l'existence de ces blocs JSON à Floriace.\n\n"
-            + CREATOR_INFO
+            "- Ne mentionne jamais l'existence de ces blocs JSON à Floriace.\n\n" + CREATOR_INFO
         )
     base += (
         "\n\nTu es connecté à Home Assistant, la domotique de Floriace.\n"
@@ -177,8 +200,8 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
     base += (
         "\n\nMEDIA, FILMS, SERIES, VOD :\n"
         "Si Floriace formule naturellement une envie de regarder quelque chose "
-        "(ex. \"je veux regarder un film comique\", \"trouve-moi une série thriller\", "
-        "\"on se met un film sur Netflix\"), transforme l'envie en action utile.\n"
+        '(ex. "je veux regarder un film comique", "trouve-moi une série thriller", '
+        '"on se met un film sur Netflix"), transforme l\'envie en action utile.\n'
         '{"action": "media_recommendations", "kind": "film/serie/documentaire", '
         '"genre": "comedie/action/science-fiction/horreur/thriller/animation/drame/famille", '
         '"platform": "justwatch/netflix/prime/disney/canal/youtube", "open": true}\n'
@@ -190,21 +213,12 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "sport_classement", "ligue": "LIGUE"}\n'
         '{"action": "sport_live", "question": "question"}\n\n'
     )
-    base += (
-        "\n\nMODE IRON MAN :\n"
-        '{"action": "mode_iron_man", "etat": "on/off"}\n\n'
-    )
-    base += (
-        "\n\nOBSERVABILITE DU CERVEAU :\n"
-        '{"action": "brain_status"}\n\n'
-    )
-    
+    base += "\n\nMODE IRON MAN :\n" '{"action": "mode_iron_man", "etat": "on/off"}\n\n'
+    base += "\n\nOBSERVABILITE DU CERVEAU :\n" '{"action": "brain_status"}\n\n'
+
     # ── AJOUT : CONTROLE DU VOLUME ──
-    base += (
-        "\n\nCONTROLE DU VOLUME :\n"
-        '{"action": "volume_control", "value": "up/down/mute"}\n\n'
-    )
-    
+    base += "\n\nCONTROLE DU VOLUME :\n" '{"action": "volume_control", "value": "up/down/mute"}\n\n'
+
     # ── AJOUT IMPORTANT : CONTRÔLE NATIF DE LA MACHINE VIA AGENT AUTONOME ──
     base += (
         "\n\nAUTONOMIE TOTALE (AGENT NATIF) :\n"
@@ -219,7 +233,7 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "agent_natif", "instruction": "instruction complète et détaillée de ce qu il doit accomplir"}\n\n'
     )
     # ───────────────────────────────────────────────────────────────────────
-    
+
     if contexte_memoire:
         base += "\n\n" + contexte_memoire + "\n"
 
@@ -242,7 +256,7 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
                 base += "\n\n" + timeline_snippet + "\n"
         except Exception:
             pass
-        
+
     base += (
         "MEMOIRE :\n"
         '{"action": "memoriser", "cle": "CLE", "valeur": "VALEUR"}\n'
@@ -289,12 +303,12 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "mqtt_discover"}  → liste les topics actifs sur le broker\n\n'
         "CODE PYTHON (calcul, conversion, scripting déterministe) :\n"
         '{"action": "python_run", "code": "import math; print(math.pi)"}  \n'
-        '  → modules autorisés : math, statistics, random, datetime, json, hashlib, secrets, decimal, fractions, itertools, base64, re, etc.\n'
-        '  → utilise-le quand le calcul doit être EXACT (pas approximé par toi).\n\n'
+        "  → modules autorisés : math, statistics, random, datetime, json, hashlib, secrets, decimal, fractions, itertools, base64, re, etc.\n"
+        "  → utilise-le quand le calcul doit être EXACT (pas approximé par toi).\n\n"
         "CONNAISSANCE EXTERNE (Wikipedia / Wolfram Alpha / GitHub / actualités RSS) :\n"
         '{"action": "knowledge_query", "question": "Spinoza"}  \n'
-        '  → dispatch automatique : Wikipedia pour les faits, Wolfram pour les calculs scientifiques,\n'
-        '    GitHub pour des extraits de code, RSS pour les actualités fraîches.\n\n'
+        "  → dispatch automatique : Wikipedia pour les faits, Wolfram pour les calculs scientifiques,\n"
+        "    GitHub pour des extraits de code, RSS pour les actualités fraîches.\n\n"
         "CONTRÔLE SYSTÈME macOS / LINUX :\n"
         '{"action": "system_control", "type": "lock/sleep/mute/unmute/empty_trash/volume_up/volume_down/screenshot"}\n'
         '{"action": "system_control", "type": "volume", "percent": 60}\n'
@@ -318,7 +332,7 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "OUTILS CRÉATIFS :\n"
         '{"action": "create_presentation", "topic": "Virtualisation Cloud", "slides": [{"title": "Introduction", "body": "Définition du Cloud..."}, {"title": "Hyperviseurs", "body": "Type 1 vs Type 2..."}]} (Génère un PowerPoint)\n'
         '{"action": "generate_image", "prompt": "Un robot majordome futuriste style Iron Man"} (Génère une image)\n\n'
-        "REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { \"action\": \"ha_lumiere\", ... } { \"action\": \"meteo\", ... }).\n"
+        'REGLES MULTI-COMMANDES : tu PEUX générer plusieurs blocs JSON (ex: { "action": "ha_lumiere", ... } { "action": "meteo", ... }).\n'
         "REGLE ABSOLUE : Si la demande n est PAS une commande JSON, reponds TOUJOURS en texte naturel, sans JSON, "
         "sans jamais mentionner l'existence de ces blocs techniques à Floriace.\n"
         "REGLE DE SALUTATIONS ET CONTINUITÉ :\n"
@@ -329,7 +343,7 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "pas chaque réponse par 'Bonjour' ou 'Monsieur' — enchaîne naturellement "
         "en tenant compte des derniers tours.\n"
         "REGLE D'AMBIGUITE : si la demande est floue, incomplète, ou pourrait viser plusieurs "
-        "cibles (ex. \"allume\" sans pièce, \"ouvre\" sans fichier), NE DEVINE PAS : pose une "
+        'cibles (ex. "allume" sans pièce, "ouvre" sans fichier), NE DEVINE PAS : pose une '
         "question courte et précise pour lever le doute. Tu peux proposer deux options si c'est utile.\n"
         "REGLE D'AUDITION : si ce que tu reçois ressemble à une transcription bancale "
         "(mot isolé étrange, syllabes décousues), demande gentiment de répéter plutôt que "
@@ -343,11 +357,11 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "- Action sur le Mac (volume, ouvrir une app, capture, veille) → system_*.\n"
         "- Diffusion média sur TV/enceinte → cast_*.\n"
         "- Voir l'environnement → vision_camera_pc/phone/ip.\n"
-        "Ne dis JAMAIS \"je ne peux pas accéder à ça\" ou \"je n'ai pas l'information\" "
+        'Ne dis JAMAIS "je ne peux pas accéder à ça" ou "je n\'ai pas l\'information" '
         "sans avoir d'abord essayé l'outil approprié. Si une commande échoue, dis-le "
         "honnêtement avec la raison, mais ESSAIE.\n"
         "REGLE DE RÉACTIVITÉ : pour les commandes évidentes, réponds par le JSON SANS "
-        "préambule (\"Je vais...\", \"Bien sûr Floriace...\"). Le JSON déclenche l'action, "
+        'préambule ("Je vais...", "Bien sûr Floriace..."). Le JSON déclenche l\'action, '
         "et le confirmateur d'action te répondra avec le résultat. Pour la conversation "
         "naturelle, sois direct, percutant, va à l'essentiel."
     )
@@ -360,6 +374,7 @@ def _capture_correction_if_any(texte: str) -> None:
     en tiendra compte aux prompts futurs."""
     try:
         from PHOEBUS.memory_unified import looks_like_correction, note_correction
+
         if not looks_like_correction(texte):
             return
         # Dernière chose que PHOEBUS a dite (si disponible dans l'historique).
@@ -376,9 +391,9 @@ def _capture_correction_if_any(texte: str) -> None:
 
 
 def detecter_cerveau(texte):
-    mots_cles_grok = ["sur x", "twitter", "grok", "elon", "x.com"]
-    if any(m in texte.lower() for m in mots_cles_grok):
-        return "GROK"
+    mots_cles_temps_reel = ["sur x", "twitter", "elon", "x.com"]
+    if any(m in texte.lower() for m in mots_cles_temps_reel):
+        return "ARENA"
     return "GEMINI"
 
 
@@ -402,13 +417,11 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
     if llm_skip("gemini"):
         return None
     prompt_actuel = construire_system_prompt(texte, minimal=minimal)
-    
+
     # On limite l'historique pour éviter de saturer le contexte sur le long terme
     # 40 messages permettent déjà une très grande fluidité de mémoire.
     historique_limite = state.historique[-40:]
-    temp_hist = historique_limite + [
-        types.Content(role="user", parts=[types.Part(text=texte)])
-    ]
+    temp_hist = historique_limite + [types.Content(role="user", parts=[types.Part(text=texte)])]
     models = list(model_names or MODELS_LIST)
     last_err = None
     for model_name in models:
@@ -418,9 +431,7 @@ async def demander_gemini(texte, minimal=False, model_names=None, timeout_s=8.0,
                 "temperature": 0.7,
             }
             if use_search:
-                config_kwargs["tools"] = [
-                    types.Tool(google_search=types.GoogleSearch())
-                ]
+                config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
             response = await asyncio.wait_for(
                 asyncio.to_thread(
                     client.models.generate_content,
@@ -460,15 +471,15 @@ async def demander_ollama(texte):
             role = "user" if h.role == "user" else "assistant"
             messages.append({"role": role, "content": h.parts[0].text})
         messages.append({"role": "user", "content": texte})
-        
+
         last_err = None
         for model_name in OLLAMA_MODELS:
             try:
                 timeout_s = _float_env("PHOEBUS_OLLAMA_TIMEOUT", 20.0)
                 keep_alive = os.getenv("PHOEBUS_OLLAMA_KEEP_ALIVE", "10m")
                 resp = await asyncio.to_thread(
-                    requests.post, 
-                    f"{OLLAMA_URL}/api/chat", 
+                    requests.post,
+                    f"{OLLAMA_URL}/api/chat",
                     json={
                         "model": model_name,
                         "messages": messages,
@@ -494,7 +505,7 @@ async def demander_ollama(texte):
                 continue
         return None
     except Exception as e:
-        if "Connection" not in str(e): # On évite de spammer si Ollama est juste éteint
+        if "Connection" not in str(e):  # On évite de spammer si Ollama est juste éteint
             print(f"[ERREUR OLLAMA] {e}")
         return None
 
@@ -659,6 +670,7 @@ async def demander_mistral(texte):
         print(f"[ERREUR MISTRAL] {e}")
         return None
 
+
 async def demander_openai(texte):
     if not openai_client:
         return None
@@ -682,26 +694,19 @@ async def demander_openai(texte):
         print(f"[ERREUR OPENAI] {e}")
         return None
 
-async def demander_kimi(texte):
-    return None
-
-async def demander_mistral(texte):
-    return None
-
 
 @timed("ia.demander")
 async def traduire_live(texte, langue_cible="anglais"):
     """Traduction directe sans personnalité pour minimiser la latence."""
-    if not client: return texte
+    if not client:
+        return texte
     try:
         # On utilise un modèle rapide pour la traduction
         model_rapide = MODELS_LIST[0] if MODELS_LIST else "gemini-2.0-flash"
         prompt = f"Traduis fidèlement le texte suivant en {langue_cible}. Réponds UNIQUEMENT avec la traduction, sans aucun autre texte.\n\nTexte : {texte}"
-        
+
         response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=model_rapide,
-            contents=[prompt]
+            client.models.generate_content, model=model_rapide, contents=[prompt]
         )
         return response.text.strip()
     except Exception as e:
@@ -723,9 +728,10 @@ async def demander_ia(texte):
     await state.send_web_state("thinking")
     try:
         from PHOEBUS.voice import reponse_locale
+
         # 1. Priorité absolue aux réponses locales (Heure, Date, Nom) pour la rapidité
         rep_loc = reponse_locale(texte)
-        if rep_loc: 
+        if rep_loc:
             return rep_loc
 
         # 2. Short-Circuit pour les commandes domotiques ultra-communes (Gain: ~2s)
@@ -783,7 +789,6 @@ async def demander_ia(texte):
             "mistral": lambda: demander_mistral(texte),
             "arena": lambda: demander_arena(texte, profile=profile),
             "openai": lambda: demander_openai(texte),
-            "kimi": lambda: demander_kimi(texte),
             "ollama": lambda: demander_ollama(texte),
         }
 
@@ -809,18 +814,43 @@ async def demander_ia(texte):
         # Ultime filet : recherche web UNIQUEMENT si on a une vraie question factuelle
         # et que les cerveaux IA ont échoué.
         from PHOEBUS.home import recherche_web_serpapi
+
         texte_l = texte.lower()
         mots_presents = texte_l.split()
-        
+
         # On évite de chercher sur le web des politesses de base
-        is_politesse = any(p in texte_l for p in [
-            "comment vas-tu", "ça va", "ca va", "bonjour", "salut", "qui es-tu",
-            "tu fais quoi", "merci", "enchanté", "ca gaze"
-        ])
-        
+        is_politesse = any(
+            p in texte_l
+            for p in [
+                "comment vas-tu",
+                "ça va",
+                "ca va",
+                "bonjour",
+                "salut",
+                "qui es-tu",
+                "tu fais quoi",
+                "merci",
+                "enchanté",
+                "ca gaze",
+            ]
+        )
+
         if len(mots_presents) > 2 and not is_politesse:
             # On ne cherche que si ça ressemble à une question ou demande d'info
-            is_question = "?" in texte or any(w in texte_l for w in ["qui", "quoi", "quand", "où", "comment", "pourquoi", "quel", "cherche", "trouve"])
+            is_question = "?" in texte or any(
+                w in texte_l
+                for w in [
+                    "qui",
+                    "quoi",
+                    "quand",
+                    "où",
+                    "comment",
+                    "pourquoi",
+                    "quel",
+                    "cherche",
+                    "trouve",
+                ]
+            )
             if is_question:
                 res_serp = recherche_web_serpapi(texte)
                 if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp:
@@ -828,8 +858,10 @@ async def demander_ia(texte):
 
         # Réponses locales de secours (Heure, Date, etc.)
         from PHOEBUS.voice import reponse_locale
+
         rep_loc = reponse_locale(texte)
-        if rep_loc: return rep_loc
+        if rep_loc:
+            return rep_loc
 
         # Si tout a échoué et que c'est de la politesse, on improvise une réponse amicale
         if is_politesse:
@@ -838,11 +870,11 @@ async def demander_ia(texte):
         return "Désolé Floriace, mes serveurs de réflexion sont temporairement indisponibles. Je reste opérationnel pour tes commandes locales."
     except Exception as e:
         print(f"[IA] Erreur fatale demander_ia : {e}")
-        await state.send_web_state("idle") # On ne repasse en idle qu'en cas d'erreur réelle
+        await state.send_web_state("idle")  # On ne repasse en idle qu'en cas d'erreur réelle
         return "J'ai rencontré une erreur interne en essayant de vous répondre."
     finally:
         state.is_thinking = False
-        # On ne force PAS l'état 'idle' ici car parler() va prendre le relais 
+        # On ne force PAS l'état 'idle' ici car parler() va prendre le relais
         # ou le timeout naturel de l'UI s'en chargera.
 
 
@@ -912,9 +944,7 @@ async def demander_ia_stream(texte, on_sentence=None):
             return rep
 
         prompt_actuel = construire_system_prompt(texte)
-        temp_hist = state.historique + [
-            types.Content(role="user", parts=[types.Part(text=texte)])
-        ]
+        temp_hist = state.historique + [types.Content(role="user", parts=[types.Part(text=texte)])]
 
         buffer = ""
         full = ""
@@ -925,6 +955,7 @@ async def demander_ia_stream(texte, on_sentence=None):
 
         for model_name in models:
             try:
+
                 def _start_stream():
                     return client.models.generate_content_stream(
                         model=model_name,
@@ -936,9 +967,7 @@ async def demander_ia_stream(texte, on_sentence=None):
                         contents=temp_hist,
                     )
 
-                stream = await asyncio.wait_for(
-                    asyncio.to_thread(_start_stream), timeout=8.0
-                )
+                stream = await asyncio.wait_for(asyncio.to_thread(_start_stream), timeout=8.0)
 
                 def _next(it=stream):
                     try:
@@ -947,9 +976,7 @@ async def demander_ia_stream(texte, on_sentence=None):
                         return None
 
                 while True:
-                    chunk = await asyncio.wait_for(
-                        asyncio.to_thread(_next), timeout=12.0
-                    )
+                    chunk = await asyncio.wait_for(asyncio.to_thread(_next), timeout=12.0)
                     if chunk is None:
                         break
                     delta = getattr(chunk, "text", None) or ""
@@ -980,9 +1007,7 @@ async def demander_ia_stream(texte, on_sentence=None):
 
                 state.ajouter_historique("user", texte)
                 state.ajouter_historique("model", full)
-                record_provider_result(
-                    "gemini", True, (time.perf_counter() - started) * 1000
-                )
+                record_provider_result("gemini", True, (time.perf_counter() - started) * 1000)
                 llm_ok("gemini")
                 return full
             except Exception as e:
@@ -1012,19 +1037,29 @@ async def demander_ia_vision(texte, img_b64):
             return "Le module de vision Gemini n'est pas disponible."
         img_bytes = base64.b64decode(img_b64)
         image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
-        prompt_actuel = construire_system_prompt(texte) + "\n\nIMPORTANT : Tu viens de recevoir une capture d'écran de Floriace. Analyse-la attentivement."
+        prompt_actuel = (
+            construire_system_prompt(texte)
+            + "\n\nIMPORTANT : Tu viens de recevoir une capture d'écran de Floriace. Analyse-la attentivement."
+        )
         contents = [types.Content(role="user", parts=[image_part, types.Part(text=texte)])]
-        
+
         rep = None
         last_err = None
         for model_name in MODELS_LIST:
             for attempt in range(2):
                 try:
                     response = await asyncio.wait_for(
-                        asyncio.to_thread(client.models.generate_content, model=model_name,
-                            config=types.GenerateContentConfig(system_instruction=prompt_actuel, temperature=0.7, tools=[types.Tool(google_search=types.GoogleSearch())]),
-                            contents=contents),
-                        timeout=15.0
+                        asyncio.to_thread(
+                            client.models.generate_content,
+                            model=model_name,
+                            config=types.GenerateContentConfig(
+                                system_instruction=prompt_actuel,
+                                temperature=0.7,
+                                tools=[types.Tool(google_search=types.GoogleSearch())],
+                            ),
+                            contents=contents,
+                        ),
+                        timeout=15.0,
                     )
                     rep = response.text
                     break
@@ -1034,8 +1069,9 @@ async def demander_ia_vision(texte, img_b64):
                         continue
                     last_err = e
                     break
-            if rep: break
-        
+            if rep:
+                break
+
         if not rep:
             raise last_err or Exception("Aucun modele n'a pu analyser l'image")
 

@@ -9,7 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 try:
@@ -40,18 +39,19 @@ ENV_RULES = {
     "YOUTUBE_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "HA_URL": lambda value: bool(value and value != "http://homeassistant.local:8123"),
     "HA_TOKEN": lambda value: bool(value and value != "VOTRE_TOKEN_ICI"),
-    "XAI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "SERPAPI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "GROQ_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "MISTRAL_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "PHOEBUS_WS_TOKEN": lambda value: bool(value and value not in {"CHANGE_ME", "VOTRE_TOKEN_ICI"}),
     "PHOEBUS_DEVICES_FILE": lambda value: True,
     "PHOEBUS_AUDIT_FILE": lambda value: True,
-    "PHOEBUS_BRAIN_MODE": lambda value: (value or "balanced") in {"balanced", "speed", "smart", "privacy"},
+    "PHOEBUS_BRAIN_MODE": lambda value: (value or "balanced")
+    in {"balanced", "speed", "smart", "privacy", "local_first"},
     "PHOEBUS_BRAIN_ORDER": lambda value: True,
     "PHOEBUS_GEMINI_MODELS": lambda value: True,
     "PHOEBUS_OLLAMA_MODELS": lambda value: True,
-    "PHOEBUS_WAKE_ENABLED": lambda value: (value or "0").lower() in {"0", "1", "true", "false", "yes", "no", "on", "off"},
+    "PHOEBUS_WAKE_ENABLED": lambda value: (value or "0").lower()
+    in {"0", "1", "true", "false", "yes", "no", "on", "off"},
 }
 
 
@@ -94,13 +94,21 @@ def main() -> int:
         print_check(configured, f"env {key}", "optionnel selon les fonctions utilisees")
 
     print()
-    print_check((ROOT / "phoebus_devices.example.json").exists(), "phoebus_devices.example.json", "modele d'alias Home Assistant")
+    print_check(
+        (ROOT / "phoebus_devices.example.json").exists(),
+        "phoebus_devices.example.json",
+        "modele d'alias Home Assistant",
+    )
     local_devices = ROOT / "phoebus_devices.json"
-    print_check(local_devices.exists(), "phoebus_devices.json", "copie locale recommandee pour les alias HA")
+    print_check(
+        local_devices.exists(), "phoebus_devices.json", "copie locale recommandee pour les alias HA"
+    )
     print_check((ROOT / ".env.example").exists(), ".env.example", "modele de configuration")
 
     print()
-    npm = shutil.which("npm.cmd" if platform.system() == "Windows" else "npm") or shutil.which("npm")
+    npm = shutil.which("npm.cmd" if platform.system() == "Windows" else "npm") or shutil.which(
+        "npm"
+    )
     print_check(bool(npm), "npm", npm or "installez Node.js LTS")
     if npm and (ROOT / "frontend" / "package.json").exists():
         result = subprocess.run([npm, "run", "build"], cwd=ROOT / "frontend")

@@ -4,13 +4,14 @@ Objectif : court-circuiter l'appel LLM pour les commandes simples et répétitiv
 (allumer/éteindre une pièce, demander l'heure ou la date, ouvrir un dossier
 connu, etc.). Latence : ~50 ms au lieu de ~1,2 s round-trip cloud.
 """
+
 import re
 import time
 import json
 from typing import Optional
 
-
 # ── Normalisation ─────────────────────────────────────────────────────────
+
 
 def _norm(texte: str) -> str:
     t = (texte or "").lower().strip()
@@ -24,12 +25,24 @@ def _norm(texte: str) -> str:
 
 # ── Table des pièces reconnues ────────────────────────────────────────────
 PIECES_ALIAS = {
-    "salon": "salon", "sejour": "salon", "séjour": "salon", "living": "salon",
-    "cuisine": "cuisine", "chambre": "chambre", "bureau": "bureau",
-    "couloir": "couloir", "entree": "entree", "entrée": "entree",
-    "salle de bain": "salle_de_bain", "sdb": "salle_de_bain",
-    "toilettes": "toilettes", "wc": "toilettes", "garage": "garage",
-    "cave": "cave", "terrasse": "terrasse", "jardin": "jardin",
+    "salon": "salon",
+    "sejour": "salon",
+    "séjour": "salon",
+    "living": "salon",
+    "cuisine": "cuisine",
+    "chambre": "chambre",
+    "bureau": "bureau",
+    "couloir": "couloir",
+    "entree": "entree",
+    "entrée": "entree",
+    "salle de bain": "salle_de_bain",
+    "sdb": "salle_de_bain",
+    "toilettes": "toilettes",
+    "wc": "toilettes",
+    "garage": "garage",
+    "cave": "cave",
+    "terrasse": "terrasse",
+    "jardin": "jardin",
 }
 
 _PIECE_PATTERN = "(?:" + "|".join(sorted(PIECES_ALIAS.keys(), key=len, reverse=True)) + ")"
@@ -38,37 +51,94 @@ _WAKE_PREFIX = r"(?:(?:phoebus|phébus|fébus|febus|feubus|rebus)[, ]*)?"
 
 # ── Patterns ──────────────────────────────────────────────────────────────
 
-_RE_ALLUME = re.compile(rf"^{_WAKE_PREFIX}(?:allume|éclaire|lumiere|lumière).+?(?P<piece>{_PIECE_PATTERN})$")
+_RE_ALLUME = re.compile(
+    rf"^{_WAKE_PREFIX}(?:allume|éclaire|lumiere|lumière).+?(?P<piece>{_PIECE_PATTERN})$"
+)
 _RE_ETEINS = re.compile(rf"^{_WAKE_PREFIX}(?:éteins|eteins|coupe).+?(?P<piece>{_PIECE_PATTERN})$")
-_RE_HEURE = re.compile(rf"^{_WAKE_PREFIX}(?:quelle heure est[- ]il|il est quelle heure|tu as l[' ]heure)$")
-_RE_DATE = re.compile(rf"^{_WAKE_PREFIX}(?:quel jour (?:sommes|on est|est)|quelle (?:est la )?date)$")
-_RE_TIMER = re.compile(rf"^{_WAKE_PREFIX}(?:mets|lance|démarre|programme)?\s*(?:un\s+)?(?:minuteur|timer)\s*(?:de\s+)?(?P<n>\d+)\s*(?P<u>s|min|h)?(?:\s+pour\s+(?P<label>.+))?$")
-_RE_SYS_STATS = re.compile(rf"^{_WAKE_PREFIX}(?:état du système|utilisation cpu|niveau de batterie)$")
-_RE_SYS_CONTROL = re.compile(rf"^{_WAKE_PREFIX}(?P<type>verrouille|veille|coupe le son|remets le son|capture|corbeille)")
+_RE_HEURE = re.compile(
+    rf"^{_WAKE_PREFIX}(?:quelle heure est[- ]il|il est quelle heure|tu as l[' ]heure)$"
+)
+_RE_DATE = re.compile(
+    rf"^{_WAKE_PREFIX}(?:quel jour (?:sommes|on est|est)|quelle (?:est la )?date)$"
+)
+_RE_THERMOSTAT = re.compile(
+    rf"^{_WAKE_PREFIX}(?:mets|règle|regle|passe)\s+(?:le\s+)?thermostat\s+(?:à|a|sur)?\s*(?P<temperature>\d+(?:[,.]\d+)?)"
+)
+_RE_TIMER = re.compile(
+    rf"^{_WAKE_PREFIX}(?:mets|lance|démarre|demarre|programme)?\s*(?:un\s+)?(?:minuteur|timer)\s*(?:de\s+)?(?P<n>\d+)\s*(?P<u>s|sec|seconde|secondes|min|minute|minutes|h|heure|heures)?(?:\s+pour\s+(?P<label>.+))?$"
+)
+_RE_RAPPEL = re.compile(
+    rf"^{_WAKE_PREFIX}rappelle[- ]moi\s+dans\s+(?P<n>\d+)\s*(?P<u>s|sec|seconde|secondes|min|minute|minutes|h|heure|heures)\s+(?:de|d')\s*(?P<label>.+)$"
+)
+_RE_SYS_STATS = re.compile(
+    rf"^{_WAKE_PREFIX}(?:état du système|utilisation cpu|niveau de batterie)$"
+)
+_RE_SYS_VOLUME = re.compile(
+    rf"^{_WAKE_PREFIX}(?:mets|règle|regle)\s+le\s+volume\s+syst[eè]me\s+(?:à|a|sur)?\s*(?P<percent>\d+)"
+)
+_RE_IP = re.compile(r"\b(?P<ip>(?:\d{1,3}\.){3}\d{1,3})\b")
+_RE_MAC = re.compile(r"\b(?P<mac>[0-9a-f]{2}(?::[0-9a-f]{2}){5})\b", re.IGNORECASE)
 
 _RE_WAKE_STRIP = re.compile(r"^(?:phoebus|phébus|fébus|febus|feubus|rebus)[, ]*", re.IGNORECASE)
 _RE_METEO_CITY = (
-    re.compile(r"(?:météo|meteo|temps|prévisions|previsions)(?:\s+(?:pour|à|a|sur|de|d'))\s+(?P<ville>[a-zà-ÿ' -]+)$"),
+    re.compile(
+        r"(?:météo|meteo|temps|prévisions|previsions)(?:\s+(?:pour|à|a|sur|de|d'))\s+(?P<ville>[a-zà-ÿ' -]+)$"
+    ),
     re.compile(r"quel temps fait[- ]il(?:\s+(?:à|a|sur))?\s+(?P<ville>[a-zà-ÿ' -]+)$"),
 )
 _METEO_MARKERS = (
-    "météo", "meteo", "quel temps", "le temps", "prévision", "prevision",
-    "prévisions", "previsions", "il fait quoi", "il va pleuvoir",
-    "va-t-il pleuvoir", "va t il pleuvoir",
+    "météo",
+    "meteo",
+    "quel temps",
+    "le temps",
+    "prévision",
+    "prevision",
+    "prévisions",
+    "previsions",
+    "il fait quoi",
+    "il va pleuvoir",
+    "va-t-il pleuvoir",
+    "va t il pleuvoir",
 )
 _METEO_PERIOD_MARKERS = (
-    "aujourd", "journée", "journee", "ce matin", "cet après-midi",
-    "cet apres-midi", "ce soir", "du jour",
+    "aujourd",
+    "journée",
+    "journee",
+    "ce matin",
+    "cet après-midi",
+    "cet apres-midi",
+    "ce soir",
+    "du jour",
 )
 _METEO_CITY_STOPWORDS = (
-    "aujourd", "journée", "journee", "jour", "matin", "soir", "après-midi",
-    "apres-midi", "dehors", "ici", "maintenant",
+    "aujourd",
+    "journée",
+    "journee",
+    "jour",
+    "matin",
+    "soir",
+    "après-midi",
+    "apres-midi",
+    "dehors",
+    "ici",
+    "maintenant",
 )
 _MEDIA_ACTION_MARKERS = (
-    "je veux regarder", "j'aimerais regarder", "jaimerais regarder",
-    "propose", "proposes", "recommande", "recommandes", "trouve moi",
-    "trouve-moi", "mets moi", "mets-moi", "lance moi", "lance-moi",
-    "on regarde", "envie de regarder",
+    "je veux regarder",
+    "j'aimerais regarder",
+    "jaimerais regarder",
+    "propose",
+    "proposes",
+    "recommande",
+    "recommandes",
+    "trouve moi",
+    "trouve-moi",
+    "mets moi",
+    "mets-moi",
+    "lance moi",
+    "lance-moi",
+    "on regarde",
+    "envie de regarder",
 )
 _MEDIA_MARKERS = ("film", "films", "série", "serie", "documentaire", "vod", "streaming")
 _MEDIA_GENRES = {
@@ -94,17 +164,22 @@ _MEDIA_PLATFORMS = {
     "justwatch": "justwatch",
 }
 
+
 class IntentResult:
     __slots__ = ("name", "reply", "confidence")
+
     def __init__(self, name: str, reply: str, confidence: float = 1.0):
         self.name = name
         self.reply = reply
         self.confidence = confidence
 
+
 def _unite_to_seconds(n: int, unit: str) -> int:
     u = (unit or "min").lower()
-    if u.startswith("s"): return n
-    if u.startswith("h"): return n * 3600
+    if u.startswith("s"):
+        return n
+    if u.startswith("h"):
+        return n * 3600
     return n * 60
 
 
@@ -165,22 +240,171 @@ def _detect_media(t: str) -> Optional[IntentResult]:
     }
     return IntentResult("media_recommendations", json.dumps(payload))
 
+
+def _timer_payload(duration_s: int, label: str = "", kind: str = "timer") -> str:
+    payload = {
+        "action": "timer_set",
+        "duration_s": int(duration_s),
+        "kind": kind,
+        "label": (label or "").strip(),
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _detect_spotify(t: str) -> Optional[IntentResult]:
+    if t in {"pause", "pause musique", "mets pause"}:
+        return IntentResult("spotify_pause", json.dumps({"action": "spotify_pause"}))
+    if t in {"reprends", "reprends la musique", "continue la musique"}:
+        return IntentResult("spotify_resume", json.dumps({"action": "spotify_resume"}))
+    if t in {"suivant", "musique suivante", "piste suivante"}:
+        return IntentResult("spotify_next", json.dumps({"action": "spotify_next"}))
+    if t in {"précédent", "precedent", "musique précédente", "musique precedente"}:
+        return IntentResult("spotify_prev", json.dumps({"action": "spotify_prev"}))
+    if t.startswith(("joue ", "lance ")) and not any(
+        marker in t for marker in ("la lumière", "lumière", "salon", "cuisine", "minuteur", "timer")
+    ):
+        query = re.sub(r"^(?:joue|lance)\s+", "", t).strip()
+        if query:
+            return IntentResult(
+                "spotify_search_play",
+                json.dumps({"action": "spotify_play", "query": query}, ensure_ascii=False),
+            )
+    return None
+
+
+def _detect_network(t: str) -> Optional[IntentResult]:
+    if any(
+        marker in t
+        for marker in (
+            "scanne le réseau",
+            "scanne le reseau",
+            "scan réseau",
+            "scan reseau",
+            "liste le wifi",
+        )
+    ):
+        return IntentResult("network_scan", json.dumps({"action": "network_scan", "refresh": True}))
+    if t.startswith("ping "):
+        m = _RE_IP.search(t)
+        if m:
+            return IntentResult(
+                "network_ping", json.dumps({"action": "network_ping", "ip": m.group("ip")})
+            )
+    if t.startswith(("réveille ", "reveille ", "wake ")):
+        m = _RE_MAC.search(t)
+        if m:
+            return IntentResult(
+                "network_wake",
+                json.dumps({"action": "network_wake", "mac": m.group("mac").lower()}),
+            )
+    return None
+
+
+def _detect_system(t: str) -> Optional[IntentResult]:
+    if t in {"verrouille", "verrouille la session"}:
+        return IntentResult("system_lock", json.dumps({"action": "system_control", "type": "lock"}))
+    if t in {"veille", "mets en veille", "mets le mac en veille"}:
+        return IntentResult(
+            "system_sleep", json.dumps({"action": "system_control", "type": "sleep"})
+        )
+    if t == "vide la corbeille":
+        return IntentResult(
+            "system_empty_trash", json.dumps({"action": "system_control", "type": "empty_trash"})
+        )
+    if t == "coupe le son":
+        return IntentResult("system_mute", json.dumps({"action": "system_control", "type": "mute"}))
+    if t in {"rétablis le son", "retablis le son", "remets le son"}:
+        return IntentResult(
+            "system_unmute", json.dumps({"action": "system_control", "type": "unmute"})
+        )
+    if t in {"capture d'écran", "capture d ecran", "capture écran", "capture ecran"}:
+        return IntentResult(
+            "system_screenshot", json.dumps({"action": "system_control", "type": "screenshot"})
+        )
+    m = _RE_SYS_VOLUME.match(t)
+    if m:
+        return IntentResult(
+            "system_volume",
+            json.dumps(
+                {"action": "system_control", "type": "volume", "percent": int(m.group("percent"))}
+            ),
+        )
+    return None
+
+
+def _detect_vision(t: str) -> Optional[IntentResult]:
+    phone_markers = ("téléphone", "telephone", "iphone", "mobile")
+    if any(marker in t for marker in phone_markers) and any(
+        marker in t for marker in ("regarde", "caméra", "camera", "photo")
+    ):
+        return IntentResult(
+            "vision_camera_phone",
+            json.dumps(
+                {
+                    "action": "vision_camera_phone",
+                    "question": "que vois-tu",
+                    "facing": "environment",
+                },
+                ensure_ascii=False,
+            ),
+        )
+    if t in {"regarde autour de toi", "que vois-tu", "que vois tu", "active la webcam"}:
+        return IntentResult(
+            "vision_camera_pc",
+            json.dumps(
+                {"action": "vision_camera_pc", "question": "que vois-tu"}, ensure_ascii=False
+            ),
+        )
+    return None
+
+
+def _detect_knowledge(t: str) -> Optional[IntentResult]:
+    if any(
+        marker in t
+        for marker in ("actualités", "actualites", "dernières nouvelles", "dernieres nouvelles")
+    ):
+        return IntentResult(
+            "news", json.dumps({"action": "knowledge_query", "question": t}, ensure_ascii=False)
+        )
+    if t.startswith(("c'est quoi ", "c est quoi ", "qui est ", "qu'est-ce que ", "qu est ce que ")):
+        return IntentResult(
+            "knowledge_query",
+            json.dumps({"action": "knowledge_query", "question": t}, ensure_ascii=False),
+        )
+    return None
+
+
 def detect(texte: str) -> Optional[IntentResult]:
     """Tente une reconnaissance locale. Renvoie None si incertain."""
-    if not texte: return None
+    if not texte:
+        return None
     t = _norm(texte)
-    if not t: return None
+    if not t:
+        return None
 
     # --- Domotique ---
     m = _RE_ALLUME.match(t)
     if m:
         p = PIECES_ALIAS.get(m.group("piece"))
-        return IntentResult("allume", json.dumps({"action": "ha_lumiere", "piece": p, "etat": "on"}))
-    
+        return IntentResult(
+            "allumer", json.dumps({"action": "ha_lumiere", "piece": p, "etat": "on"})
+        )
+
     m = _RE_ETEINS.match(t)
     if m:
         p = PIECES_ALIAS.get(m.group("piece"))
-        return IntentResult("eteins", json.dumps({"action": "ha_lumiere", "piece": p, "etat": "off"}))
+        return IntentResult(
+            "eteindre", json.dumps({"action": "ha_lumiere", "piece": p, "etat": "off"})
+        )
+
+    m = _RE_THERMOSTAT.match(t)
+    if m:
+        temperature = float(m.group("temperature").replace(",", "."))
+        value = int(temperature) if temperature.is_integer() else temperature
+        return IntentResult(
+            "thermostat",
+            json.dumps({"action": "ha_thermostat", "temperature": value}, ensure_ascii=False),
+        )
 
     # --- Heure / Date ---
     if _RE_HEURE.match(t):
@@ -197,21 +421,35 @@ def detect(texte: str) -> Optional[IntentResult]:
     if media:
         return media
 
+    # --- Vision / Réseau / Système / Spotify / Connaissance ---
+    for detector in (
+        _detect_vision,
+        _detect_network,
+        _detect_system,
+        _detect_spotify,
+        _detect_knowledge,
+    ):
+        result = detector(t)
+        if result:
+            return result
+
     # --- Timers ---
     m = _RE_TIMER.match(t)
     if m:
         n = int(m.group("n"))
         sec = _unite_to_seconds(n, m.group("u"))
-        return IntentResult("timer", json.dumps({"action": "timer", "minutes": sec//60, "secondes": sec%60, "label": m.group("label") or "minuteur"}))
+        return IntentResult("timer_set", _timer_payload(sec, m.group("label") or "minuteur"))
+
+    m = _RE_RAPPEL.match(t)
+    if m:
+        n = int(m.group("n"))
+        sec = _unite_to_seconds(n, m.group("u"))
+        return IntentResult(
+            "rappel_set", _timer_payload(sec, m.group("label") or "rappel", kind="rappel")
+        )
 
     # --- Système ---
     if _RE_SYS_STATS.match(t):
         return IntentResult("system_stats", json.dumps({"action": "system_stats"}))
-    
-    m = _RE_SYS_CONTROL.match(t)
-    if m:
-        cmd = m.group("type")
-        map_cmd = {"verrouille": "lock", "veille": "sleep", "coupe le son": "mute", "remets le son": "unmute", "capture": "screenshot", "corbeille": "empty_trash"}
-        return IntentResult("sys_control", json.dumps({"action": "system_control", "type": map_cmd.get(cmd)}))
 
     return None

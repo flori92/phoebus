@@ -35,8 +35,6 @@ PHOEBUS route maintenant chaque requete vers le meilleur cerveau disponible:
 - Groq pour les reponses texte tres rapides
 - Arena via LMArenaBridge local pour acceder aux modeles gratuits exposes par LM Arena
 - Mistral comme cerveau francophone/europeen secondaire
-- Grok pour les sujets X/Twitter si `XAI_API_KEY` est configuree
-- Kimi (Moonshot AI) comme modele chinois alternatif puissant
 - OpenAI (GPT-4o) comme fournisseur de secours
 - Ollama local en repli ou en mode confidentialite
 
@@ -59,7 +57,7 @@ Configurez le comportement dans `.env`:
 
 ```bash
 PHOEBUS_BRAIN_MODE=balanced   # balanced | speed | smart | privacy
-PHOEBUS_BRAIN_ORDER=gemini,groq,mistral,grok,ollama
+PHOEBUS_BRAIN_ORDER=gemini,groq,arena,mistral,openai,ollama
 ```
 
 Les metriques de latence/echec sont stockees dans `logs/ai_router_metrics.json`.

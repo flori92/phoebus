@@ -19,7 +19,6 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -68,7 +67,7 @@ def _check_imports() -> list[CheckResult]:
         "speech_recognition": "STT",
         "websockets": "interface WebSocket",
         "pygame": "lecture audio",
-        "openai": "OpenAI/Groq/Mistral compatible",
+        "openai": "clients OpenAI-compatibles",
     }
     optional = {
         "pyaudio": "micro local",
@@ -96,7 +95,9 @@ def _check_config() -> list[CheckResult]:
         from PHOEBUS.config import (
             DEFAULT_MOBILE_PORT,
             DEFAULT_WS_PORT,
+            GEMINI_API_KEY,
             GROQ_API_KEY,
+            MISTRAL_API_KEY,
             OPENAI_API_KEY,
             PHOEBUS_WS_TOKEN,
             SERPAPI_API_KEY,
@@ -110,9 +111,11 @@ def _check_config() -> list[CheckResult]:
     checks = [
         _ok("Port WebSocket", str(DEFAULT_WS_PORT)),
         _ok("Port mobile", str(DEFAULT_MOBILE_PORT)),
-        _ok("Auth WebSocket", "active")
-        if WS_AUTH_REQUIRED
-        else _warn("Auth WebSocket", "désactivée"),
+        (
+            _ok("Auth WebSocket", "active")
+            if WS_AUTH_REQUIRED
+            else _warn("Auth WebSocket", "désactivée")
+        ),
     ]
     if _secret_is_configured(PHOEBUS_WS_TOKEN):
         checks.append(_ok("Token WebSocket", "configuré"))
@@ -120,8 +123,12 @@ def _check_config() -> list[CheckResult]:
         checks.append(_fail("Token WebSocket", "placeholder ou absent"))
 
     providers = []
+    if _secret_is_configured(GEMINI_API_KEY):
+        providers.append("gemini")
     if _secret_is_configured(GROQ_API_KEY):
         providers.append("groq")
+    if _secret_is_configured(MISTRAL_API_KEY):
+        providers.append("mistral")
     if _secret_is_configured(OPENAI_API_KEY):
         providers.append("openai")
     if _secret_is_configured(SERPAPI_API_KEY):

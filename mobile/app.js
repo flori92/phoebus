@@ -59,6 +59,22 @@ let isListening  = false;
 let reconnectTimer = null;
 let authToken = "";
 const faceRoot = document.documentElement;
+
+function loadAuthToken() {
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = (params.get("token") || "").trim();
+  if (urlToken) {
+    window.localStorage.setItem("PHOEBUS_WS_TOKEN", urlToken);
+    params.delete("token");
+    const nextSearch = params.toString();
+    const nextUrl = window.location.pathname + (nextSearch ? `?${nextSearch}` : "") + window.location.hash;
+    window.history.replaceState({}, document.title, nextUrl);
+    return urlToken;
+  }
+  return (window.localStorage.getItem("PHOEBUS_WS_TOKEN") || "").trim();
+}
+
+authToken = loadAuthToken();
 const MOOD_PRESETS = {
   neutral: {
     eyeOpen: 1,
@@ -940,6 +956,12 @@ function setConnected(ok) {
   badgeEl.classList.toggle("disconnected", !ok);
   badgeLabelEl.textContent = ok ? "connecté" : "reconnexion...";
 }
+
+function setAuthFailed() {
+  setConnected(false);
+  badgeLabelEl.textContent = "auth refusée";
+  userTextEl.textContent = "⚠ Authentification refusée. Ouvrez l'interface avec ?token=...";
+}
 setConnected(false);
 
 // ── WebSocket ───────────────────────────────────────────────────────────────
@@ -1130,6 +1152,13 @@ function connectWS() {
       }
 
       if (data.action === "auth_ok") {
+        setConnected(true);
+        userTextEl.textContent = "";
+        return;
+      }
+
+      if (data.action === "auth_failed") {
+        setAuthFailed();
         return;
       }
 
@@ -1333,6 +1362,7 @@ const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
 
 let recognition = null;
+let recognitionHadError = false;
 
 if (SpeechRecognition) {
   recognition = new SpeechRecognition();
@@ -1343,6 +1373,7 @@ if (SpeechRecognition) {
 
   recognition.addEventListener("start", () => {
     isListening = true;
+    recognitionHadError = false;
     // Interruption : si on commence à parler, PHOEBUS se tait
     streamingPlayer.stop();
     cancelTimedLipsync();
@@ -1376,6 +1407,10 @@ if (SpeechRecognition) {
 
   recognition.addEventListener("end", () => {
     isListening = false;
+    if (recognitionHadError) {
+      recognitionHadError = false;
+      return;
+    }
     const texteCapture = userTextEl.textContent.replace(/^"|"$/g, "").trim();
     console.log("[STT] Fin écoute. Texte :", texteCapture);
 
@@ -1394,6 +1429,7 @@ if (SpeechRecognition) {
   recognition.addEventListener("error", (event) => {
     console.warn("[STT] Erreur :", event.error);
     isListening = false;
+    recognitionHadError = true;
     applyState("idle");
 
     if (event.error === "not-allowed") {

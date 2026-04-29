@@ -1,6 +1,7 @@
 """
 Tests pour la configuration Pydantic.
 """
+
 import pytest
 from unittest.mock import patch
 
@@ -9,27 +10,28 @@ from PHOEBUS.config_pydantic import (
     ServerConfig,
     PhoebusConfig,
     get_config,
-    reload_config
+    reload_config,
 )
 from PHOEBUS.brain_router import build_profile, rank_provider_names
 
 
 class TestLLMConfig:
     """Tests pour la configuration LLM."""
-    
+
     def test_llm_config_empty(self):
         """Config LLM sans clés API."""
         with patch.dict("os.environ", {}, clear=True):
             config = LLMConfig()
         assert config.gemini_api_key is None
         assert config.groq_api_key is None
-    
+
     def test_llm_config_with_keys(self):
         """Config LLM avec clés."""
-        with patch.dict("os.environ", {
-            "GEMINI_API_KEY": "test-key",
-            "GROQ_API_KEY": "  spaced-key  "
-        }, clear=False):
+        with patch.dict(
+            "os.environ",
+            {"GEMINI_API_KEY": "test-key", "GROQ_API_KEY": "  spaced-key  "},
+            clear=False,
+        ):
             config = LLMConfig()
             assert config.gemini_api_key == "test-key"
             assert config.groq_api_key == "spaced-key"  # Stripped
@@ -37,24 +39,24 @@ class TestLLMConfig:
 
 class TestServerConfig:
     """Tests pour la configuration serveur."""
-    
+
     def test_default_values(self):
         """Valeurs par défaut."""
         config = ServerConfig(ws_token="test12345")
         assert config.ws_port == 8765
         assert config.mobile_port == 8080
         assert config.ws_auth_required is True
-    
+
     def test_invalid_token(self):
         """Token par défaut interdit."""
         with pytest.raises(ValueError, match="Token par défaut non sécurisé"):
             ServerConfig(ws_token="CHANGE_ME")
-    
+
     def test_weak_token(self):
         """Token trop court."""
         with pytest.raises(ValueError, match="String should have at least 8 characters"):
             ServerConfig(ws_token="short")
-    
+
     def test_invalid_port(self):
         """Port hors range."""
         with pytest.raises(ValueError):
@@ -63,24 +65,23 @@ class TestServerConfig:
 
 class TestPhoebusConfig:
     """Tests pour la configuration globale."""
-    
+
     def test_is_production_development(self):
         """Détection environnement dev."""
         config = PhoebusConfig(server=ServerConfig(ws_token="test12345"), _env_file=None)
         assert config.is_production is False
-    
+
     def test_is_production_true(self):
         """Détection environnement prod."""
-        config = PhoebusConfig(server=ServerConfig(ws_token="super-secure-token-123"), _env_file=None)
+        config = PhoebusConfig(
+            server=ServerConfig(ws_token="super-secure-token-123"), _env_file=None
+        )
         assert config.is_production is True
-    
+
     def test_get_available_providers(self):
         """Liste des providers disponibles."""
         with patch.dict("os.environ", {}, clear=True):
-            llm_config = LLMConfig(
-                gemini_api_key="key1",
-                groq_api_key="key2"
-            )
+            llm_config = LLMConfig(gemini_api_key="key1", groq_api_key="key2")
             config = PhoebusConfig(
                 llm=llm_config,
                 server=ServerConfig(ws_token="test12345"),
@@ -94,14 +95,14 @@ class TestPhoebusConfig:
 
 class TestConfigSingleton:
     """Tests pour le pattern singleton."""
-    
+
     def test_singleton_instance(self):
         """Même instance retournée."""
         reload_config()  # Reset
         config1 = get_config()
         config2 = get_config()
         assert config1 is config2
-    
+
     def test_reload_creates_new_instance(self):
         """Reload crée nouvelle instance."""
         config1 = get_config()
@@ -113,7 +114,7 @@ def test_brain_router_priorise_local_first(monkeypatch):
     monkeypatch.setenv("PHOEBUS_BRAIN_MODE", "local_first")
     monkeypatch.setenv("PHOEBUS_LOCAL_FIRST", "1")
 
-    profile = build_profile("explique moi la virtualisation")
+    profile = build_profile("raconte une blague courte")
     order = rank_provider_names(
         profile,
         available=["gemini", "groq", "ollama"],
@@ -122,6 +123,22 @@ def test_brain_router_priorise_local_first(monkeypatch):
     )
 
     assert order[0] == "ollama"
+
+
+def test_brain_router_ne_sacrifie_pas_les_requetes_profondes_au_local(monkeypatch):
+    monkeypatch.setenv("PHOEBUS_BRAIN_MODE", "local_first")
+    monkeypatch.setenv("PHOEBUS_LOCAL_FIRST", "1")
+
+    profile = build_profile("analyse et optimise l'architecture de Phoebus")
+    order = rank_provider_names(
+        profile,
+        available=["gemini", "groq", "ollama"],
+        order=["gemini", "groq", "ollama"],
+        metrics={},
+    )
+
+    assert profile.priority == "smart"
+    assert order[0] == "gemini"
 
 
 def test_brain_router_garde_preferred_provider_pour_temps_reel(monkeypatch):
@@ -137,4 +154,20 @@ def test_brain_router_garde_preferred_provider_pour_temps_reel(monkeypatch):
     )
 
     assert profile.needs_realtime is True
+    assert order[0] == "arena"
+
+
+def test_brain_router_priorise_arena_pour_x_sans_cle_dediee(monkeypatch):
+    monkeypatch.setenv("PHOEBUS_BRAIN_MODE", "balanced")
+    monkeypatch.setenv("PHOEBUS_LOCAL_FIRST", "0")
+
+    profile = build_profile("résume les tendances sur X autour de l'IA")
+    order = rank_provider_names(
+        profile,
+        available=["gemini", "arena", "groq"],
+        order=["gemini", "groq", "arena"],
+        metrics={},
+    )
+
+    assert profile.preferred_provider == "arena"
     assert order[0] == "arena"

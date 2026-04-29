@@ -1,4 +1,13 @@
-from .registry import SKILL_REGISTRY, execute_skill, is_skill_registered, describe_skill, risk_of
+from .registry import (
+    SKILL_REGISTRY,
+    execute_skill,
+    is_skill_registered,
+    describe_skill,
+    get_skill,
+    list_skills,
+    risk_of,
+    skill,
+)
 import PHOEBUS.skills.timer_skills
 import PHOEBUS.skills.system_skills
 import PHOEBUS.skills.spotify_skills
@@ -14,4 +23,13 @@ import PHOEBUS.skills.education_skills
 import PHOEBUS.skills.knowledge_skills
 import PHOEBUS.skills.media_skills
 
-__all__ = ["SKILL_REGISTRY", "execute_skill", "is_skill_registered", "describe_skill", "risk_of"]
+__all__ = [
+    "SKILL_REGISTRY",
+    "execute_skill",
+    "is_skill_registered",
+    "describe_skill",
+    "get_skill",
+    "list_skills",
+    "risk_of",
+    "skill",
+]

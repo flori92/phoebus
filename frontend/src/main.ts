@@ -913,6 +913,23 @@ let lastExpressionText = "";
 let lastExpressionAt = 0;
 let lastExpressionId = "";
 
+function loadAuthToken(): string {
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = (params.get("token") || "").trim();
+  if (urlToken) {
+    window.localStorage.setItem("PHOEBUS_WS_TOKEN", urlToken);
+    params.delete("token");
+    const nextSearch = params.toString();
+    const nextUrl =
+      window.location.pathname + (nextSearch ? `?${nextSearch}` : "") + window.location.hash;
+    window.history.replaceState({}, document.title, nextUrl);
+    return urlToken;
+  }
+  return (window.localStorage.getItem("PHOEBUS_WS_TOKEN") || "").trim();
+}
+
+authToken = loadAuthToken();
+
 function setVoiceLevel(level: number): void {
   const baseline = currentState === "speaking" ? 0.08 : 0;
   currentVoiceLevel = Math.max(baseline, Math.min(1, level || 0));
@@ -973,6 +990,12 @@ function setConnected(ok: boolean): void {
   badgeEl.classList.toggle("connected", ok);
   badgeEl.classList.toggle("disconnected", !ok);
   badgeLabelEl.textContent = ok ? "connecte" : "reconnexion";
+}
+
+function setAuthFailed(): void {
+  setConnected(false);
+  badgeLabelEl.textContent = "auth refusee";
+  showError("Authentification refusee. Ouvrez l'interface avec ?token=...");
 }
 
 function sendAuth(): void {
@@ -1084,6 +1107,11 @@ function connect(): void {
         return;
       }
       if (data.action === "auth_ok") {
+        setConnected(true);
+        return;
+      }
+      if (data.action === "auth_failed") {
+        setAuthFailed();
         return;
       }
 

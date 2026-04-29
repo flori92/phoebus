@@ -4,6 +4,7 @@ Ce module ne parle a aucun fournisseur directement. Il decide quel cerveau
 essayer, dans quel ordre, et garde une petite memoire operationnelle des
 latences/echecs pour eviter de retenter betement un service degrade.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,7 +15,6 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from PHOEBUS.config import BASE_DIR
-
 
 PROVIDERS = ("gemini", "groq", "mistral", "arena", "openai", "ollama")
 DEFAULT_ORDER = ("mistral", "gemini", "groq", "arena", "openai", "ollama")
@@ -60,7 +60,9 @@ def local_first_enabled() -> bool:
     }
 
 
-def build_profile(texte: str, streaming: bool = False, in_conversation: bool = False) -> BrainProfile:
+def build_profile(
+    texte: str, streaming: bool = False, in_conversation: bool = False
+) -> BrainProfile:
     """Classe une requete sans appel reseau.
 
     Le but est conservateur : accelerer les cas simples, garder Gemini en
@@ -72,24 +74,59 @@ def build_profile(texte: str, streaming: bool = False, in_conversation: bool = F
     word_count = len(words)
 
     realtime_markers = (
-        "aujourd'hui", "maintenant", "actuel", "actuelle", "dernier",
-        "derniere", "dernière", "news", "actualité", "actualite",
-        "score", "resultat", "résultat", "classement", "bourse",
-        "prix", "meteo", "météo",
+        "aujourd'hui",
+        "maintenant",
+        "actuel",
+        "actuelle",
+        "dernier",
+        "derniere",
+        "dernière",
+        "news",
+        "actualité",
+        "actualite",
+        "score",
+        "resultat",
+        "résultat",
+        "classement",
+        "bourse",
+        "prix",
+        "meteo",
+        "météo",
     )
-    x_markers = ("sur x", "twitter", "x.com", "grok", "elon")
+    x_markers = ("sur x", "twitter", "x.com", "elon")
     command_markers = (
-        "allume", "eteins", "éteins", "ouvre", "lance", "active",
-        "désactive", "desactive", "mets", "règle", "regle",
+        "allume",
+        "eteins",
+        "éteins",
+        "ouvre",
+        "lance",
+        "active",
+        "désactive",
+        "desactive",
+        "mets",
+        "règle",
+        "regle",
     )
     deep_markers = (
-        "analyse", "architecture", "strategie", "stratégie", "compare",
-        "explique", "plan", "conçois", "concois", "optimise", "ameliore",
-        "améliore", "diagnostic", "securite", "sécurité",
+        "analyse",
+        "architecture",
+        "strategie",
+        "stratégie",
+        "compare",
+        "explique",
+        "plan",
+        "conçois",
+        "concois",
+        "optimise",
+        "ameliore",
+        "améliore",
+        "diagnostic",
+        "securite",
+        "sécurité",
     )
 
     needs_realtime = any(m in t for m in realtime_markers)
-    preferred = "grok" if any(m in t for m in x_markers) else None
+    preferred = "arena" if any(m in t for m in x_markers) else None
 
     if any(m in t for m in command_markers):
         kind = "command"
@@ -182,11 +219,13 @@ def record_provider_result(provider: str, ok: bool, latency_ms: float, error: st
         streak = int(item.get("failures_streak", 0)) + 1
         item["failures_streak"] = streak
         item["last_error"] = str(error or "")[:220]
-        
+
         # Détecter les erreurs de quota (429) et appliquer une cooldown longue
         error_lower = str(error or "").lower()
-        is_quota_error = "429" in str(error) or "resource_exhausted" in error_lower or "quota" in error_lower
-        
+        is_quota_error = (
+            "429" in str(error) or "resource_exhausted" in error_lower or "quota" in error_lower
+        )
+
         if is_quota_error:
             # Erreur de quota : cooldown d'1 heure
             item["cooldown_until"] = now + QUOTA_COOLDOWN_SECONDS
@@ -205,7 +244,7 @@ def rank_provider_names(
     exclude_cooling: bool = True,
 ) -> list[str]:
     """Retourne les fournisseurs a tenter, dans l'ordre.
-    
+
     Args:
         exclude_cooling: Si True (défaut), exclut les providers en cooldown.
                         Si False, les retourne en dernier (ancien comportement).
@@ -216,15 +255,21 @@ def rank_provider_names(
 
     if mode == "privacy":
         base = _move_first(base, "ollama")
-    elif (mode == "local_first" or local_first_enabled()) and not profile.needs_realtime:
-        base = _move_first(base, "ollama")
     elif profile.preferred_provider:
         base = _move_first(base, profile.preferred_provider)
-    elif mode == "speed" or profile.priority == "fast":
+    elif mode == "speed":
         # Groq est souvent le meilleur compromis latence pour les reponses texte.
         base = _move_first(base, "groq")
     elif mode == "smart" or profile.priority == "smart":
         base = _move_first(base, "gemini")
+    elif (
+        (mode == "local_first" or local_first_enabled())
+        and profile.priority != "smart"
+        and not profile.needs_realtime
+    ):
+        base = _move_first(base, "ollama")
+    elif profile.priority == "fast":
+        base = _move_first(base, "groq")
 
     metrics = metrics if metrics is not None else _load_metrics()
     now = time.time()
@@ -238,7 +283,7 @@ def rank_provider_names(
             cooling.append(provider)
         else:
             healthy.append(provider)
-    
+
     if exclude_cooling:
         return healthy or cooling  # Si tout est en cooldown, tenter quand même le moins pire.
     else:
@@ -248,8 +293,12 @@ def rank_provider_names(
 def available_provider_names() -> list[str]:
     """Detecte les fournisseurs configures sans declencher d'appel reseau."""
     from PHOEBUS.config import (
-        client, groq_client,
-        openai_client, arena_client, types
+        client,
+        groq_client,
+        mistral_client,
+        openai_client,
+        arena_client,
+        types,
     )
 
     names = []
@@ -259,6 +308,8 @@ def available_provider_names() -> list[str]:
         names.append("groq")
     if openai_client:
         names.append("openai")
+    if mistral_client:
+        names.append("mistral")
     if arena_client:
         names.append("arena")
     # Ollama est local : on le garde comme candidat meme s'il peut etre eteint.
