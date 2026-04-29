@@ -98,6 +98,29 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
         meta_str = f" [Batt: {m.get('battery')}% | Loc: {m.get('location')} | Focus: {m.get('focus')}]"
     
     print(f"[ROUTER:{source.upper()}{meta_str}] {texte}")
+
+    full_text_parts = []
+    spoken = {"v": False}
+    speech = _SpeechQueue()
+
+    if state.PENDING_CONFIRMATION:
+        pending = state.PENDING_CONFIRMATION
+        if is_cancellation_text(texte):
+            state.PENDING_CONFIRMATION = None
+            audit_log("sensitive_action_cancelled", action=pending.get("action"))
+            msg = "Action annulée, Monsieur."
+            await _parler_safe(msg)
+            return msg
+        if is_confirmation_text(texte):
+            state.PENDING_CONFIRMATION = None
+            audit_log("sensitive_action_confirmed", action=pending.get("action"))
+            await _parler_safe("Action confirmée, Floriace. J'exécute.")
+            from PHOEBUS.actions import executer_une_action
+            await executer_une_action(pending)
+            return "Action confirmée, Monsieur."
+        msg = "En attente de votre confirmation. Dites 'Phoebus je confirme' ou 'annule'."
+        await _parler_safe(msg)
+        return msg
     
     contexte_ios = ""
     if metadata:
@@ -108,9 +131,6 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
         )
 
     query_enrichie = contexte_ios + texte
-    full_text_parts = []
-    spoken = {"v": False}
-    speech = _SpeechQueue()
 
     async def _on_sentence(s):
         spoken["v"] = True
@@ -130,6 +150,8 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
 
         if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
             await traiter_reponse_ia(rep_finale_ia)
+            if state.PENDING_CONFIRMATION:
+                return "Confirmation requise, Monsieur."
             return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
 
         if not spoken["v"] and rep_finale_ia:

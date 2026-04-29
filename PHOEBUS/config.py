@@ -144,7 +144,6 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-PHOEBUS_WS_TOKEN = os.getenv("PHOEBUS_WS_TOKEN", "").strip()
 PHOEBUS_DEVICES_FILE = os.getenv("PHOEBUS_DEVICES_FILE", "phoebus_devices.json").strip()
 PHOEBUS_AUDIT_FILE = os.getenv("PHOEBUS_AUDIT_FILE", "logs/audit.jsonl").strip()
 PHOEBUS_WAKE_ENABLED = os.getenv("PHOEBUS_WAKE_ENABLED", "0").strip().lower() in {
@@ -248,13 +247,7 @@ IS_MACOS = SYSTEM_NAME == "Darwin"
 DEFAULT_FRONTEND_PORT = 5173
 DEFAULT_WS_PORT = 8765
 DEFAULT_MOBILE_PORT = 8090
-PHOEBUS_WS_TOKEN = os.getenv("PHOEBUS_WS_TOKEN", "CHANGE_ME").strip()
-WS_AUTH_REQUIRED = os.getenv("PHOEBUS_WS_AUTH_REQUIRED", "1").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+WS_AUTH_REQUIRED = False
 
 # ── Géo / Météo ─────────────────────────────────────────────────────────────
 VILLE_PAR_DEFAUT = "Amilly"

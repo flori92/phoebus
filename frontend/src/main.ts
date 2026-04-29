@@ -908,27 +908,25 @@ let moodResetTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingExpressionTimer: ReturnType<typeof setTimeout> | null = null;
 let timedLipsyncTimers: ReturnType<typeof setTimeout>[] = [];
 let pendingExpressionId = "";
-let authToken = "";
 let lastExpressionText = "";
 let lastExpressionAt = 0;
 let lastExpressionId = "";
 
-function loadAuthToken(): string {
+function removeLegacyTokenFromUrl(): void {
   const params = new URLSearchParams(window.location.search);
-  const urlToken = (params.get("token") || "").trim();
-  if (urlToken) {
-    window.localStorage.setItem("PHOEBUS_WS_TOKEN", urlToken);
+  if (params.has("token")) {
     params.delete("token");
     const nextSearch = params.toString();
     const nextUrl =
       window.location.pathname + (nextSearch ? `?${nextSearch}` : "") + window.location.hash;
     window.history.replaceState({}, document.title, nextUrl);
-    return urlToken;
   }
-  return (window.localStorage.getItem("PHOEBUS_WS_TOKEN") || "").trim();
+  Object.keys(window.localStorage)
+    .filter((key) => key.includes("PHOEBUS") && key.includes("TOKEN"))
+    .forEach((key) => window.localStorage.removeItem(key));
 }
 
-authToken = loadAuthToken();
+removeLegacyTokenFromUrl();
 
 function setVoiceLevel(level: number): void {
   const baseline = currentState === "speaking" ? 0.08 : 0;
@@ -994,8 +992,8 @@ function setConnected(ok: boolean): void {
 
 function setAuthFailed(): void {
   setConnected(false);
-  badgeLabelEl.textContent = "auth refusee";
-  showError("Authentification refusee. Ouvrez l'interface avec ?token=...");
+  badgeLabelEl.textContent = "connexion refusee";
+  showError("Connexion refusee par le backend.");
 }
 
 function sendAuth(): void {
@@ -1003,7 +1001,6 @@ function sendAuth(): void {
   ws.send(
     JSON.stringify({
       type: "auth",
-      token: authToken,
       client_type: "web",
       client_name: window.navigator.userAgent.slice(0, 80),
     })

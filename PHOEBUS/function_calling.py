@@ -79,18 +79,18 @@ CORE_FUNCTION_SCHEMAS: List[Dict[str, Any]] = [
         },
     },
     {
-        "name": "send_email",
+        "name": "write_email",
         "description": "Envoie un email via Gmail. ACTION SENSIBLE — demandera confirmation.",
         "parameters": {
             "type": "object",
             "properties": {
-                "to": {"type": "string", "description": "Adresse email du destinataire"},
+                "recipient": {"type": "string", "description": "Adresse email du destinataire"},
                 "subject": {"type": "string"},
                 "body": {"type": "string", "description": "Corps du message en texte brut"},
                 "cc": {"type": "string"},
                 "bcc": {"type": "string"},
             },
-            "required": ["to", "body"],
+            "required": ["recipient", "body"],
         },
     },
     {

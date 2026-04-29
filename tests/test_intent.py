@@ -54,3 +54,17 @@ def test_media_netflix_garde_plateforme_demandee():
     assert payload["kind"] == "serie"
     assert payload["genre"] == "thriller"
     assert payload["platform"] == "netflix"
+
+
+def test_email_gmail_route_vers_write_email():
+    payload = _payload(
+        "Phoebus, prépare un message test pour florifavi@gmail.com "
+        "avec le sujet Test Phoebus et le texte Ceci est un test"
+    )
+
+    assert payload == {
+        "action": "write_email",
+        "recipient": "florifavi@gmail.com",
+        "subject": "test phoebus",
+        "body": "ceci est un test",
+    }

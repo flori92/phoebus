@@ -42,7 +42,6 @@ ENV_RULES = {
     "SERPAPI_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "GROQ_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
     "MISTRAL_API_KEY": lambda value: bool(value and value != "VOTRE_CLE_ICI"),
-    "PHOEBUS_WS_TOKEN": lambda value: bool(value and value not in {"CHANGE_ME", "VOTRE_TOKEN_ICI"}),
     "PHOEBUS_DEVICES_FILE": lambda value: True,
     "PHOEBUS_AUDIT_FILE": lambda value: True,
     "PHOEBUS_BRAIN_MODE": lambda value: (value or "balanced")

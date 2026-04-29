@@ -17,7 +17,6 @@ def mock_env_vars():
         "GEMINI_API_KEY": "test-gemini-key",
         "GROQ_API_KEY": "test-groq-key",
         "MISTRAL_API_KEY": "test-mistral-key",
-        "PHOEBUS_WS_TOKEN": "test-token",
         "HOME_ASSISTANT_URL": "http://test.local:8123",
         "HOME_ASSISTANT_TOKEN": "test-ha-token",
     }

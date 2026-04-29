@@ -148,11 +148,10 @@ def check_config():
     
     try:
         from PHOEBUS.config import (
-            PHOEBUS_WS_TOKEN, WS_AUTH_REQUIRED,
+            WS_AUTH_REQUIRED,
             DEFAULT_WS_PORT, DEFAULT_MOBILE_PORT
         )
         
-        print(f"✅ Token WebSocket: {'***' if PHOEBUS_WS_TOKEN else '(vide)'}")
         print(f"✅ Authentification WS requise: {WS_AUTH_REQUIRED}")
         print(f"✅ Port WS: {DEFAULT_WS_PORT}")
         print(f"✅ Port Mobile: {DEFAULT_MOBILE_PORT}")

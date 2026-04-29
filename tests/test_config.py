@@ -42,20 +42,10 @@ class TestServerConfig:
 
     def test_default_values(self):
         """Valeurs par défaut."""
-        config = ServerConfig(ws_token="test12345")
+        config = ServerConfig()
         assert config.ws_port == 8765
         assert config.mobile_port == 8080
-        assert config.ws_auth_required is True
-
-    def test_invalid_token(self):
-        """Token par défaut interdit."""
-        with pytest.raises(ValueError, match="Token par défaut non sécurisé"):
-            ServerConfig(ws_token="CHANGE_ME")
-
-    def test_weak_token(self):
-        """Token trop court."""
-        with pytest.raises(ValueError, match="String should have at least 8 characters"):
-            ServerConfig(ws_token="short")
+        assert config.ws_auth_required is False
 
     def test_invalid_port(self):
         """Port hors range."""
@@ -68,13 +58,13 @@ class TestPhoebusConfig:
 
     def test_is_production_development(self):
         """Détection environnement dev."""
-        config = PhoebusConfig(server=ServerConfig(ws_token="test12345"), _env_file=None)
+        config = PhoebusConfig(server=ServerConfig(), _env_file=None)
         assert config.is_production is False
 
     def test_is_production_true(self):
         """Détection environnement prod."""
         config = PhoebusConfig(
-            server=ServerConfig(ws_token="super-secure-token-123"), _env_file=None
+            server=ServerConfig(ws_auth_required=True), _env_file=None
         )
         assert config.is_production is True
 
@@ -84,7 +74,7 @@ class TestPhoebusConfig:
             llm_config = LLMConfig(gemini_api_key="key1", groq_api_key="key2")
             config = PhoebusConfig(
                 llm=llm_config,
-                server=ServerConfig(ws_token="test12345"),
+                server=ServerConfig(),
                 _env_file=None,
             )
         providers = config.get_available_llm_providers()

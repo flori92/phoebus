@@ -22,9 +22,8 @@ avec npm, cree `.env` si besoin et prepare `phoebus_devices.json` a partir du mo
 
 1. Copiez `.env.example` vers `.env` si le bootstrap ne l'a pas deja fait.
 2. Renseignez les cles utiles: Gemini, Home Assistant, YouTube, SerpAPI, Groq/xAI.
-3. Definissez `PHOEBUS_WS_TOKEN` avec une valeur forte pour securiser les clients web/mobile.
-4. Adaptez `phoebus_devices.json` aux entites de votre Home Assistant.
-5. Pour Google Docs/Gmail/Calendar, placez `credentials.json` a la racine.
+3. Adaptez `phoebus_devices.json` aux entites de votre Home Assistant.
+4. Pour Google Docs/Gmail/Calendar, placez `credentials.json` a la racine.
 
 ## Cerveau multi-provider
 
@@ -44,7 +43,6 @@ PHOEBUS route maintenant chaque requete vers le meilleur cerveau disponible:
 PHOEBUS expose un Webhook pour recevoir des commandes directement depuis votre iPhone.
 - **URL** : `http://VOTRE_IP_LAN:8090/webhook/command`
 - **Méthode** : `POST`
-- **Headers** : `Authorization: Bearer VOTRE_WS_TOKEN` (si configuré)
 - **Body (JSON)** : `{"text": "votre commande ici"}`
 
 ### Bot Telegram
@@ -128,21 +126,18 @@ Le fichier versionne est `phoebus_devices.example.json`. La copie locale
 
 ## Securite
 
-- websocket protege par token via `PHOEBUS_WS_TOKEN`
+- websocket local sans appairage par token
 - journal d'audit JSONL dans `logs/audit.jsonl`
 - confirmation vocale obligatoire pour les actions sensibles
 - secrets locaux ignores par Git (`.env`, `credentials.json`, `phoebus_devices.json`)
-
-En mode local simple, laissez `PHOEBUS_WS_TOKEN=CHANGE_ME` pour des tests rapides.
-Pour une installation reseau ou domotique reelle, remplacez-le par un token fort.
 
 ## Satellites
 
 L'interface mobile peut servir de satellite vocal sur le reseau local:
 
 - ouvrez `http://IP_DU_SERVEUR:8080`
-- ajoutez `?token=VOTRE_TOKEN` a l'URL pour un appairage direct
-- le client memorise ensuite le token dans le navigateur
+- l'app se connecte directement au WebSocket local
+- le micro mobile se relance automatiquement apres chaque segment de parole
 
 L'architecture recommandee est:
 

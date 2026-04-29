@@ -78,6 +78,7 @@ _RE_SYS_VOLUME = re.compile(
 )
 _RE_IP = re.compile(r"\b(?P<ip>(?:\d{1,3}\.){3}\d{1,3})\b")
 _RE_MAC = re.compile(r"\b(?P<mac>[0-9a-f]{2}(?::[0-9a-f]{2}){5})\b", re.IGNORECASE)
+_RE_EMAIL_ADDRESS = re.compile(r"(?P<email>[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,})", re.IGNORECASE)
 
 _RE_WAKE_STRIP = re.compile(r"^(?:phoebus|phébus|fébus|febus|feubus|rebus)[, ]*", re.IGNORECASE)
 _RE_METEO_CITY = (
@@ -163,6 +164,30 @@ _MEDIA_PLATFORMS = {
     "youtube": "youtube",
     "justwatch": "justwatch",
 }
+_EMAIL_ACTION_MARKERS = (
+    "envoie un mail",
+    "envoie un email",
+    "envoie un e-mail",
+    "envoie un message",
+    "envoyer un mail",
+    "envoyer un email",
+    "envoyer un e-mail",
+    "envoyer un message",
+    "prépare un mail",
+    "prepare un mail",
+    "prépare un email",
+    "prepare un email",
+    "prépare un e-mail",
+    "prepare un e-mail",
+    "prépare un message",
+    "prepare un message",
+    "écris un mail",
+    "ecris un mail",
+    "écris un email",
+    "ecris un email",
+    "écris un message",
+    "ecris un message",
+)
 
 
 class IntentResult:
@@ -239,6 +264,68 @@ def _detect_media(t: str) -> Optional[IntentResult]:
         "open": True,
     }
     return IntentResult("media_recommendations", json.dumps(payload))
+
+
+def _clean_email_part(value: str) -> str:
+    value = (value or "").strip(" ,.;:!?")
+    value = re.sub(r"^(?:le|la|l'|un|une)\s+", "", value).strip()
+    return value
+
+
+def _detect_email(t: str) -> Optional[IntentResult]:
+    if not any(marker in t for marker in _EMAIL_ACTION_MARKERS):
+        return None
+
+    sans_wake = _RE_WAKE_STRIP.sub("", t).strip()
+    match = _RE_EMAIL_ADDRESS.search(sans_wake)
+    if not match:
+        return None
+
+    recipient = match.group("email")
+    tail = sans_wake[match.end():].strip(" ,.;:")
+    subject = "Message de PHOEBUS"
+    body = ""
+
+    subject_patterns = (
+        r"(?:avec\s+)?(?:comme\s+)?(?:le\s+)?sujet\s+(?P<subject>.+?)(?:\s+(?:et|,)\s+(?:le\s+)?(?:texte|message|corps|contenu)\s+|$)",
+        r"(?:objet)\s+(?P<subject>.+?)(?:\s+(?:et|,)\s+(?:le\s+)?(?:texte|message|corps|contenu)\s+|$)",
+    )
+    for pattern in subject_patterns:
+        m = re.search(pattern, tail)
+        if m:
+            subject = _clean_email_part(m.group("subject"))
+            break
+
+    body_patterns = (
+        r"(?:le\s+)?(?:texte|message|corps|contenu)\s+(?:est\s+)?(?P<body>.+)$",
+        r"(?:disant|qui dit)\s+(?P<body>.+)$",
+    )
+    for pattern in body_patterns:
+        m = re.search(pattern, tail)
+        if m:
+            body = _clean_email_part(m.group("body"))
+            break
+
+    if not body:
+        before_address = sans_wake[:match.start()].strip()
+        fallback = re.sub(
+            r"^(?:envoie|envoyer|prépare|prepare|écris|ecris)\s+"
+            r"(?:un\s+)?(?:mail|email|e-mail|message)\s+(?:à|a|pour)\s*",
+            "",
+            before_address,
+        ).strip()
+        body = _clean_email_part(fallback)
+
+    if not body:
+        body = "Ceci est un test."
+
+    payload = {
+        "action": "write_email",
+        "recipient": recipient,
+        "subject": subject or "Message de PHOEBUS",
+        "body": body,
+    }
+    return IntentResult("write_email", json.dumps(payload, ensure_ascii=False))
 
 
 def _timer_payload(duration_s: int, label: str = "", kind: str = "timer") -> str:
@@ -420,6 +507,10 @@ def detect(texte: str) -> Optional[IntentResult]:
     media = _detect_media(t)
     if media:
         return media
+
+    email = _detect_email(t)
+    if email:
+        return email
 
     # --- Vision / Réseau / Système / Spotify / Connaissance ---
     for detector in (

@@ -61,6 +61,25 @@ class TestExecuterCommandeGenerique:
         assert "Il est" in result
 
     @pytest.mark.asyncio
+    async def test_annule_confirmation_en_attente_sans_llm(self):
+        state.PENDING_CONFIRMATION = {"action": "write_email", "recipient": "test@example.com"}
+        try:
+            with (
+                patch("PHOEBUS.router.route_request", new_callable=AsyncMock) as mock_route,
+                patch("PHOEBUS.router._parler_safe", new_callable=AsyncMock) as mock_parler,
+                patch("PHOEBUS.router.audit_log") as mock_audit,
+            ):
+                result = await executer_commande_generique("annule", source="test")
+
+            assert result == "Action annulée, Monsieur."
+            assert state.PENDING_CONFIRMATION is None
+            mock_route.assert_not_awaited()
+            mock_parler.assert_awaited()
+            mock_audit.assert_called_once_with("sensitive_action_cancelled", action="write_email")
+        finally:
+            state.PENDING_CONFIRMATION = None
+
+    @pytest.mark.asyncio
     async def test_media_naturel_execute_recommandation_vod(self):
         with (
             patch("PHOEBUS.media.open_uri") as mock_open,

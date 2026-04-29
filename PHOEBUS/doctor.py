@@ -99,7 +99,6 @@ def _check_config() -> list[CheckResult]:
             GROQ_API_KEY,
             MISTRAL_API_KEY,
             OPENAI_API_KEY,
-            PHOEBUS_WS_TOKEN,
             SERPAPI_API_KEY,
             TELEGRAM_TOKEN,
             WS_AUTH_REQUIRED,
@@ -117,10 +116,6 @@ def _check_config() -> list[CheckResult]:
             else _warn("Auth WebSocket", "désactivée")
         ),
     ]
-    if _secret_is_configured(PHOEBUS_WS_TOKEN):
-        checks.append(_ok("Token WebSocket", "configuré"))
-    else:
-        checks.append(_fail("Token WebSocket", "placeholder ou absent"))
 
     providers = []
     if _secret_is_configured(GEMINI_API_KEY):

@@ -12,6 +12,8 @@ const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_URL = `${WS_SCHEME}://${window.location.hostname}:8765`;
 const RECONNECT_DELAY_MS = 2500;
 const SPEECH_LANG = "fr-FR";
+const WAKE_WORD_RE = /\b(?:phoebus|phébus|fébus|febus|feubus|rebus)\b/i;
+const CONFIRMATION_RE = /\b(?:confirme|je confirme|ok confirme|oui confirme|valide|vas[- ]?y|exécute|execute|annule|annuler|stop|laisse tomber|oublie|non)\b/i;
 
 // ── DOM Refs ────────────────────────────────────────────────────────────────
 const badgeEl      = document.getElementById("connection-badge");
@@ -57,24 +59,22 @@ let currentState = "idle";
 let ws           = null;
 let isListening  = false;
 let reconnectTimer = null;
-let authToken = "";
 const faceRoot = document.documentElement;
 
-function loadAuthToken() {
+function removeLegacyTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const urlToken = (params.get("token") || "").trim();
-  if (urlToken) {
-    window.localStorage.setItem("PHOEBUS_WS_TOKEN", urlToken);
+  if (params.has("token")) {
     params.delete("token");
     const nextSearch = params.toString();
     const nextUrl = window.location.pathname + (nextSearch ? `?${nextSearch}` : "") + window.location.hash;
     window.history.replaceState({}, document.title, nextUrl);
-    return urlToken;
   }
-  return (window.localStorage.getItem("PHOEBUS_WS_TOKEN") || "").trim();
+  Object.keys(window.localStorage)
+    .filter((key) => key.includes("PHOEBUS") && key.includes("TOKEN"))
+    .forEach((key) => window.localStorage.removeItem(key));
 }
 
-authToken = loadAuthToken();
+removeLegacyTokenFromUrl();
 const MOOD_PRESETS = {
   neutral: {
     eyeOpen: 1,
@@ -914,15 +914,8 @@ function applyState(state) {
     stopPHOEBUSBtn.style.display = "none";
   }
 
-  // Icône microphone
-  if (state === "listening") {
-    micIcon.style.display = "none";
-    stopIcon.style.display = "block";
-    micLabelEl.textContent = "APPUYER POUR ARRÊTER";
-  } else {
-    micIcon.style.display = "block";
-    stopIcon.style.display = "none";
-    micLabelEl.textContent = "APPUYER POUR PARLER";
+  if (micLabelEl) {
+    micLabelEl.textContent = "ECOUTE CONTINUE";
   }
 
   // Mettre à jour l'état de l'orbe 3D
@@ -959,8 +952,8 @@ function setConnected(ok) {
 
 function setAuthFailed() {
   setConnected(false);
-  badgeLabelEl.textContent = "auth refusée";
-  userTextEl.textContent = "⚠ Authentification refusée. Ouvrez l'interface avec ?token=...";
+  badgeLabelEl.textContent = "connexion refusée";
+  userTextEl.textContent = "⚠ Connexion refusée par le backend.";
 }
 setConnected(false);
 
@@ -1135,7 +1128,6 @@ function connectWS() {
     setConnected(true);
     ws.send(JSON.stringify({
       type: "auth",
-      token: authToken,
       client_type: "mobile",
       client_name: navigator.userAgent.slice(0, 80),
     }));
@@ -1363,17 +1355,98 @@ const SpeechRecognition =
 
 let recognition = null;
 let recognitionHadError = false;
+let autoListenEnabled = true;
+let restartListenTimer = null;
+let dispatchCommandTimer = null;
+let capturedFinalText = "";
+let suppressNextEndDispatch = false;
+let browserMicRetryAfter = 0;
+
+function shouldDispatchVoiceCommand(text) {
+  const value = (text || "").trim();
+  return WAKE_WORD_RE.test(value) || CONFIRMATION_RE.test(value);
+}
+
+function canAutoListen() {
+  return (
+    autoListenEnabled &&
+    recognition &&
+    ws &&
+    ws.readyState === WebSocket.OPEN &&
+    Date.now() >= browserMicRetryAfter &&
+    currentState !== "thinking" &&
+    currentState !== "speaking"
+  );
+}
+
+function startRecognition(reason = "auto") {
+  if (!recognition || isListening || !canAutoListen()) return;
+  window.speechSynthesis.cancel();
+  try {
+    recognition.start();
+    console.log("[STT] Démarrage micro :", reason);
+  } catch (e) {
+    console.warn("[STT] Impossible de démarrer :", e);
+    scheduleListenRestart(1200);
+  }
+}
+
+function scheduleListenRestart(delay = 650) {
+  if (restartListenTimer) clearTimeout(restartListenTimer);
+  restartListenTimer = setTimeout(() => {
+    restartListenTimer = null;
+    if (!autoListenEnabled || !recognition) return;
+    if (!canAutoListen()) {
+      scheduleListenRestart(1000);
+      return;
+    }
+    startRecognition("restart");
+  }, delay);
+}
+
+function dispatchCapturedText(text) {
+  const command = (text || "").replace(/^"|"$/g, "").trim();
+  capturedFinalText = "";
+  if (!command) {
+    applyState("idle");
+    scheduleListenRestart(400);
+    return;
+  }
+
+  if (!shouldDispatchVoiceCommand(command)) {
+    console.log("[STT] Phrase ignorée sans mot de réveil :", command);
+    userTextEl.textContent = "";
+    applyState("idle");
+    scheduleListenRestart(300);
+    return;
+  }
+
+  console.log("[STT] Commande envoyée :", command);
+  userTextEl.textContent = `"${command}"`;
+  applyState("thinking");
+  if (isListening) {
+    suppressNextEndDispatch = true;
+    try { recognition.stop(); } catch (_) {}
+  }
+  const envoyé = sendCommand(command);
+  if (!envoyé) {
+    applyState("idle");
+    userTextEl.textContent = "⚠ Non connecté à PHOEBUS";
+  }
+  scheduleListenRestart(2200);
+}
 
 if (SpeechRecognition) {
   recognition = new SpeechRecognition();
   recognition.lang           = SPEECH_LANG;
-  recognition.continuous     = false;
+  recognition.continuous     = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
 
   recognition.addEventListener("start", () => {
     isListening = true;
     recognitionHadError = false;
+    capturedFinalText = "";
     // Interruption : si on commence à parler, PHOEBUS se tait
     streamingPlayer.stop();
     cancelTimedLipsync();
@@ -1381,6 +1454,7 @@ if (SpeechRecognition) {
     applyState("listening");
     userTextEl.textContent  = "";
     PHOEBUSTextEl.textContent = "";
+    if (micLabelEl) micLabelEl.textContent = "ECOUTE CONTINUE";
     console.log("[STT] Écoute démarrée.");
   });
 
@@ -1402,27 +1476,36 @@ if (SpeechRecognition) {
 
     if (final_txt) {
       console.log("[STT] Résultat final :", final_txt);
+      capturedFinalText = `${capturedFinalText} ${final_txt}`.trim();
+      if (dispatchCommandTimer) clearTimeout(dispatchCommandTimer);
+      dispatchCommandTimer = setTimeout(() => {
+        dispatchCommandTimer = null;
+        dispatchCapturedText(capturedFinalText);
+      }, 850);
     }
   });
 
   recognition.addEventListener("end", () => {
     isListening = false;
-    if (recognitionHadError) {
-      recognitionHadError = false;
+    if (micLabelEl) micLabelEl.textContent = "ECOUTE CONTINUE";
+    if (suppressNextEndDispatch) {
+      suppressNextEndDispatch = false;
+      scheduleListenRestart(900);
       return;
     }
-    const texteCapture = userTextEl.textContent.replace(/^"|"$/g, "").trim();
+    if (recognitionHadError) {
+      recognitionHadError = false;
+      scheduleListenRestart(900);
+      return;
+    }
+    const texteCapture = capturedFinalText || userTextEl.textContent.replace(/^"|"$/g, "").trim();
     console.log("[STT] Fin écoute. Texte :", texteCapture);
 
     if (texteCapture) {
-      applyState("thinking");
-      const envoyé = sendCommand(texteCapture);
-      if (!envoyé) {
-        applyState("idle");
-        userTextEl.textContent = "⚠ Non connecté à PHOEBUS";
-      }
+      dispatchCapturedText(texteCapture);
     } else {
       applyState("idle");
+      scheduleListenRestart(450);
     }
   });
 
@@ -1433,43 +1516,40 @@ if (SpeechRecognition) {
     applyState("idle");
 
     if (event.error === "not-allowed") {
-      userTextEl.textContent =
-        "⚠ Micro non autorisé. Activez le dans chrome://flags";
+      browserMicRetryAfter = Date.now() + 10000;
+      userTextEl.textContent = "";
+      statusEl.textContent = "en attente";
+      scheduleListenRestart(10000);
     } else if (event.error === "no-speech") {
       userTextEl.textContent = "";
+      scheduleListenRestart(500);
     } else {
-      userTextEl.textContent = `⚠ Erreur micro : ${event.error}`;
+      userTextEl.textContent = "";
+      statusEl.textContent = "en attente";
+      scheduleListenRestart(1200);
     }
   });
 
 } else {
-  // SpeechRecognition non supporté
-  micBtn.disabled = true;
-  statusEl.textContent = "micro non supporté sur ce navigateur";
+  if (micBtn) micBtn.disabled = true;
+  statusEl.textContent = "en attente";
   console.error("[STT] SpeechRecognition non disponible.");
 }
 
-// ── Bouton microphone ───────────────────────────────────────────────────────
+// ── Relance micro best-effort. Le bouton est masque, conserve seulement
+//    comme cible technique pour les plateformes qui exigent un geste humain.
 micBtn.addEventListener("click", () => {
   if (!recognition) return;
 
-  // Bloquer si PHOEBUS pense ou parle
-  if (currentState === "thinking" || currentState === "speaking") return;
-
-  if (isListening) {
-    // Arrêter l'écoute
-    recognition.stop();
-  } else {
-    // Annuler TTS en cours si nécessaire
-    window.speechSynthesis.cancel();
-    try {
-      recognition.start();
-    } catch (e) {
-      console.warn("[STT] Impossible de démarrer :", e);
-    }
+  autoListenEnabled = true;
+  if (currentState === "thinking" || currentState === "speaking") {
+    scheduleListenRestart(800);
+    return;
   }
+  startRecognition("manual");
 });
 
 // ── Démarrage ───────────────────────────────────────────────────────────────
 connectWS();
+scheduleListenRestart(900);
 console.log("[PHOEBUS MOBILE] Interface initialisée. WebSocket :", WS_URL);

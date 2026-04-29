@@ -7,13 +7,12 @@ import threading
 import http.server
 import socketserver
 import concurrent.futures
-import hmac
 import os
 import sys
 
 from PHOEBUS.config import (
     websockets, sr, DEFAULT_WS_PORT, DEFAULT_MOBILE_PORT, MOBILE_DIR,
-    PHOEBUS_WS_TOKEN, WS_AUTH_REQUIRED, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
+    WS_AUTH_REQUIRED, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
     PHOEBUS_WAKE_ENABLED,
 )
 import PHOEBUS.state as state
@@ -67,11 +66,7 @@ except ImportError:
 # ── Sécurité WebSocket ─────────────────────────────────────────────────────
 
 def verify_token(provided_token):
-    if not PHOEBUS_WS_TOKEN or PHOEBUS_WS_TOKEN in {"CHANGE_ME", "VOTRE_TOKEN_ICI", "CHANGE_MOI_IMMEDIATEMENT"}:
-        return True
-    if not provided_token:
-        return False
-    return hmac.compare_digest(str(provided_token), str(PHOEBUS_WS_TOKEN))
+    return True
 
 
 def _payload_text(data: dict, *keys: str) -> str:
@@ -112,20 +107,10 @@ async def ws_handler(websocket):
                 
                 # --- Authentification ---
                 if action == "auth":
-                    token = data.get("token", "")
                     client_type = data.get("client_type", "unknown")
-                    if verify_token(token):
-                        state.register_authenticated_client(websocket, data)
-                        await state.send_ws_json(websocket, {"action": "auth_ok"})
-                        audit_log("ws_auth_success", ip=client_ip, client_type=client_type)
-                        if client_type == "web_dashboard" and not state.interface_deja_connectee:
-                            await parler("Interface web authentifiée.", keep_conversation=False)
-                            state.interface_deja_connectee = True
-                        elif client_type == "mobile_app":
-                            await parler("Satellite mobile authentifié.", keep_conversation=False)
-                    else:
-                        await state.send_ws_json(websocket, {"action": "auth_failed"})
-                        audit_log("ws_auth_failed", ip=client_ip, client_type=client_type)
+                    state.register_authenticated_client(websocket, data)
+                    await state.send_ws_json(websocket, {"action": "auth_ok"})
+                    audit_log("ws_client_identified", ip=client_ip, client_type=client_type)
                     continue
 
                 if WS_AUTH_REQUIRED and websocket not in state.AUTHENTICATED_CLIENTS:
@@ -305,26 +290,11 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         """Webhooks: Reçoit les événements HA ou les commandes iPhone."""
-        # Sécurité basique via Token (on accepte Authorization ou authorization)
-        auth_header = self.headers.get('Authorization') or self.headers.get('authorization', '')
-        token_valid = True
-        if WS_AUTH_REQUIRED:
-            token_valid = (f"Bearer {PHOEBUS_WS_TOKEN}" == auth_header)
-
         if self.path == '/webhook/ha_event':
             # ... (code existant pour HA)
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             
-            auth_header = self.headers.get('Authorization') or self.headers.get('authorization', '')
-            provided_token = auth_header.replace("Bearer ", "").strip() if auth_header.lower().startswith("bearer ") else auth_header.strip()
-            
-            if WS_AUTH_REQUIRED and not verify_token(provided_token):
-                print(f"[WEBHOOK] HA Event refusé : Mauvais token depuis {self.client_address[0]}")
-                self.send_response(401)
-                self.end_headers()
-                return
-
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 message = data.get("message", "")
@@ -338,22 +308,6 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
 
         elif self.path.startswith('/webhook/command'):
-            # Extraction du token depuis le header OU l'URL (?token=...)
-            from urllib.parse import urlparse, parse_qs
-            query = urlparse(self.path).query
-            query_params = parse_qs(query)
-            url_token = query_params.get('token', [None])[0]
-            
-            auth_header = self.headers.get('Authorization') or self.headers.get('authorization', '')
-            provided_token = auth_header.replace("Bearer ", "").strip() if auth_header.lower().startswith("bearer ") else auth_header.strip()
-            
-            if WS_AUTH_REQUIRED and not verify_token(provided_token) and not verify_token(url_token):
-                print(f"[WEBHOOK] Commande refusée : Non autorisé depuis {self.client_address[0]}")
-                self.send_response(401)
-                self.end_headers()
-                self.wfile.write(b'{"error": "Unauthorized: Token invalid or missing"}')
-                return
-
             try:
                 content_length = int(self.headers.get('Content-Length', 0))
                 if content_length == 0:
@@ -784,8 +738,7 @@ async def main():
     from PHOEBUS.utils import get_lan_ip
     lan_ip = get_lan_ip()
     print(f"[RESEAU] IP LAN : {lan_ip}")
-    if PHOEBUS_WS_TOKEN and PHOEBUS_WS_TOKEN != "CHANGE_ME":
-        print(f"[RESEAU] Satellite : http://{lan_ip}:8080/?token={PHOEBUS_WS_TOKEN}")
+    print(f"[RESEAU] Satellite : http://{lan_ip}:8080/")
 
     from PHOEBUS.brain_router import router_status
     brain = router_status()

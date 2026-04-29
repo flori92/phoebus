@@ -32,20 +32,9 @@ class ServerConfig(BaseSettings):
 
     model_config = ConfigDict(env_prefix="PHOEBUS_")
 
-    ws_token: str = Field(
-        default="CHANGE_ME", min_length=8, description="Token d'authentification WebSocket"
-    )
     ws_port: int = Field(default=8765, ge=1024, le=65535)
     mobile_port: int = Field(default=8080, ge=1024, le=65535)
-    ws_auth_required: bool = Field(default=True)
-
-    @field_validator("ws_token")
-    @classmethod
-    def validate_token_not_default(cls, v):
-        forbidden = {"CHANGE_ME", "VOTRE_TOKEN_ICI", "CHANGE_MOI_IMMEDIATEMENT"}
-        if v in forbidden:
-            raise ValueError(f"Token par défaut non sécurisé: {v}")
-        return v
+    ws_auth_required: bool = Field(default=False)
 
 
 class HomeAssistantConfig(BaseSettings):
@@ -90,8 +79,7 @@ class PhoebusConfig(BaseSettings):
     @property
     def is_production(self) -> bool:
         """Vérifie si on est en production."""
-        token = self.server.ws_token.strip().lower()
-        return token not in {"change_me", "test"} and not token.startswith("test")
+        return self.server.ws_auth_required
 
     def get_available_llm_providers(self) -> List[str]:
         """Liste les providers LLM configurés."""

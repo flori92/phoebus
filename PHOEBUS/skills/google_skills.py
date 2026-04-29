@@ -18,7 +18,7 @@ async def read_emails(data: dict):
     describe=lambda d: f"Envoyer un email à {d.get('recipient')} (Sujet: {d.get('subject')})"
 )
 async def write_email(data: dict):
-    to = data.get("recipient")
+    to = data.get("recipient") or data.get("to")
     sub = data.get("subject", "Message de PHOEBUS")
     body = data.get("body", "")
     if not to or not body:
