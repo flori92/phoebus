@@ -39,6 +39,43 @@ except ImportError:
 _ARENA_MODELS_CACHE = {"ts": 0.0, "ids": []}
 _OLLAMA_HEALTH_CACHE = {"ts": 0.0, "ok": False}
 
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def construire_ollama_prompt(texte_utilisateur=""):
+    maintenant = datetime.now()
+    horodatage = maintenant.strftime("%A %d %B %Y, %H:%M:%S")
+    return (
+        f"Tu es PHOEBUS, l'assistant local de Floriace. Nous sommes le {horodatage}.\n"
+        "Réponds en français, clairement et brièvement.\n"
+        "Si la demande nécessite une information actuelle, Internet, la météo, un prix, "
+        "une actualité, une recherche ou une recommandation à vérifier, réponds uniquement "
+        "avec un JSON d'action, sans texte autour.\n"
+        'Recherche web: {"action": "recherche_web", "query": "requête précise"}\n'
+        'Météo: {"action": "meteo", "ville": "ville optionnelle", "periode": "journee"}\n'
+        'Connaissance: {"action": "knowledge_query", "question": "question"}\n'
+        'Média/VOD: {"action": "media_recommendations", "kind": "film/serie", '
+        '"genre": "comedie/action/thriller/science-fiction/drame", '
+        '"platform": "justwatch", "open": true}\n'
+        'Action Mac multi-étapes: {"action": "agent_planifie", '
+        '"instruction": "objectif complet"}\n'
+        "Si ce n'est pas une action, réponds en texte naturel. "
+        "Ne dis jamais que tu n'as pas accès au web : utilise le JSON de recherche.\n"
+    )
+
+
 def construire_system_prompt(texte_utilisateur="", minimal=False):
     contexte_memoire = construire_contexte_memoire()
     profil_appris = resumer_profil()
@@ -417,10 +454,7 @@ async def demander_ollama(texte):
     if not _ollama_is_reachable():
         return None
     try:
-        # Prompt système UNIFIÉ (même que Gemini).
-        system_prompt = construire_system_prompt(texte) + (
-            "\n\n[NOTE INTERNE] Tu tournes en local sur Ollama. Ne le mentionne pas."
-        )
+        system_prompt = construire_ollama_prompt(texte)
         messages = [{"role": "system", "content": system_prompt}]
         for h in state.historique[-24:]:
             role = "user" if h.role == "user" else "assistant"
@@ -430,11 +464,21 @@ async def demander_ollama(texte):
         last_err = None
         for model_name in OLLAMA_MODELS:
             try:
-                timeout_s = float(os.getenv("PHOEBUS_OLLAMA_TIMEOUT", "8"))
+                timeout_s = _float_env("PHOEBUS_OLLAMA_TIMEOUT", 20.0)
+                keep_alive = os.getenv("PHOEBUS_OLLAMA_KEEP_ALIVE", "10m")
                 resp = await asyncio.to_thread(
                     requests.post, 
                     f"{OLLAMA_URL}/api/chat", 
-                    json={"model": model_name, "messages": messages, "stream": False}, 
+                    json={
+                        "model": model_name,
+                        "messages": messages,
+                        "stream": False,
+                        "keep_alive": keep_alive,
+                        "options": {
+                            "temperature": _float_env("PHOEBUS_OLLAMA_TEMPERATURE", 0.2),
+                            "num_predict": _int_env("PHOEBUS_OLLAMA_NUM_PREDICT", 350),
+                        },
+                    },
                     timeout=timeout_s,
                 )
                 if resp.status_code == 200:

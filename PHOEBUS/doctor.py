@@ -136,6 +136,33 @@ def _check_config() -> list[CheckResult]:
     return checks
 
 
+def _check_ollama_local() -> CheckResult:
+    try:
+        from PHOEBUS.config import OLLAMA_MODELS, OLLAMA_URL
+        import urllib.request
+
+        with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=2.0) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        return _warn("Ollama local", f"non joignable: {exc}")
+
+    installed = {
+        item.get("name") or item.get("model")
+        for item in data.get("models", [])
+        if isinstance(item, dict)
+    }
+    wanted = OLLAMA_MODELS[0] if OLLAMA_MODELS else ""
+    if wanted and wanted in installed:
+        return _ok("Ollama local", f"{wanted} installé")
+    if wanted:
+        return _warn(
+            "Ollama local",
+            f"{wanted} absent",
+            "installez-le avec: ollama pull " + wanted,
+        )
+    return _warn("Ollama local", "aucun modèle configuré")
+
+
 def _check_stt() -> CheckResult:
     try:
         from PHOEBUS.stt_backends import get_backend
@@ -246,6 +273,7 @@ def run_checks() -> list[CheckResult]:
     checks = [_check_python()]
     checks.extend(_check_imports())
     checks.extend(_check_config())
+    checks.append(_check_ollama_local())
     checks.append(_check_stt())
     checks.append(_check_runtime_singleton())
     checks.extend(_check_frontend())
