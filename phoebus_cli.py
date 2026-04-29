@@ -16,7 +16,6 @@ if sys.prefix == sys.base_prefix and os.path.exists(venv_py):
 
 try:
     from PHOEBUS.router import executer_commande_generique
-    from PHOEBUS.config import PHOEBUS_WS_TOKEN
 except ImportError:
     print("[ERREUR] Impossible de charger PHOEBUS. Lancez depuis la racine du projet.")
     sys.exit(1)
@@ -31,6 +30,7 @@ async def run_cli():
     # Désactiver la voix par défaut pour le CLI sauf si explicitement demandé
     if not args.voice:
         os.environ["PHOEBUS_MUTE"] = "1"
+    source = "voix" if args.voice else "cli"
 
     if args.interactive or not args.commande:
         print("=== PHOEBUS CLI INTERACTIF ===")
@@ -43,7 +43,7 @@ async def run_cli():
                 if not texte.strip():
                     continue
                 
-                reponse = await executer_commande_generique(texte, source="cli")
+                reponse = await executer_commande_generique(texte, source=source)
                 print(f"[PHOEBUS] {reponse}")
             except KeyboardInterrupt:
                 break
@@ -51,7 +51,7 @@ async def run_cli():
                 print(f"[ERREUR] {e}")
     else:
         texte = " ".join(args.commande)
-        reponse = await executer_commande_generique(texte, source="cli")
+        reponse = await executer_commande_generique(texte, source=source)
         print(f"[PHOEBUS] {reponse}")
 
 if __name__ == "__main__":

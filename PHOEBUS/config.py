@@ -137,6 +137,8 @@ def _secret_is_configured(value):
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
+XAI_VOICE_API_KEY = os.getenv("XAI_VOICE_API_KEY")
 HA_URL = os.getenv("HA_URL")
 HA_TOKEN = os.getenv("HA_TOKEN")
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
@@ -144,7 +146,10 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-PHOEBUS_DEVICES_FILE = os.getenv("PHOEBUS_DEVICES_FILE", "phoebus_devices.json").strip()
+PHOEBUS_WS_TOKEN = os.getenv("PHOEBUS_WS_TOKEN", "CHANGE_ME").strip()
+
+# ── Modèles ─────────────────────────────────────────────────────────────────
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-reasoning")
 PHOEBUS_AUDIT_FILE = os.getenv("PHOEBUS_AUDIT_FILE", "logs/audit.jsonl").strip()
 PHOEBUS_WAKE_ENABLED = os.getenv("PHOEBUS_WAKE_ENABLED", "0").strip().lower() in {
     "1",
@@ -201,6 +206,11 @@ if OpenAI and _secret_is_configured(GROQ_API_KEY):
 mistral_client = None
 if OpenAI and _secret_is_configured(MISTRAL_API_KEY):
     mistral_client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
+
+# Client xAI (Grok)
+xai_client = None
+if OpenAI and _secret_is_configured(XAI_API_KEY):
+    xai_client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
 # Client OpenAI (On utilise gpt-4o-mini par défaut pour la vitesse et le coût)
 openai_client = None

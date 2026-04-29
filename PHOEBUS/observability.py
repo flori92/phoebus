@@ -36,7 +36,9 @@ from PHOEBUS.config import BASE_DIR
 MAX_SAMPLES_PER_PHASE = 500
 _samples: Dict[str, Deque[float]] = {}
 REQUEST_METRICS_FILE = BASE_DIR / "logs" / "request_metrics.jsonl"
+TRACE_EVENTS_FILE = BASE_DIR / "logs" / "command_traces.jsonl"
 _request_samples: Deque[dict] = deque(maxlen=200)
+_trace_samples: Deque[dict] = deque(maxlen=500)
 
 
 def _record(phase: str, duration_ms: float) -> None:
@@ -50,6 +52,7 @@ def _record(phase: str, duration_ms: float) -> None:
 def reset() -> None:
     _samples.clear()
     _request_samples.clear()
+    _trace_samples.clear()
 
 
 # ── Instrumentation ───────────────────────────────────────────────────────
@@ -136,13 +139,17 @@ def record_request(
     ok: bool = True,
     route: str = "command",
     text_len: int = 0,
+    trace_id: str | None = None,
+    status: str = "ok",
 ) -> None:
     item = {
         "ts": time.time(),
+        "trace_id": trace_id,
         "source": source,
         "route": route,
         "duration_ms": round(float(duration_ms), 1),
         "ok": bool(ok),
+        "status": status,
         "text_len": int(text_len),
     }
     _request_samples.append(item)
@@ -152,6 +159,22 @@ def record_request(
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
     except Exception as exc:
         print(f"[METRICS] requête non enregistrée : {exc}")
+
+
+def record_trace_event(trace_id: str, event: str, **details) -> None:
+    item = {
+        "ts": time.time(),
+        "trace_id": trace_id,
+        "event": event,
+        **details,
+    }
+    _trace_samples.append(item)
+    try:
+        TRACE_EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(TRACE_EVENTS_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        print(f"[TRACE] évènement non enregistré : {exc}")
 
 
 def request_snapshot(limit: int = 50) -> dict:
@@ -170,6 +193,27 @@ def request_snapshot(limit: int = 50) -> dict:
         "p95_ms": round(_percentile(durations, 0.95), 1) if durations else 0.0,
         "last": items[-1] if items else None,
         "recent": items[-10:],
+    }
+
+
+def trace_snapshot(limit: int = 80) -> dict:
+    items = list(_trace_samples)[-limit:]
+    if not items and TRACE_EVENTS_FILE.exists():
+        lines = TRACE_EVENTS_FILE.read_text(encoding="utf-8").splitlines()[-limit:]
+        for line in lines:
+            try:
+                items.append(json.loads(line))
+            except Exception:
+                continue
+    trace_ids = []
+    for item in items:
+        trace_id = item.get("trace_id")
+        if trace_id and trace_id not in trace_ids:
+            trace_ids.append(trace_id)
+    return {
+        "count": len(items),
+        "trace_ids": trace_ids[-20:],
+        "recent": items[-20:],
     }
 
 
@@ -210,6 +254,11 @@ tr:last-child td{{border:none}}
 
 def render_json() -> str:
     return json.dumps(
-        {"phases": snapshot(), "requests": request_snapshot(), "ts": time.time()},
+        {
+            "phases": snapshot(),
+            "requests": request_snapshot(),
+            "traces": trace_snapshot(),
+            "ts": time.time(),
+        },
         ensure_ascii=False,
     )

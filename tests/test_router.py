@@ -1,12 +1,13 @@
 """Tests pour le routeur central PHOEBUS."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 
 import PHOEBUS.state as state
 from PHOEBUS.router import (
+    executer_commande,
     executer_commande_generique,
     extraire_json_de_reponse,
     route_request,
@@ -51,7 +52,42 @@ class TestExecuterCommandeGenerique:
 
         assert result == "Réponse test"
         mock_route.assert_awaited_once()
-        mock_traiter.assert_awaited_once_with("Réponse test")
+        mock_traiter.assert_awaited_once_with("Réponse test", speak=True, trace_id=ANY)
+
+    @pytest.mark.asyncio
+    async def test_source_telegram_repond_en_texte_sans_voix_locale(self):
+        with (
+            patch("PHOEBUS.router.route_request", new_callable=AsyncMock) as mock_route,
+            patch("PHOEBUS.router.traiter_reponse_ia", new_callable=AsyncMock) as mock_traiter,
+            patch("PHOEBUS.router._parler_safe", new_callable=AsyncMock) as mock_parler,
+        ):
+            mock_route.return_value = "Réponse Telegram"
+            mock_traiter.return_value = False
+
+            result = await executer_commande_generique("Phoebus bonjour", source="telegram")
+
+        assert result == "Réponse Telegram"
+        mock_route.assert_awaited_once()
+        mock_traiter.assert_awaited_once_with("Réponse Telegram", speak=False, trace_id=ANY)
+        mock_parler.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_executer_commande_retourne_resultat_structure(self):
+        with (
+            patch("PHOEBUS.router.route_request", new_callable=AsyncMock) as mock_route,
+            patch("PHOEBUS.router.traiter_reponse_ia", new_callable=AsyncMock) as mock_traiter,
+            patch("PHOEBUS.router._parler_safe", new_callable=AsyncMock),
+        ):
+            mock_route.return_value = "Réponse structurée"
+            mock_traiter.return_value = False
+
+            result = await executer_commande("bonjour", source="cli")
+
+        assert result.text == "Réponse structurée"
+        assert result.source == "cli"
+        assert result.trace_id.startswith("cmd_")
+        assert result.ok is True
+        assert result.duration_ms >= 0
 
     @pytest.mark.asyncio
     async def test_fast_path_heure_repond_sans_llm(self):
@@ -163,7 +199,7 @@ class TestTraiterReponseIA:
             result = await traiter_reponse_ia(reponse)
 
         assert result is True
-        mock_action.assert_awaited_once_with({"action": "system_lock"})
+        mock_action.assert_awaited_once_with({"action": "system_lock"}, speak=True)
 
     @pytest.mark.asyncio
     async def test_reponse_sans_action_est_parlee(self):
@@ -216,6 +252,7 @@ class TestTraiterReponseIA:
 
         assert result is True
         assert mock_action.await_count == 2
+        mock_action.assert_any_await({"action": "system_lock"}, speak=True)
         mock_parler.assert_awaited_once()
         mock_audit.assert_any_call(
             "action_loop_blocked",

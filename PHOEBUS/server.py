@@ -233,6 +233,7 @@ def _float_env(name: str, default: float) -> float:
 
 COMMAND_REPLY_TIMEOUT = _float_env("PHOEBUS_COMMAND_REPLY_TIMEOUT", 10.0)
 AI_COMMAND_TIMEOUT = _float_env("PHOEBUS_AI_COMMAND_TIMEOUT", 35.0)
+TELEGRAM_REPLY_TIMEOUT = _float_env("PHOEBUS_TELEGRAM_REPLY_TIMEOUT", 75.0)
 
 
 # ── Serveur Mobile (HTTP) ──────────────────────────────────────────────────
@@ -280,6 +281,15 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 "conversation": state.is_in_conversation(),
                 "post_speak_cooldown": state.in_post_speak_cooldown(),
             }, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == '/diagnostics' or self.path.startswith('/diagnostics?'):
+            from PHOEBUS.diagnostics import diagnostics_snapshot
+            body = json.dumps(diagnostics_snapshot(), ensure_ascii=False).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -647,16 +657,26 @@ async def run_telegram_bot(main_loop):
         user_text = update.message.text
         if not user_text: return
 
-        # On exécute la commande via le cœur PHOEBUS et on attend la réponse
+        try:
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        except Exception:
+            pass
+
+        # On exécute la commande via le cœur PHOEBUS sans bloquer la boucle Telegram.
         future = asyncio.run_coroutine_threadsafe(
             executer_commande_generique(user_text, source="telegram"),
             main_loop
         )
         try:
-            reponse_texte = future.result(timeout=30)
+            reponse_texte = await asyncio.wait_for(asyncio.wrap_future(future), timeout=TELEGRAM_REPLY_TIMEOUT)
             await update.message.reply_text(reponse_texte or "Action exécutée, Monsieur.")
+        except asyncio.TimeoutError:
+            print(f"[TELEGRAM] Timeout réponse après {TELEGRAM_REPLY_TIMEOUT}s pour chat_id={chat_id}")
+            future.cancel()
+            await update.message.reply_text("Je traite encore la demande. Réessayez avec une instruction plus courte si besoin.")
         except Exception as e:
-            await update.message.reply_text(f"Désolé, une erreur est survenue : {e}")
+            print(f"[TELEGRAM] Erreur handler message : {type(e).__name__}: {e}")
+            await update.message.reply_text("Désolé, une erreur est survenue côté Telegram. Phoebus reste opérationnel.")
 
     try:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()

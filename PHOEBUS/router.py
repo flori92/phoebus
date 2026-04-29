@@ -16,7 +16,8 @@ from PHOEBUS.rag_memory import stocker_souvenir
 from PHOEBUS.natural_goals import resolve_after_ai_failure
 from PHOEBUS.action_guard import ActionSequenceGuard
 from PHOEBUS.routing_policy import decide_route
-from PHOEBUS.observability import record_request
+from PHOEBUS.command_result import CommandResult, new_trace_id
+from PHOEBUS.observability import record_request, record_trace_event
 
 # Constantes de délai
 AI_COMMAND_TIMEOUT = float(os.getenv("PHOEBUS_AI_COMMAND_TIMEOUT", "35.0"))
@@ -57,6 +58,17 @@ async def _parler_safe(texte: str, keep_conversation: bool = True) -> None:
     except Exception as e:
         print(f"[VOICE] parole ignorée après erreur : {e}")
 
+
+def _confirmation_prompt(payload: dict[str, Any]) -> str:
+    action = payload.get("action", "")
+    try:
+        from PHOEBUS.skills import is_skill_registered, describe_skill
+        desc = describe_skill(action, payload) if is_skill_registered(action) else describe_action(payload)
+    except Exception:
+        desc = describe_action(payload)
+    return f"Confirmation requise : {desc}. Répondez 'je confirme' ou 'annule'."
+
+
 class _SpeechQueue:
     """File de parole non bloquante: le LLM continue pendant que PHOEBUS parle."""
     def __init__(self):
@@ -85,11 +97,17 @@ class _SpeechQueue:
         if self._task is not None and not self._task.done():
             self._queue.put_nowait(None)
 
-async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
-    """Exécute une commande texte et renvoie la réponse textuelle finale."""
-    if not texte: return ""
+async def executer_commande(texte: str, source: str = "voix", metadata: dict = None) -> CommandResult:
+    """Exécute une commande et renvoie un résultat structuré indépendant du canal."""
+    trace_id = new_trace_id()
+    result = CommandResult(source=source, trace_id=trace_id, metadata=metadata or {})
+    if not texte:
+        result.status = "empty"
+        result.text = ""
+        return result
+
     request_started = time.perf_counter()
-    request_ok = True
+    text_only = source in {"telegram", "cli"}
     
     state.mark_user_activity()
     meta_str = ""
@@ -97,7 +115,8 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
         m = metadata
         meta_str = f" [Batt: {m.get('battery')}% | Loc: {m.get('location')} | Focus: {m.get('focus')}]"
     
-    print(f"[ROUTER:{source.upper()}{meta_str}] {texte}")
+    print(f"[ROUTER:{source.upper()}:{trace_id}{meta_str}] {texte}")
+    record_trace_event(trace_id, "command.start", source=source, text_len=len(texte or ""))
 
     full_text_parts = []
     spoken = {"v": False}
@@ -109,18 +128,34 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
             state.PENDING_CONFIRMATION = None
             audit_log("sensitive_action_cancelled", action=pending.get("action"))
             msg = "Action annulée, Monsieur."
-            await _parler_safe(msg)
-            return msg
+            if not text_only:
+                await _parler_safe(msg)
+            result.text = msg
+            result.status = "cancelled"
+            record_trace_event(trace_id, "confirmation.cancelled", action=pending.get("action"))
+            return result
         if is_confirmation_text(texte):
             state.PENDING_CONFIRMATION = None
             audit_log("sensitive_action_confirmed", action=pending.get("action"))
-            await _parler_safe("Action confirmée, Floriace. J'exécute.")
+            if not text_only:
+                await _parler_safe("Action confirmée, Floriace. J'exécute.")
             from PHOEBUS.actions import executer_une_action
-            await executer_une_action(pending)
-            return "Action confirmée, Monsieur."
-        msg = "En attente de votre confirmation. Dites 'Phoebus je confirme' ou 'annule'."
-        await _parler_safe(msg)
-        return msg
+            msg = await executer_une_action(pending, speak=not text_only)
+            if msg:
+                result.action_messages.append(msg)
+            result.actions.append({"action": pending.get("action", "")})
+            result.text = msg or "Action confirmée, Monsieur."
+            result.status = "confirmed"
+            record_trace_event(trace_id, "confirmation.confirmed", action=pending.get("action"))
+            return result
+        msg = _confirmation_prompt(pending)
+        if not text_only:
+            await _parler_safe(msg)
+        result.text = msg
+        result.status = "confirmation_waiting"
+        result.confirmation_required = True
+        result.pending_action = pending
+        return result
     
     contexte_ios = ""
     if metadata:
@@ -135,52 +170,105 @@ async def executer_commande_generique(texte: str, source: str = "voix", metadata
     async def _on_sentence(s):
         spoken["v"] = True
         full_text_parts.append(s)
-        await speech.say(s)
+        if not text_only:
+            await speech.say(s)
 
     try:
         rep_finale_ia = await asyncio.wait_for(
             route_request(query_enrichie, source=source, metadata=metadata, on_sentence=_on_sentence),
             timeout=AI_COMMAND_TIMEOUT,
         )
+        record_trace_event(
+            trace_id,
+            "route.done",
+            response_len=len(rep_finale_ia or ""),
+            streamed=bool(spoken["v"]),
+        )
 
         if not rep_finale_ia:
             # Si route_request a retourné "" (hallucination ou vide), on reste discret
             # pour ne pas polluer l'ambiance avec des "Pardon ?".
-            return ""
+            result.text = ""
+            result.status = "empty_response"
+            return result
 
         if "{" in (rep_finale_ia or "") and "}" in (rep_finale_ia or ""):
-            await traiter_reponse_ia(rep_finale_ia)
+            action_messages: list[str] = []
+            await traiter_reponse_ia(
+                rep_finale_ia,
+                speak=not text_only,
+                action_messages=action_messages,
+                trace_id=trace_id,
+            )
+            result.action_messages.extend(action_messages)
             if state.PENDING_CONFIRMATION:
-                return "Confirmation requise, Monsieur."
-            return "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
+                result.text = _confirmation_prompt(state.PENDING_CONFIRMATION)
+                result.status = "confirmation_required"
+                result.confirmation_required = True
+                result.pending_action = state.PENDING_CONFIRMATION
+                return result
+            if action_messages and text_only:
+                result.text = "\n".join(action_messages)
+            else:
+                result.text = "Action exécutée, Monsieur." if not spoken["v"] else " ".join(full_text_parts)
+            result.status = "action_executed"
+            return result
 
         if not spoken["v"] and rep_finale_ia:
-            if not await traiter_reponse_ia(rep_finale_ia):
-                await speech.say(rep_finale_ia)
-                return rep_finale_ia
+            if not await traiter_reponse_ia(rep_finale_ia, speak=not text_only, trace_id=trace_id):
+                if not text_only:
+                    await speech.say(rep_finale_ia)
+                result.text = rep_finale_ia
+                return result
 
-        return " ".join(full_text_parts).strip() or rep_finale_ia or ""
+        result.text = " ".join(full_text_parts).strip() or rep_finale_ia or ""
+        return result
 
     except asyncio.TimeoutError:
-        request_ok = False
-        msg = "Je réfléchis encore, Floriace. La réponse vocale arrive dès que le cerveau se débloque."
-        await speech.say(msg)
-        return msg
+        result.ok = False
+        result.status = "timeout"
+        msg = "Je réfléchis encore, Floriace. Réessayez avec une instruction plus courte si besoin." if text_only else "Je réfléchis encore, Floriace. La réponse vocale arrive dès que le cerveau se débloque."
+        if not text_only:
+            await speech.say(msg)
+        result.text = msg
+        record_trace_event(trace_id, "command.timeout", timeout_s=AI_COMMAND_TIMEOUT)
+        return result
     except Exception as e:
-        request_ok = False
+        result.ok = False
+        result.status = "error"
         print(f"[ROUTER] Erreur traitement {source} : {e}")
         msg = "J'ai eu un raté interne, Floriace, mais je reste opérationnel."
-        await speech.say(msg)
-        return msg
+        if not text_only:
+            await speech.say(msg)
+        result.text = msg
+        record_trace_event(trace_id, "command.error", error=type(e).__name__)
+        return result
     finally:
+        result.duration_ms = (time.perf_counter() - request_started) * 1000
         record_request(
             source=source,
-            duration_ms=(time.perf_counter() - request_started) * 1000,
-            ok=request_ok,
+            duration_ms=result.duration_ms,
+            ok=result.ok,
             text_len=len(texte or ""),
+            trace_id=result.trace_id,
+            status=result.status,
+        )
+        record_trace_event(
+            trace_id,
+            "command.end",
+            ok=result.ok,
+            status=result.status,
+            duration_ms=round(result.duration_ms, 1),
+            reply_len=len(result.reply_text()),
         )
         state.extend_conversation()
         speech.close()
+
+
+async def executer_commande_generique(texte: str, source: str = "voix", metadata: dict = None) -> str:
+    """Compatibilité historique : renvoie uniquement le texte final."""
+    result = await executer_commande(texte, source=source, metadata=metadata)
+    return result.reply_text()
 
 async def route_request(
     texte: str,
@@ -231,28 +319,42 @@ async def route_request(
         return fallback.reply
     return rep
 
-async def traiter_reponse_ia(reponse: str, _request_id: str | None = None) -> bool:
+async def traiter_reponse_ia(
+    reponse: str,
+    _request_id: str | None = None,
+    speak: bool = True,
+    action_messages: list[str] | None = None,
+    trace_id: str | None = None,
+) -> bool:
     """Analyse la réponse de l'IA, extrait le JSON et exécute les actions."""
     if not reponse: return False
+
+    async def _emit(texte: str) -> None:
+        if speak:
+            await parler(texte)
 
     try:
         # 1. Gestion des confirmations en attente
         if state.PENDING_CONFIRMATION:
             if is_confirmation_text(reponse):
-                await parler("Action confirmée, Floriace. J'exécute.")
+                await _emit("Action confirmée, Floriace. J'exécute.")
                 d = state.PENDING_CONFIRMATION
                 state.PENDING_CONFIRMATION = None
                 audit_log("sensitive_action_confirmed", action=d.get("action"))
                 from PHOEBUS.actions import executer_une_action
-                await executer_une_action(d)
+                msg = await executer_une_action(d, speak=speak)
+                if msg and action_messages is not None:
+                    action_messages.append(msg)
+                if trace_id:
+                    record_trace_event(trace_id, "action.executed", action=d.get("action"), confirmed=True)
                 return True
             elif is_cancellation_text(reponse):
-                await parler("Action annulée, Monsieur.")
+                await _emit("Action annulée, Monsieur.")
                 audit_log("sensitive_action_cancelled", action=state.PENDING_CONFIRMATION.get("action"))
                 state.PENDING_CONFIRMATION = None
                 return True
             else:
-                await parler("En attente de votre confirmation. Dites 'PHOEBUS je confirme' ou 'Annule'.")
+                await _emit("En attente de votre confirmation. Dites 'PHOEBUS je confirme' ou 'Annule'.")
                 return True
 
         # 2. Extraction JSON robuste
@@ -268,43 +370,55 @@ async def traiter_reponse_ia(reponse: str, _request_id: str | None = None) -> bo
                 
                 for d in parties:
                     action = d.get("action", "")
+                    if trace_id:
+                        record_trace_event(trace_id, "action.detected", action=action)
                     verdict = guard.check(d)
                     if verdict.blocked:
                         audit_log("action_loop_blocked", action=action, reason=verdict.reason)
-                        await parler("Je bloque une répétition d'action pour éviter une boucle.")
+                        await _emit("Je bloque une répétition d'action pour éviter une boucle.")
+                        if trace_id:
+                            record_trace_event(trace_id, "action.blocked", action=action, reason=verdict.reason)
                         continue
 
                     risk = risk_level_for(action)
                     desc = describe_skill(action, d) if is_skill_registered(action) else describe_action(d)
 
                     if risk == "high":
-                        await parler(f"Vous me demandez de {desc}. C'est une action sensible, vous confirmez ?")
+                        await _emit(f"Vous me demandez de {desc}. C'est une action sensible, vous confirmez ?")
                         state.PENDING_CONFIRMATION = d
                         audit_log("sensitive_action_pending", action=action, description=desc, risk=risk)
+                        if trace_id:
+                            record_trace_event(trace_id, "action.confirmation_required", action=action, risk=risk)
                         return True
 
                     if risk == "medium":
-                        await parler(f"J'applique : {desc}.")
+                        await _emit(f"J'applique : {desc}.")
                         await asyncio.sleep(1.2)
                         if state.STOP_PARLER:
                             state.STOP_PARLER = False
-                            await parler("D'accord, j'annule.")
+                            await _emit("D'accord, j'annule.")
                             audit_log("medium_action_aborted", action=action, description=desc)
+                            if trace_id:
+                                record_trace_event(trace_id, "action.aborted", action=action)
                             continue
                         audit_log("medium_action_executed", action=action, description=desc)
-                        await executer_une_action(d)
+                        msg = await executer_une_action(d, speak=speak)
                     else:
-                        await executer_une_action(d)
+                        msg = await executer_une_action(d, speak=speak)
+                    if msg and action_messages is not None:
+                        action_messages.append(msg)
+                    if trace_id:
+                        record_trace_event(trace_id, "action.executed", action=action, risk=risk)
                 return True
 
         # 3. Réponse naturelle
         if len(reponse.strip()) > 2:
             stocker_souvenir(f"PHOEBUS a dit : {reponse}", source="conversation", importance=1)
-            await parler(reponse)
+            await _emit(reponse)
             return True
 
     except Exception as e:
         print(f"[ROUTER] Erreur traitement IA : {e}")
-        await parler("Il y a eu un petit raté dans mon interprétation, Monsieur.")
+        await _emit("Il y a eu un petit raté dans mon interprétation, Monsieur.")
 
     return False

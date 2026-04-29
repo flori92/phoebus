@@ -13,6 +13,7 @@ from PHOEBUS.config import (
     client,
     groq_client,
     mistral_client,
+    xai_client,
     openai_client,
     arena_client,
     CHOSEN_MODEL,
@@ -21,6 +22,7 @@ from PHOEBUS.config import (
     OLLAMA_URL,
     types,
     GROQ_MODEL,
+    GROK_MODEL,
     MISTRAL_MODEL,
     OPENAI_MODEL,
     ARENA_URL,
@@ -714,6 +716,28 @@ async def traduire_live(texte, langue_cible="anglais"):
         return texte
 
 
+async def demander_grok(texte):
+    if not xai_client:
+        return None
+    try:
+        system_prompt = construire_system_prompt(texte)
+        messages = _messages_openai(system_prompt, texte)
+        
+        response = await asyncio.to_thread(
+            xai_client.chat.completions.create,
+            model=GROK_MODEL,
+            messages=messages,
+            temperature=0.7,
+        )
+        rep = response.choices[0].message.content.strip()
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", rep)
+        return rep
+    except Exception as e:
+        print(f"[ERREUR GROK] {e}")
+        return None
+
+
 async def demander_ia(texte):
     state.is_thinking = True
     state.mark_user_activity()
@@ -786,12 +810,13 @@ async def demander_ia(texte):
                 use_search=True,
             ),
             "groq": lambda: demander_groq(texte),
+            "grok": lambda: demander_grok(texte),
             "mistral": lambda: demander_mistral(texte),
             "arena": lambda: demander_arena(texte, profile=profile),
             "openai": lambda: demander_openai(texte),
+            "kimi": lambda: demander_kimi(texte),
             "ollama": lambda: demander_ollama(texte),
-        }
-
+            }
         for provider in order:
             call = provider_calls.get(provider)
             if call is None:

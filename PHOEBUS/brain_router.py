@@ -296,6 +296,7 @@ def available_provider_names() -> list[str]:
         client,
         groq_client,
         mistral_client,
+        xai_client,
         openai_client,
         arena_client,
         types,
@@ -306,6 +307,8 @@ def available_provider_names() -> list[str]:
         names.append("gemini")
     if groq_client:
         names.append("groq")
+    if xai_client:
+        names.append("grok")
     if openai_client:
         names.append("openai")
     if mistral_client:
