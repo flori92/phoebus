@@ -160,11 +160,27 @@ async def phone_torch(data: dict):
     state_val = data.get("state", "toggle")  # on / off / toggle
     result = await _send_phone_command("torch", {"state": state_val})
     err = _phone_error(result, "Lampe torche")
-    if err:
+    if err and not result.get("iOS_fallback"):
         return err
+    if result and result.get("iOS_fallback"):
+        return "Demande envoyée silencieusement à l'iPhone via le relais de concentration."
     torch_state = result.get("torch_state", "?")
     return f"Lampe torche {'allumée' if torch_state == 'on' else 'éteinte'}."
 
+
+@skill(
+    "phone_settings",
+    risk="low",
+    help_text="Modifie les réglages de l'iPhone (Volume, Wifi, Bluetooth)",
+    describe=lambda d: f"Modifier un réglage sur l'iPhone",
+)
+async def phone_settings(data: dict):
+    setting = data.get("setting", "volume")
+    value = data.get("value", "")
+    result = await _send_phone_command(setting, {"value": value})
+    if result and result.get("iOS_fallback"):
+        return f"Ordre de réglage ({setting}) envoyé silencieusement à l'iPhone."
+    return "Réglage effectué via l'application satellite."
 
 @skill(
     "phone_gps",

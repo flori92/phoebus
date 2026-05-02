@@ -471,11 +471,17 @@ def _detect_phone(t: str) -> Optional[IntentResult]:
             json.dumps({"action": "phone_vibrate"}, ensure_ascii=False),
         )
     # ── Lampe torche ──
-    if any(m in t for m in ("lampe torche", "lampe de poche", "flashlight", "allume la lampe", "eteins la lampe", "éteins la lampe")):
-        state_val = "off" if any(m in t for m in ("eteins", "éteins", "coupe", "desactive", "désactive")) else "on"
+    if any(m in t for m in ("lampe torche", "lampe du téléphone", "lampe du telephone", "allume la lampe", "eteins la lampe", "éteins la lampe")):
+        state_val = "off" if any(x in t for x in ("etein", "étein", "coupe")) else "on"
         return IntentResult(
             "phone_torch",
             json.dumps({"action": "phone_torch", "state": state_val}, ensure_ascii=False),
+        )
+        
+    if "volume" in t and any(m in t for m in ("téléphone", "telephone", "tel")):
+        return IntentResult(
+            "phone_settings",
+            json.dumps({"action": "phone_settings", "setting": "volume", "value": "change"}, ensure_ascii=False),
         )
     # ── Retrouver le téléphone ──
     if any(m in t for m in ("où est mon téléphone", "ou est mon téléphone", "ou est mon telephone",
