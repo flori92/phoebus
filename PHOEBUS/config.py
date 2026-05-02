@@ -265,7 +265,7 @@ IS_MACOS = SYSTEM_NAME == "Darwin"
 # ── Réseau ──────────────────────────────────────────────────────────────────
 DEFAULT_FRONTEND_PORT = 5173
 DEFAULT_WS_PORT = 8765
-DEFAULT_MOBILE_PORT = 8090
+DEFAULT_MOBILE_PORT = 8080
 WS_AUTH_REQUIRED = False
 
 # ── Géo / Météo ─────────────────────────────────────────────────────────────
