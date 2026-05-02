@@ -326,6 +326,41 @@ async def adb_open_app(data: dict):
 
 
 @skill(
+    "adb_youtube_tv",
+    risk="medium",
+    help_text="Recherche et lance une vidéo ou une musique spécifique sur YouTube (Android TV)",
+    describe=lambda d: f"Lire '{d.get('query', '?')}' sur YouTube TV",
+)
+async def adb_youtube_tv(data: dict):
+    query = data.get("query", "").strip()
+    if not query:
+        return "Que veux-tu chercher sur YouTube TV ?"
+
+    import urllib.request
+    import urllib.parse
+    import re
+
+    try:
+        url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote(query)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        html = await asyncio.to_thread(lambda: urllib.request.urlopen(req).read().decode())
+        
+        video_ids = re.findall(r"watch\?v=(\S{11})", html)
+        if not video_ids:
+            return f"Je n'ai pas trouvé de vidéo pour '{query}'."
+
+        vid = video_ids[0]
+        video_url = f"https://www.youtube.com/watch?v={vid}"
+        adb_cmd = f"am start -a android.intent.action.VIEW -d '{video_url}' com.google.android.youtube.tv"
+        
+        await adb_command({"command": adb_cmd})
+        return f"Lecture de '{query}' lancée sur YouTube TV !"
+        
+    except Exception as e:
+        return f"Erreur lors de la recherche YouTube : {e}"
+
+
+@skill(
     "adb_tv_control",
     risk="low",
     help_text="Contrôle une TV Android (télécommande : pause, volume, éteindre, naviguer)",

@@ -583,6 +583,17 @@ def _detect_tv(t: str) -> Optional[IntentResult]:
     # ── Contrôle de la TV (ADB) ──
     tv_words = ("la tv", "la télé", "la tele", "la television", "la télévision")
     if any(tw in t for tw in tv_words):
+        # 1. YouTube TV
+        import re
+        m = re.search(r"(?:lance|joue|mets|cherche)\s+(.+?)\s+(?:sur\s+(?:le\s+)?youtube\s+(?:de\s+)?la\s+tv|sur\s+youtube\s+tv)", t)
+        if m:
+            query = m.group(1).strip()
+            return IntentResult(
+                "adb_youtube_tv",
+                json.dumps({"action": "adb_youtube_tv", "query": query}, ensure_ascii=False),
+            )
+            
+        # 2. Télécommande basique
         action_words = ("baisse", "monte", "plus", "moins", "pause", "play", "lecture", 
                         "accueil", "home", "eteins", "éteins", "allume", "retour", "gauche", "droite", "haut", "bas", "ok", "valider")
         for aw in action_words:
