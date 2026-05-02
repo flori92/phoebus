@@ -197,14 +197,63 @@ def _check_ollama_local() -> CheckResult:
 
 def _check_stt() -> CheckResult:
     try:
-        from PHOEBUS.stt_backends import get_backend
+        from PHOEBUS.stt_backends import stt_status
 
-        backend = get_backend()
+        status = stt_status()
     except Exception as exc:
         return _fail("STT", f"erreur: {exc}")
-    if not backend:
+    available = status.get("available") or {}
+    order = status.get("auto_order") or []
+    first_available = next((name for name in order if available.get(name)), None)
+    if not first_available and not any(available.values()):
         return _fail("STT", "aucun backend disponible")
-    return _ok("STT", backend[0])
+    placement = status.get("placement") or {}
+    backend = status.get("requested")
+    active = backend if backend != "auto" else first_available
+    return _ok(
+        "STT",
+        f"{active} ({placement.get('device', 'cpu')}/{placement.get('backend', 'auto')})",
+        f"ordre={','.join(order)} modèle={status.get('whisper_model')}",
+    )
+
+
+def _check_runtime_resources() -> list[CheckResult]:
+    try:
+        from PHOEBUS.runtime_resources import runtime_snapshot
+
+        snap = runtime_snapshot()
+    except Exception as exc:
+        return [_warn("Runtime ressources", f"indisponible: {exc}")]
+
+    profile = snap.get("profile") or {}
+    accelerators = [
+        item
+        for item in profile.get("accelerators", [])
+        if isinstance(item, dict) and item.get("available")
+    ]
+    checks = [
+        _ok(
+            "Placement tâches",
+            f"CPU {profile.get('cpu_count')} coeur(s)",
+            f"policy={json.dumps(snap.get('task_policy', {}), ensure_ascii=False)[:300]}",
+        )
+    ]
+    if accelerators:
+        details = ", ".join(f"{a.get('name')}:{a.get('kind')}" for a in accelerators)
+        checks.append(_ok("Accélération locale", "disponible", details))
+    else:
+        checks.append(_warn("Accélération locale", "aucun GPU utilisable détecté"))
+
+    ts = profile.get("tailscale") or {}
+    if not ts.get("installed"):
+        checks.append(
+            _warn("Tailscale", "non installé", "brew install tailscale puis tailscale up")
+        )
+    elif ts.get("up"):
+        checks.append(_ok("Tailscale", ts.get("ip4") or "connecté", f"pairs={ts.get('peers')}"))
+    else:
+        checks.append(_warn("Tailscale", "installé mais non connecté", ts.get("error", "")))
+    return checks
 
 
 def _check_runtime_singleton() -> CheckResult:
@@ -212,7 +261,17 @@ def _check_runtime_singleton() -> CheckResult:
         result = _run(["pgrep", "-f", "[m]ain2.py --auto-restart"])
     except Exception as exc:
         return _warn("Runtime unique", f"non vérifié: {exc}")
-    pids = [p for p in result.stdout.splitlines() if p.strip()]
+    pids = []
+    for pid in (p for p in result.stdout.splitlines() if p.strip()):
+        try:
+            ps = _run(["ps", "-p", pid, "-o", "command="])
+            command = ps.stdout.strip()
+        except Exception:
+            command = ""
+        lower = command.lower()
+        is_launcher_shell = lower.startswith(("/bin/zsh", "/bin/sh", "/bin/bash"))
+        if "main2.py --auto-restart" in lower and not is_launcher_shell:
+            pids.append(pid)
     if len(pids) <= 1:
         return _ok("Runtime unique", f"{len(pids)} instance")
     return _fail("Runtime unique", f"{len(pids)} instances", "PID: " + ", ".join(pids))
@@ -301,14 +360,32 @@ def _check_memory_backend() -> CheckResult:
     return _fail("Mémoire retrieval", "SQLite fallback indisponible")
 
 
+def _check_tts_cache() -> CheckResult:
+    try:
+        from PHOEBUS.response_cache import status
+
+        snap = status()
+    except Exception as exc:
+        return _warn("Cache vocal", f"indisponible: {exc}")
+    return _ok(
+        "Cache vocal",
+        f"{snap.get('entries', 0)} entrée(s), {snap.get('size_mb', 0)} Mo",
+        str(snap.get("dir", "")),
+    )
+
+
 def _check_core_skills() -> CheckResult:
     expected = {
         "agent_planifie",
         "brain_status",
+        "cache_status",
         "knowledge_query",
         "meteo",
         "python_run",
         "recherche_web",
+        "runtime_status",
+        "tailscale_status",
+        "task_status",
     }
     try:
         from PHOEBUS.skills import IMPORT_ERRORS, capability_manifest, list_skills
@@ -334,6 +411,7 @@ def run_checks() -> list[CheckResult]:
     checks.extend(_check_imports())
     checks.extend(_check_config())
     checks.append(_check_core_skills())
+    checks.extend(_check_runtime_resources())
     checks.append(_check_ollama_local())
     checks.append(_check_stt())
     checks.append(_check_runtime_singleton())
@@ -342,6 +420,7 @@ def run_checks() -> list[CheckResult]:
     checks.append(_check_request_metrics())
     checks.append(_check_agent_traces())
     checks.append(_check_memory_backend())
+    checks.append(_check_tts_cache())
     return checks
 
 

@@ -1,27 +1,46 @@
 """Back-ends de reconnaissance vocale (STT) de PHOEBUS."""
+
 from dataclasses import dataclass
+import importlib.util
 import json
 import os
+import tempfile
 import time
 
 # ── Désactivation des avertissements Hugging Face (Alternative au token) ──
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-os.environ["HF_HUB_OFFLINE"] = "0" # Mettre à 1 une fois les modèles téléchargés
+os.environ["HF_HUB_OFFLINE"] = "0"  # Mettre à 1 une fois les modèles téléchargés
 
 from PHOEBUS.config import BASE_DIR, sr, groq_client
+from PHOEBUS.runtime_resources import choose_placement
 
-
-PHOEBUS_STT_BACKEND = os.getenv("PHOEBUS_STT_BACKEND", "auto").strip().lower()  # auto | groq | google | whisper
+PHOEBUS_STT_BACKEND = os.getenv("PHOEBUS_STT_BACKEND", "auto").strip().lower()
 PHOEBUS_WHISPER_MODEL = os.getenv("PHOEBUS_WHISPER_MODEL", "base").strip()
-PHOEBUS_STT_VERIFY = os.getenv("PHOEBUS_STT_VERIFY", "1").strip().lower() in {"1", "true", "yes", "on"}
+PHOEBUS_MLX_WHISPER_MODEL = os.getenv("PHOEBUS_MLX_WHISPER_MODEL", "").strip()
+PHOEBUS_STT_AUTO_ORDER = [
+    item.strip().lower()
+    for item in os.getenv("PHOEBUS_STT_AUTO_ORDER", "whisper,groq,google").split(",")
+    if item.strip()
+]
+PHOEBUS_STT_VERIFY = os.getenv("PHOEBUS_STT_VERIFY", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 PHOEBUS_STT_VERIFY_BACKENDS = [
     item.strip().lower()
     for item in os.getenv("PHOEBUS_STT_VERIFY_BACKENDS", "google,whisper").split(",")
     if item.strip()
 ]
 PHOEBUS_STT_LOG = os.getenv("PHOEBUS_STT_LOG", "0").strip().lower() in {"1", "true", "yes", "on"}
-PHOEBUS_STT_DEBUG = os.getenv("PHOEBUS_STT_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
+PHOEBUS_STT_DEBUG = os.getenv("PHOEBUS_STT_DEBUG", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 try:
     PHOEBUS_STT_API_TIMEOUT = float(os.getenv("PHOEBUS_STT_API_TIMEOUT", "8"))
 except ValueError:
@@ -40,38 +59,50 @@ class SttCandidate:
 
 
 def _try_faster_whisper():
-    """Version ultra-rapide optimisée pour Apple Silicon (M1/M2/M3) avec filtrage de silence."""
+    """Whisper local via faster-whisper avec filtrage de silence."""
     try:
         from faster_whisper import WhisperModel
         import numpy as np
-        # Modèle 'small' ou 'distil-large-v3' pour le meilleur compromis vitesse/précision
-        model = WhisperModel(PHOEBUS_WHISPER_MODEL, device="auto", compute_type="auto")
+
+        plan = choose_placement("stt")
+        device = os.getenv("PHOEBUS_WHISPER_DEVICE", plan.device).strip() or "auto"
+        compute_type = (
+            os.getenv("PHOEBUS_WHISPER_COMPUTE_TYPE", plan.compute_type).strip() or "auto"
+        )
+        if device in {"mps", "metal"}:
+            device = "auto"
+        model = WhisperModel(PHOEBUS_WHISPER_MODEL, device=device, compute_type=compute_type)
+        print(
+            f"[STT] faster-whisper chargé ({PHOEBUS_WHISPER_MODEL}, "
+            f"device={device}, compute={compute_type})"
+        )
 
         def recognize(audio_data):
             # ── VAD Logic (Voice Activity Detection) ──
             # On vérifie l'énergie pour ignorer le silence et éviter les hallucinations
             wav_bytes = audio_data.get_wav_data(convert_rate=16000, convert_width=2)
             audio_array = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-            
+
             # Si le signal est trop faible, on ne tente même pas la transcription
-            if np.max(np.abs(audio_array)) < 0.02: 
+            if np.max(np.abs(audio_array)) < 0.02:
                 return ""
 
             import io
+
             audio_file = io.BytesIO(wav_bytes)
-            
-            # vad_filter=True est essentiel pour bloquer les hallucinations de Whisper 
+
+            # vad_filter=True est essentiel pour bloquer les hallucinations de Whisper
             # (comme "Sous-titres par Amara.org" ou "Merci de votre écoute")
             segments, info = model.transcribe(
-                audio_file, 
-                language="fr", 
+                audio_file,
+                language="fr",
                 beam_size=5,
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500)
+                vad_parameters=dict(min_silence_duration_ms=500),
             )
-            
+
             text = " ".join(seg.text for seg in segments).strip()
-            
+
             # Filtre de confiance additionnel pour éviter le bruit
             if info.language_probability < 0.6:
                 return ""
@@ -82,6 +113,63 @@ def _try_faster_whisper():
     except Exception as e:
         print(f"[STT] Faster-Whisper indisponible : {e}")
         return None
+
+
+def _mlx_model_name() -> str:
+    if PHOEBUS_MLX_WHISPER_MODEL:
+        return PHOEBUS_MLX_WHISPER_MODEL
+    if "/" in PHOEBUS_WHISPER_MODEL:
+        return PHOEBUS_WHISPER_MODEL
+    return f"mlx-community/whisper-{PHOEBUS_WHISPER_MODEL}"
+
+
+def _try_mlx_whisper():
+    """Whisper MLX pour Apple Silicon, si `mlx-whisper` est installe."""
+    try:
+        import mlx_whisper
+        import numpy as np
+
+        model_name = _mlx_model_name()
+        print(f"[STT] mlx-whisper prêt ({model_name})")
+
+        def recognize(audio_data):
+            wav_bytes = audio_data.get_wav_data(convert_rate=16000, convert_width=2)
+            audio_array = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            if np.max(np.abs(audio_array)) < 0.02:
+                return ""
+
+            tmp = tempfile.NamedTemporaryFile(
+                mode="wb", suffix=".wav", prefix="phoebus_stt_", delete=False, dir="/tmp"
+            )
+            try:
+                tmp.write(wav_bytes)
+                tmp.flush()
+                tmp.close()
+                result = mlx_whisper.transcribe(
+                    tmp.name,
+                    path_or_hf_repo=model_name,
+                    language="fr",
+                )
+                return str((result or {}).get("text") or "").strip()
+            finally:
+                try:
+                    os.unlink(tmp.name)
+                except Exception:
+                    pass
+
+        return recognize
+    except Exception as e:
+        print(f"[STT] MLX-Whisper indisponible : {e}")
+        return None
+
+
+def _whisper_recognize_factory():
+    plan = choose_placement("stt")
+    if plan.backend == "mlx-whisper":
+        fn = _try_mlx_whisper()
+        if fn:
+            return fn
+    return _try_faster_whisper()
 
 
 def _google_recognize_factory():
@@ -108,15 +196,15 @@ def _groq_recognize_factory():
         # On s'assure d'avoir du 16kHz pour le calcul d'énergie
         wav_bytes = audio_data.get_wav_data(convert_rate=16000, convert_width=2)
         audio_array = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-        
+
         # Seuil d'énergie pour ignorer le silence (Whisper hallucine sur le silence)
         energy = np.max(np.abs(audio_array))
-        if energy < 0.04: 
+        if energy < 0.04:
             return ""
 
         # On utilise le format original pour l'envoi à l'API (plus haute qualité possible)
         api_wav = audio_data.get_wav_data()
-        
+
         try:
             client = groq_client.with_options(timeout=PHOEBUS_STT_API_TIMEOUT)
             # Groq API demande un tuple (nom_fichier, bytes) ou un file-like object
@@ -125,7 +213,7 @@ def _groq_recognize_factory():
                 model="whisper-large-v3",
                 language="fr",
                 prompt="PHOEBUS, assistant vocal d'élite. Bonjour Floriace.",
-                response_format="text"
+                response_format="text",
             )
             return transcription.strip()
         except Exception as e:
@@ -143,7 +231,9 @@ def _factory_for(name: str):
     if name == "groq":
         fn = _groq_recognize_factory()
     elif name == "whisper":
-        fn = _try_faster_whisper()
+        fn = _whisper_recognize_factory()
+    elif name in {"mlx", "mlx-whisper", "mlx_whisper"}:
+        fn = _try_mlx_whisper()
     elif name == "google":
         fn = _google_recognize_factory()
     else:
@@ -172,25 +262,52 @@ def get_backend():
         fn = _factory_for("google")
         name = "google" if fn else None
     else:  # auto
-        # Ordre de préférence : groq (si clé dispo) -> faster-whisper (si installé) -> google
-        fn = _factory_for("groq")
-        if fn:
-            name = "groq"
-        else:
-            fn = _factory_for("whisper")
+        for backend in PHOEBUS_STT_AUTO_ORDER:
+            fn = _factory_for(backend)
             if fn:
-                name = "whisper"
-            else:
-                fn = _factory_for("google")
-                name = "google" if fn else None
+                name = "whisper" if backend in {"mlx", "mlx-whisper", "mlx_whisper"} else backend
+                break
 
     _backend_cache = (name, fn)
     return _backend_cache
 
 
+def _module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        return False
+
+
+def stt_status() -> dict:
+    """Snapshot leger, sans charger les modeles Whisper."""
+    plan = choose_placement("stt")
+    available = {
+        "groq": bool(groq_client),
+        "google": sr is not None,
+        "whisper": _module_available("faster_whisper") or _module_available("mlx_whisper"),
+        "mlx_whisper": _module_available("mlx_whisper"),
+        "faster_whisper": _module_available("faster_whisper"),
+    }
+    return {
+        "requested": PHOEBUS_STT_BACKEND,
+        "auto_order": PHOEBUS_STT_AUTO_ORDER,
+        "whisper_model": PHOEBUS_WHISPER_MODEL,
+        "mlx_whisper_model": _mlx_model_name(),
+        "placement": {
+            "device": plan.device,
+            "backend": plan.backend,
+            "compute_type": plan.compute_type,
+            "reason": plan.reason,
+        },
+        "available": available,
+    }
+
+
 def _intent_name(text: str) -> str:
     try:
         from PHOEBUS.intent import detect
+
         intent = detect(text)
         return intent.name if intent else ""
     except Exception:
@@ -211,10 +328,19 @@ def _should_verify(text: str) -> bool:
     }
     if intent in {"heure", "date"}:
         return True
-    if len(words) <= 5 and words.intersection({
-        "heure", "date", "météo", "meteo", "temps",
-        "jour", "journée", "journee", "demain",
-    }):
+    if len(words) <= 5 and words.intersection(
+        {
+            "heure",
+            "date",
+            "météo",
+            "meteo",
+            "temps",
+            "jour",
+            "journée",
+            "journee",
+            "demain",
+        }
+    ):
         return True
     return False
 
@@ -240,7 +366,10 @@ def _score_candidate(candidate: SttCandidate, primary: bool = False) -> float:
     }
     score += intent_weights.get(candidate.intent, 20.0 if candidate.intent else 0.0)
 
-    if any(marker in t for marker in ("météo", "meteo", "quel temps", "le temps", "prévision", "prevision")):
+    if any(
+        marker in t
+        for marker in ("météo", "meteo", "quel temps", "le temps", "prévision", "prevision")
+    ):
         score += 20.0
     if any(marker in t for marker in ("heure", "quelle heure", "il est quelle heure")):
         score += 8.0
@@ -280,10 +409,13 @@ def _log_transcription(candidates: list[SttCandidate], selected: SttCandidate, r
         payload = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "candidates": [
-                {"backend": c.backend, "text": c.text, "intent": c.intent}
-                for c in candidates
+                {"backend": c.backend, "text": c.text, "intent": c.intent} for c in candidates
             ],
-            "selected": {"backend": selected.backend, "text": selected.text, "intent": selected.intent},
+            "selected": {
+                "backend": selected.backend,
+                "text": selected.text,
+                "intent": selected.intent,
+            },
             "reason": reason,
         }
         with open(log_path, "a", encoding="utf-8") as f:
@@ -310,7 +442,9 @@ def recognize_with_verification(audio_data, primary=None) -> str:
         print(f"[STT] Erreur {primary_name} : {e}")
         primary_text = ""
 
-    candidates.append(SttCandidate(primary_name or "primary", primary_text, _intent_name(primary_text)))
+    candidates.append(
+        SttCandidate(primary_name or "primary", primary_text, _intent_name(primary_text))
+    )
 
     if _should_verify(primary_text):
         for backend in PHOEBUS_STT_VERIFY_BACKENDS:
@@ -331,5 +465,7 @@ def recognize_with_verification(audio_data, primary=None) -> str:
     _log_transcription(candidates, selected, reason)
 
     if selected.backend != (primary_name or "primary"):
-        print(f"[STT] Correction {primary_name} → {selected.backend} : {primary_text!r} → {selected.text!r}")
+        print(
+            f"[STT] Correction {primary_name} → {selected.backend} : {primary_text!r} → {selected.text!r}"
+        )
     return selected.text

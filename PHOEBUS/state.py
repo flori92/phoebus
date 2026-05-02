@@ -4,6 +4,7 @@
 Centralise les connexions WebSocket, les flags et les fonctions de diffusion.
 Tous les modules qui doivent lire/écrire de l'état partagé importent depuis ici.
 """
+
 import asyncio
 import json
 import os
@@ -21,6 +22,7 @@ CLIENT_META = {}
 PENDING_SCREEN_CAPTURES = {}
 # Captures caméra téléphone en attente : {req_id: asyncio.Future}
 PENDING_PHONE_CAPTURES = {}
+
 
 def _int_env(name: str, default: int) -> int:
     try:
@@ -41,18 +43,18 @@ interface_deja_connectee = False
 _skip_pc_audio = False
 PENDING_CONFIRMATION = None
 
-is_listening  = False
-is_speaking   = False
-is_thinking   = False
-is_proactive  = False
-speak_volume  = 0.0
+is_listening = False
+is_speaking = False
+is_thinking = False
+is_proactive = False
+speak_volume = 0.0
 
-PHOEBUS_actif    = False
+PHOEBUS_actif = False
 dernier_message = 0.0
-STOP_PARLER     = False
+STOP_PARLER = False
 
 MODE_IRON_MAN = False
-VIDEO_LANCEE  = False
+VIDEO_LANCEE = False
 
 # ── Mode Interprète (Traduction Live) ──────────────────────────────
 INTERPRETE_ACTIF = False
@@ -80,8 +82,8 @@ BARGE_IN_CONVERSATION_SECONDS = _float_env(
 )
 
 # ── Anti-Écho (PHOEBUS ne se parle pas à lui-même) ─────────────────────────
-last_PHOEBUS_speech = ""    # Texte exact du dernier bloc prononcé
-last_speech_timestamp = 0.0 # Heure de fin de parole
+last_PHOEBUS_speech = ""  # Texte exact du dernier bloc prononcé
+last_speech_timestamp = 0.0  # Heure de fin de parole
 current_PHOEBUS_speech = ""  # Texte en cours de prononciation
 speech_started_timestamp = 0.0
 
@@ -156,9 +158,9 @@ def looks_like_own_echo(texte_transcript: str) -> bool:
     return False
 
 
-dossier_courant    = None
-dernier_doc_id     = None
-dernier_doc_titre  = None
+dossier_courant = None
+dernier_doc_id = None
+dernier_doc_titre = None
 
 # ── Historique de conversation ──────────────────────────────────────────────
 historique = []
@@ -171,6 +173,7 @@ def ajouter_historique(role, texte):
 
 
 # ── Helpers Conversation Naturelle ─────────────────────────────────────────
+
 
 def extend_conversation(seconds=None):
     """Ouvre ou prolonge la fenêtre "on est en train de discuter".
@@ -204,6 +207,7 @@ def seconds_since_user_activity():
 
 # ── Helpers tâches de fond ─────────────────────────────────────────────────
 
+
 def register_background_task(task, label):
     global _background_seq
     _background_seq += 1
@@ -220,6 +224,17 @@ def drop_background_task(tid):
     background_tasks.pop(tid, None)
 
 
+def cancel_background_task(tid):
+    info = background_tasks.get(int(tid)) if tid is not None else None
+    if not info:
+        return False
+    task = info.get("task")
+    if task and not task.done():
+        task.cancel()
+    background_tasks.pop(int(tid), None)
+    return True
+
+
 def active_background_tasks():
     # Nettoyage opportuniste des tâches terminées.
     finished = [tid for tid, info in background_tasks.items() if info["task"].done()]
@@ -230,9 +245,9 @@ def active_background_tasks():
 
 # ── Fonctions WebSocket partagées ───────────────────────────────────────────
 
+
 def get_authenticated_clients():
-    return {ws for ws in CONNECTED_CLIENTS
-            if (not WS_AUTH_REQUIRED or ws in AUTHENTICATED_CLIENTS)}
+    return {ws for ws in CONNECTED_CLIENTS if (not WS_AUTH_REQUIRED or ws in AUTHENTICATED_CLIENTS)}
 
 
 def register_authenticated_client(websocket, data=None):
@@ -263,16 +278,14 @@ async def send_web_state(state):
     recipients = get_authenticated_clients()
     if recipients:
         message = json.dumps({"action": "set_state", "state": state})
-        await asyncio.gather(*[ws.send(message) for ws in recipients],
-                             return_exceptions=True)
+        await asyncio.gather(*[ws.send(message) for ws in recipients], return_exceptions=True)
 
 
 async def send_web_volume(volume):
     recipients = get_authenticated_clients()
     if recipients:
         message = json.dumps({"action": "set_volume", "volume": round(volume, 3)})
-        await asyncio.gather(*[ws.send(message) for ws in recipients],
-                             return_exceptions=True)
+        await asyncio.gather(*[ws.send(message) for ws in recipients], return_exceptions=True)
 
 
 async def send_web_expression(text, utterance_id=None):
@@ -282,8 +295,7 @@ async def send_web_expression(text, utterance_id=None):
         if utterance_id:
             payload["id"] = utterance_id
         message = json.dumps(payload, ensure_ascii=False)
-        await asyncio.gather(*[ws.send(message) for ws in recipients],
-                             return_exceptions=True)
+        await asyncio.gather(*[ws.send(message) for ws in recipients], return_exceptions=True)
 
 
 async def send_web_lipsync(frames, utterance_id=None, backend=None):
@@ -295,13 +307,12 @@ async def send_web_lipsync(frames, utterance_id=None, backend=None):
         if backend:
             payload["backend"] = backend
         message = json.dumps(payload, ensure_ascii=False)
-        await asyncio.gather(*[ws.send(message) for ws in recipients],
-                             return_exceptions=True)
+        await asyncio.gather(*[ws.send(message) for ws in recipients], return_exceptions=True)
+
 
 async def broadcast(payload):
     """Diffuse un message JSON à tous les clients authentifiés."""
     recipients = get_authenticated_clients()
     if recipients:
         message = json.dumps(payload, ensure_ascii=False)
-        await asyncio.gather(*[ws.send(message) for ws in recipients],
-                             return_exceptions=True)
+        await asyncio.gather(*[ws.send(message) for ws in recipients], return_exceptions=True)

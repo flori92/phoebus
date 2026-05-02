@@ -1,6 +1,7 @@
 """Façade unifiée sur toutes les couches de mémoire de PHOEBUS.
 
 Les couches sous-jacentes :
+- `obsidian.py`    : vault Obsidian indexé dans ChromaDB (notes personnelles).
 - `memory.py`        : JSON clé/valeur persistant (préférences factuelles).
 - `rag_memory.py`    : ChromaDB vectorielle (souvenirs sémantiques).
 - `state.historique` : fenêtre glissante en RAM (tour courant + récents).
@@ -144,6 +145,32 @@ def recall(query: str, limit: int = 5) -> List[RecallResult]:
                     importance=3 if is_correction else 1,
                 )
             )
+
+    # ── Obsidian vault (notes personnelles indexées dans ChromaDB) ─────────
+    try:
+        from PHOEBUS.obsidian import OBSIDIAN_ENABLED, search_vault_semantic
+        if OBSIDIAN_ENABLED:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                vault_hits = await search_vault_semantic(q, n_results=min(limit, 3))
+            except RuntimeError:
+                vault_hits = asyncio.run(search_vault_semantic(q, n_results=min(limit, 3)))
+            for hit in (vault_hits or []):
+                snippet = hit.get("text", "")[:300]
+                fname = hit.get("file", "?")
+                score = hit.get("score", 0)
+                if score > 0.3:  # Seuil de pertinence minimale
+                    results.append(
+                        RecallResult(
+                            source="obsidian",
+                            text=f"[Note: {fname}] {snippet}",
+                            importance=2 if score > 0.6 else 1,
+                            extra={"file": fname, "score": score},
+                        )
+                    )
+    except Exception as e:
+        pass  # Obsidian non configuré ou erreur, on ignore silencieusement
 
     # Tri global : importance décroissante.
     results.sort(key=lambda r: -r.importance)

@@ -18,6 +18,7 @@ audio sont stockés sous `phoebus_tts_cache/`.
 Taille plafonnée via LRU (200 entrées par défaut). La maintenance
 tourne en tâche de fond côté proactive loop.
 """
+
 import os
 import hashlib
 import shutil
@@ -27,7 +28,6 @@ from typing import Optional
 
 from PHOEBUS.config import BASE_DIR
 from PHOEBUS.text_shaping import naturaliser
-
 
 CACHE_DIR = BASE_DIR / "phoebus_tts_cache"
 CACHE_MAX_ENTRIES = 200
@@ -127,9 +127,7 @@ def prune(max_entries: int = CACHE_MAX_ENTRIES) -> int:
     """
     _ensure_dir()
     try:
-        files = [
-            (p, p.stat().st_atime) for p in CACHE_DIR.glob("*.mp3") if p.is_file()
-        ]
+        files = [(p, p.stat().st_atime) for p in CACHE_DIR.glob("*.mp3") if p.is_file()]
     except Exception:
         return 0
     if len(files) <= max_entries:
@@ -143,6 +141,23 @@ def prune(max_entries: int = CACHE_MAX_ENTRIES) -> int:
         except Exception:
             pass
     return removed
+
+
+def status() -> dict:
+    """Retourne un snapshot du cache TTS sans lire les fichiers audio."""
+    _ensure_dir()
+    try:
+        files = [p for p in CACHE_DIR.glob("*.mp3") if p.is_file()]
+        total_bytes = sum(p.stat().st_size for p in files)
+    except Exception:
+        files = []
+        total_bytes = 0
+    return {
+        "dir": str(CACHE_DIR),
+        "entries": len(files),
+        "max_entries": CACHE_MAX_ENTRIES,
+        "size_mb": round(total_bytes / (1024 * 1024), 2),
+    }
 
 
 async def prewarm(synthesize_to_file, voice: str, backend_name: str) -> int:

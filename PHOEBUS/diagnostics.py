@@ -12,6 +12,9 @@ from PHOEBUS.config import BASE_DIR, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 from PHOEBUS.llm_health import status as llm_status
 from PHOEBUS.observability import request_snapshot, snapshot as phase_snapshot, trace_snapshot
 from PHOEBUS.brain_router import available_provider_names
+from PHOEBUS.response_cache import status as tts_cache_status
+from PHOEBUS.runtime_resources import runtime_snapshot
+from PHOEBUS.stt_backends import stt_status
 from PHOEBUS.voice_diagnostics import snapshot as voice_snapshot
 
 
@@ -52,6 +55,7 @@ def diagnostics_snapshot() -> dict:
 
     try:
         from PHOEBUS.skills import list_skills
+
         skills = list_skills()
     except Exception:
         skills = []
@@ -59,6 +63,7 @@ def diagnostics_snapshot() -> dict:
     return {
         "ts": time.time(),
         "runtime": {
+            "resources": runtime_snapshot(),
             "ports": {
                 "mobile_http_8090": True,
                 "websocket_8765": True,
@@ -93,13 +98,18 @@ def diagnostics_snapshot() -> dict:
             "phases": phase_snapshot(),
             "traces": trace_snapshot(),
         },
-        "voice": voice_snapshot(),
+        "voice": {
+            **voice_snapshot(),
+            "stt": stt_status(),
+            "tts_cache": tts_cache_status(),
+        },
     }
 
 
 def _websocket_auth_status() -> dict:
     try:
         from PHOEBUS.ws_pairing import pairing_status
+
         return pairing_status()
     except Exception:
         return {"enabled": False, "paired_devices": 0}

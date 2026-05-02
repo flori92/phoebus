@@ -148,6 +148,124 @@ async def brain_status(data: dict):
 
 
 @skill(
+    "runtime_status",
+    risk="low",
+    help_text="Resume CPU, GPU, Tailscale et placement des taches PHOEBUS",
+    describe=lambda _: "Lire le profil runtime PHOEBUS",
+)
+async def runtime_status(data: dict):
+    from PHOEBUS.runtime_resources import runtime_snapshot
+
+    snap = runtime_snapshot(force=bool(data.get("refresh", False)))
+    profile = snap["profile"]
+    policy = snap["task_policy"]
+    accelerators = [
+        f"{acc['name']} ({acc['kind']})"
+        for acc in profile.get("accelerators", [])
+        if acc.get("available")
+    ]
+    tailscale = profile.get("tailscale") or {}
+    tailscale_msg = (
+        f"Tailscale actif sur {tailscale.get('ip4')}"
+        if tailscale.get("up")
+        else "Tailscale non actif"
+    )
+    return (
+        f"Runtime: {profile.get('cpu_brand')} avec {profile.get('cpu_count')} coeurs CPU. "
+        f"Acceleration: {', '.join(accelerators) if accelerators else 'CPU uniquement'}. "
+        f"STT sur {policy['stt']['device']} via {policy['stt']['backend']}; "
+        f"vision sur {policy['vision']['device']}; LLM local sur {policy['local_llm']['device']}. "
+        f"{tailscale_msg}."
+    )
+
+
+@skill(
+    "tailscale_status",
+    risk="low",
+    help_text="Verifie l'etat Tailscale, l'IP tailnet et le nombre de pairs",
+    describe=lambda _: "Verifier Tailscale",
+)
+async def tailscale_status(data: dict):
+    from PHOEBUS.runtime_resources import detect_tailscale
+
+    ts = detect_tailscale()
+    if not ts.installed:
+        return "Tailscale n'est pas installé sur cette machine."
+    if not ts.up:
+        return f"Tailscale est installé mais non connecté. {ts.error}".strip()
+    tailnet = f" sur {ts.tailnet}" if ts.tailnet else ""
+    peers = f"{ts.peers} appareil(s) visibles" if ts.peers else "aucun pair visible"
+    return f"Tailscale est actif{tailnet}. IP: {ts.ip4}. {peers}."
+
+
+@skill(
+    "task_status",
+    risk="low",
+    help_text="Liste les taches de fond PHOEBUS en cours",
+    describe=lambda _: "Lister les taches PHOEBUS actives",
+)
+async def task_status(data: dict):
+    tasks = state.active_background_tasks()
+    if not tasks:
+        return "Aucune tâche de fond PHOEBUS n'est active."
+    lines = []
+    now = time.time()
+    for tid, info in list(tasks.items())[:8]:
+        age = int(now - float(info.get("started", now)))
+        lines.append(f"{tid}: {info.get('label', 'tache')} depuis {age} secondes")
+    suffix = "" if len(tasks) <= 8 else f", et {len(tasks) - 8} autre(s)"
+    return "Tâches actives: " + "; ".join(lines) + suffix + "."
+
+
+@skill(
+    "task_cancel",
+    risk="medium",
+    help_text="Annule une tache de fond PHOEBUS par identifiant",
+    describe=lambda d: f"Annuler la tache {d.get('id')}",
+)
+async def task_cancel(data: dict):
+    tid = data.get("id")
+    try:
+        tid = int(tid)
+    except (TypeError, ValueError):
+        return "Identifiant de tâche invalide."
+    return "Tâche annulée." if state.cancel_background_task(tid) else "Tâche introuvable."
+
+
+@skill(
+    "cache_status",
+    risk="low",
+    help_text="Affiche l'etat du cache vocal TTS",
+    describe=lambda _: "Lire l'etat du cache PHOEBUS",
+)
+async def cache_status(data: dict):
+    from PHOEBUS.response_cache import status as cache_status_snapshot
+
+    snap = cache_status_snapshot()
+    return (
+        f"Cache vocal: {snap['entries']} fichier(s), {snap['size_mb']} Mo, "
+        f"limite {snap['max_entries']} entrées."
+    )
+
+
+@skill(
+    "cache_prune",
+    risk="medium",
+    help_text="Nettoie le cache vocal TTS selon la limite LRU",
+    describe=lambda _: "Nettoyer le cache vocal PHOEBUS",
+)
+async def cache_prune(data: dict):
+    from PHOEBUS.response_cache import CACHE_MAX_ENTRIES, prune
+
+    try:
+        max_entries = int(data.get("max_entries", CACHE_MAX_ENTRIES) or CACHE_MAX_ENTRIES)
+    except (TypeError, ValueError):
+        max_entries = CACHE_MAX_ENTRIES
+    removed = prune(max_entries=max_entries)
+    return f"Cache nettoyé. {removed} fichier(s) supprimé(s)."
+
+
+@skill(
     "mode_local",
     risk="low",
     help_text="Active ou désactive le mode IA locale (Ollama)",

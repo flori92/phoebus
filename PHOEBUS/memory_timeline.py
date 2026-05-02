@@ -286,4 +286,25 @@ def enrichir_contexte_system_prompt(texte_utilisateur: str = "") -> str:
         pref_str = ", ".join(f"{k}={v['valeur']}" for k, v in list(prefs.items())[:6])
         lignes.append(f"PRÉFÉRENCES APPRISES : {pref_str}")
 
+    # Obsidian vault — notes récentes pertinentes si le sujet correspond
+    if texte_utilisateur:
+        try:
+            from PHOEBUS.obsidian import OBSIDIAN_ENABLED, search_vault_semantic
+            if OBSIDIAN_ENABLED:
+                import asyncio
+                try:
+                    vault_hits = asyncio.get_event_loop().run_until_complete(
+                        search_vault_semantic(texte_utilisateur, n_results=2)
+                    )
+                except RuntimeError:
+                    vault_hits = []
+                if vault_hits:
+                    lignes.append("NOTES OBSIDIAN PERTINENTES :")
+                    for hit in vault_hits[:2]:
+                        f = hit.get("file", "?")
+                        snippet = hit.get("text", "")[:200].replace("\n", " ")
+                        lignes.append(f"  [{f}] {snippet}")
+        except Exception:
+            pass
+
     return "\n".join(lignes) if lignes else ""

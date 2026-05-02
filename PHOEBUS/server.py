@@ -174,6 +174,22 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path == '/obsidian' or self.path.startswith('/obsidian?'):
+            try:
+                import asyncio
+                from PHOEBUS.obsidian import obsidian_status
+                loop = asyncio.new_event_loop()
+                status = loop.run_until_complete(obsidian_status())
+                loop.close()
+                body = json.dumps(status, ensure_ascii=False).encode("utf-8")
+            except Exception as e:
+                body = json.dumps({"error": str(e)}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         super().do_GET()
 
     def do_POST(self):

@@ -113,6 +113,28 @@ dépendances voix/STT, configuration, runtime unique, frontend et endpoint
 PyAudio est optionnel. S'il ne s'installe pas, le micro PC et les applaudissements
 sont desactives, mais le backend et l'interface mobile restent utilisables.
 
+## Runtime local, Whisper et Tailscale
+
+PHOEBUS detecte maintenant les ressources locales et repartit les familles de
+taches:
+
+- STT Whisper local en priorite (`PHOEBUS_STT_AUTO_ORDER=whisper,groq,google`)
+- vision et LLM local sur GPU quand CUDA/MPS est disponible
+- scripts, reseau, scheduler et controle systeme sur CPU
+- Tailscale detecte automatiquement si la CLI est installee et connectee
+
+Commandes utiles:
+
+```bash
+.venv/bin/python scripts/doctor.py --json
+```
+
+Dans PHOEBUS, les actions `runtime_status`, `tailscale_status`, `task_status`,
+`task_cancel`, `cache_status` et `cache_prune` exposent l'etat runtime et les
+taches longues. Sur macOS, `brew install tailscale` installe la CLI ; lancez le
+daemon via l'app officielle ou `sudo /opt/homebrew/opt/tailscale/bin/tailscaled`,
+puis connectez la machine avec `tailscale up`.
+
 ## Architecture voix
 
 PHOEBUS suit le modele des assistants vocaux modernes: une seule autorite audio

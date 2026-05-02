@@ -17,6 +17,12 @@ PyAudio>=0.2.14
 # PHOEBUS_STT_BACKEND=whisper dans .env pour l'activer.
 # faster-whisper  ← recommandé (GPU/CPU optimisé, très rapide)
 # openai-whisper  ← alternative officielle OpenAI
+# mlx-whisper     ← option Apple Silicon pour exploiter Metal/MPS
+
+# ── Tailscale ──────────────────────────────────────────────────────────────
+# PHOEBUS détecte automatiquement la CLI Tailscale pour exposer l'état tailnet
+# dans /diagnostics et via le skill tailscale_status.
+# macOS : brew install tailscale, lancer le daemon/app Tailscale, puis tailscale up
 
 # ── Wake Word "Hey PHOEBUS" — 100% gratuit ────────────────────────────────────
 #
@@ -53,4 +59,3 @@ PyAudio>=0.2.14
 # resemblyzer  ← embeddings vocaux haute qualité
 # scipy        ← fallback MFCC si resemblyzer absent
 # Activer avec PHOEBUS_MULTI_USER=1 dans .env
-
