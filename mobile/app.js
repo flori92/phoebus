@@ -238,8 +238,8 @@ function resolveAvatarClip(state, _mood) {
   if (state === "speaking") {
     return "expressive";
   }
-  // En écoute, repos ou réflexion, jouer la vidéo reflective (calme)
-  return "reflective";
+  // Quand il ne parle pas, afficher l'image fixe
+  return "none";
 }
 
 function resolveFallbackFrame(state, mood) {
