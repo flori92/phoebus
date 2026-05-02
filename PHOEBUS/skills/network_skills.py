@@ -379,9 +379,9 @@ async def adb_tv_control(data: dict):
         "left": 21, "gauche": 21,
         "right": 22, "droite": 22,
         "ok": 66, "enter": 66, "valider": 66,
-        "vol+": 24, "plus fort": 24, "monter le volume": 24, "baisse": 25, # baisse interceptera "baisse le volume"
-        "vol-": 25, "moins fort": 25, "baisser le volume": 25,
-        "mute": 164, "muet": 164, "couper le son": 164,
+        "vol+": 24, "plus fort": 24, "monter": 24, "monte": 24, "augmente": 24, "plus": 24,
+        "vol-": 25, "moins fort": 25, "baisser": 25, "baisse": 25, "diminue": 25, "moins": 25,
+        "mute": 164, "muet": 164, "couper": 164,
         "play": 85, "pause": 85, "lecture": 85,
         "next": 87, "suivant": 87,
         "prev": 88, "precedent": 88, "précédent": 88

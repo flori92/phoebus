@@ -594,7 +594,7 @@ def _detect_tv(t: str) -> Optional[IntentResult]:
             )
             
         # 2. Télécommande basique
-        action_words = ("baisse", "monte", "plus", "moins", "pause", "play", "lecture", 
+        action_words = ("baisse", "monte", "plus", "moins", "pause", "play", "lecture", "augmente", "diminue", "volume",
                         "accueil", "home", "eteins", "éteins", "allume", "retour", "gauche", "droite", "haut", "bas", "ok", "valider")
         for aw in action_words:
             if aw in t:
