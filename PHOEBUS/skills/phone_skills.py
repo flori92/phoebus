@@ -67,6 +67,14 @@ def _no_phone_msg() -> str:
     return "Aucun téléphone connecté. Ouvre l'app satellite sur ton mobile pour que je puisse le contrôler."
 
 
+def _phone_error(result: Optional[dict], label: str = "Commande téléphone") -> str | None:
+    if result is None:
+        return _no_phone_msg()
+    if result.get("error") or result.get("ok") is False:
+        return f"{label} impossible : {result.get('error', 'refusé par le téléphone')}"
+    return None
+
+
 # ── Skills ──────────────────────────────────────────────────────────────────
 
 @skill(
@@ -118,8 +126,9 @@ async def phone_vibrate(data: dict):
     if isinstance(pattern, str):
         pattern = [200, 100, 200, 100, 400]
     result = await _send_phone_command("vibrate", {"pattern": pattern})
-    if result is None:
-        return _no_phone_msg()
+    err = _phone_error(result, "Vibration")
+    if err:
+        return err
     return "C'est fait, ton téléphone vibre."
 
 
@@ -132,8 +141,9 @@ async def phone_vibrate(data: dict):
 async def phone_torch(data: dict):
     state_val = data.get("state", "toggle")  # on / off / toggle
     result = await _send_phone_command("torch", {"state": state_val})
-    if result is None:
-        return _no_phone_msg()
+    err = _phone_error(result, "Lampe torche")
+    if err:
+        return err
     torch_state = result.get("torch_state", "?")
     return f"Lampe torche {'allumée' if torch_state == 'on' else 'éteinte'}."
 
@@ -146,8 +156,9 @@ async def phone_torch(data: dict):
 )
 async def phone_gps(data: dict):
     result = await _send_phone_command("gps", timeout=10)
-    if result is None:
-        return _no_phone_msg()
+    err = _phone_error(result, "GPS")
+    if err:
+        return err
     lat = result.get("latitude", "?")
     lon = result.get("longitude", "?")
     accuracy = result.get("accuracy", "?")
@@ -164,8 +175,9 @@ async def phone_gps(data: dict):
 )
 async def phone_clipboard_read(data: dict):
     result = await _send_phone_command("clipboard_read")
-    if result is None:
-        return _no_phone_msg()
+    err = _phone_error(result, "Lecture du presse-papier")
+    if err:
+        return err
     text = result.get("text", "")
     if not text:
         return "Le presse-papier du téléphone est vide."
@@ -183,9 +195,10 @@ async def phone_clipboard_write(data: dict):
     if not text:
         return "Aucun texte à copier."
     result = await _send_phone_command("clipboard_write", {"text": text})
-    if result is None:
-        return _no_phone_msg()
-    return f"Texte copié dans le presse-papier du téléphone."
+    err = _phone_error(result, "Écriture du presse-papier")
+    if err:
+        return err
+    return "Texte copié dans le presse-papier du téléphone."
 
 
 @skill(
@@ -197,8 +210,9 @@ async def phone_clipboard_write(data: dict):
 async def phone_alarm(data: dict):
     duration = data.get("duration", 5)  # secondes
     result = await _send_phone_command("alarm", {"duration": duration}, timeout=max(12, duration + 3))
-    if result is None:
-        return _no_phone_msg()
+    err = _phone_error(result, "Alarme")
+    if err:
+        return err
     return "Alarme déclenchée sur ton téléphone !"
 
 
@@ -218,6 +232,12 @@ async def phone_find(data: dict):
     )
 
     gps_result = results[2] if not isinstance(results[2], Exception) else None
+    successes = [
+        r for r in results
+        if isinstance(r, dict) and not r.get("error") and r.get("ok") is not False
+    ]
+    if not successes:
+        return _no_phone_msg()
     parts = ["Ton téléphone devrait vibrer et sonner maintenant."]
     if gps_result and isinstance(gps_result, dict) and gps_result.get("latitude"):
         parts.append(
@@ -241,9 +261,10 @@ async def phone_notification(data: dict):
     if not message:
         return "Aucun message à envoyer."
     result = await _send_phone_command("notification", {"title": title, "message": message})
-    if result is None:
-        return _no_phone_msg()
-    return f"Notification envoyée sur ton téléphone."
+    err = _phone_error(result, "Notification")
+    if err:
+        return err
+    return "Notification envoyée sur ton téléphone."
 
 
 @skill(
@@ -254,8 +275,9 @@ async def phone_notification(data: dict):
 )
 async def phone_battery(data: dict):
     result = await _send_phone_command("battery")
-    if result is None:
-        return _no_phone_msg()
+    err = _phone_error(result, "Batterie")
+    if err:
+        return err
     level = result.get("level", "?")
     charging = result.get("charging", False)
     status = " (en charge)" if charging else ""
@@ -270,8 +292,9 @@ async def phone_battery(data: dict):
 )
 async def phone_info(data: dict):
     result = await _send_phone_command("info")
-    if result is None:
-        return _no_phone_msg()
+    err = _phone_error(result, "Lecture des infos téléphone")
+    if err:
+        return err
     ua = result.get("userAgent", "?")
     screen = result.get("screen", "?")
     online = result.get("online", True)
