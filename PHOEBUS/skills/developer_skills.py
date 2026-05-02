@@ -11,17 +11,16 @@ import subprocess
 import importlib
 from pathlib import Path
 
-from PHOEBUS.config import BASE_DIR
 from PHOEBUS.skills.registry import skill
 
-CUSTOM_SKILLS_DIR = Path(BASE_DIR) / "skills" / "custom"
+CUSTOM_SKILLS_DIR = Path(__file__).parent / "custom"
 
 
 @skill(
     "skill_create",
     risk="high",
-    help_text="Crée un nouveau skill PHOEBUS de façon permanente en écrivant du code Python.",
-    describe=lambda d: f"Créer le skill '{d.get('name', '?')}'",
+    help_text="Crée un nouveau skill PHOEBUS de façon permanente en écrivant du code Python. UTILISE background=True si tu dois répondre à l'utilisateur pendant que le skill se crée en parallèle.",
+    describe=lambda d: f"Apprentissage d'un nouveau skill : '{d.get('name', '?')}'",
 )
 async def skill_create(data: dict):
     """Crée un nouveau skill dynamiquement.
@@ -34,6 +33,7 @@ async def skill_create(data: dict):
     name = data.get("name", "").strip().lower()
     help_text = data.get("help_text", "").replace('"', "'")
     code = data.get("code", "").strip()
+    background = data.get("background", False)
     
     if not name or not code:
         return "Il me faut un 'name' et le 'code' pour créer un skill."
@@ -62,19 +62,30 @@ async def skill_create(data: dict):
 '''
         code = boilerplate
 
-    try:
-        # Écriture du fichier
-        file_path.write_text(code, encoding="utf-8")
-        
-        # Chargement dynamique
-        module_name = f"PHOEBUS.skills.custom.{name}"
+    async def _do_create():
         try:
-            importlib.import_module(module_name)
-        except Exception as e:
-            # Si erreur, supprimer le fichier cassé
-            file_path.unlink(missing_ok=True)
-            return f"Erreur de syntaxe/import dans le code généré : {e}"
+            # Écriture du fichier
+            file_path.write_text(code, encoding="utf-8")
             
+            # Chargement dynamique
+            module_name = f"PHOEBUS.skills.custom.{name}"
+            importlib.import_module(module_name)
+            
+            # Notifier via websocket si en background
+            if background:
+                print(f"[DEVELOPER] Le skill '{name}' a fini de compiler en arrière-plan et est prêt.")
+        except Exception as e:
+            file_path.unlink(missing_ok=True)
+            print(f"[DEVELOPER] Erreur création background pour '{name}': {e}")
+
+    if background:
+        import asyncio
+        asyncio.create_task(_do_create())
+        return f"Le processus d'apprentissage du skill '{name}' a été lancé en arrière-plan. Il sera bientôt disponible."
+    
+    # Mode synchrone
+    try:
+        await _do_create()
         return f"✅ Le skill '{name}' a été créé avec succès et est maintenant disponible !"
     except Exception as e:
         return f"Erreur lors de la création du skill : {e}"
