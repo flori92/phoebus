@@ -1114,6 +1114,280 @@ async function capturerCameraTelephone(reqId, facing) {
   }
 }
 
+// ── Contrôle du téléphone par PHOEBUS (Tier 1 — Web APIs) ────────────────
+//
+// Le backend envoie {"action":"phone_command","id":..,"command":"vibrate",...}
+// On exécute la commande via les Web APIs du navigateur et on répond
+// {"action":"phone_command_result","id":..,...}.
+
+let _phoneTorchStream = null;
+let _phoneTorchState = false;
+let _phoneAlarmOscillator = null;
+
+function _phoneReply(reqId, payload) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    action: "phone_command_result",
+    id: reqId,
+    ...payload,
+  }));
+}
+
+async function handlePhoneCommand(data) {
+  const reqId = data.id;
+  const cmd = (data.command || "").toLowerCase();
+
+  try {
+    switch (cmd) {
+      case "vibrate":
+        await _phoneVibrate(reqId, data);
+        break;
+      case "torch":
+        await _phoneTorch(reqId, data);
+        break;
+      case "gps":
+        await _phoneGps(reqId, data);
+        break;
+      case "clipboard_read":
+        await _phoneClipboardRead(reqId, data);
+        break;
+      case "clipboard_write":
+        await _phoneClipboardWrite(reqId, data);
+        break;
+      case "alarm":
+        await _phoneAlarm(reqId, data);
+        break;
+      case "notification":
+        await _phoneNotification(reqId, data);
+        break;
+      case "battery":
+        await _phoneBattery(reqId, data);
+        break;
+      case "info":
+        await _phoneInfo(reqId, data);
+        break;
+      default:
+        _phoneReply(reqId, { error: `Commande inconnue: ${cmd}` });
+    }
+  } catch (err) {
+    console.error(`[PHONE] Erreur ${cmd}:`, err);
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+// ── Vibration ──
+async function _phoneVibrate(reqId, data) {
+  const pattern = data.pattern || [200, 100, 200, 100, 400];
+  if (navigator.vibrate) {
+    navigator.vibrate(pattern);
+    _phoneReply(reqId, { ok: true });
+  } else {
+    _phoneReply(reqId, { error: "Vibration API non supportée" });
+  }
+}
+
+// ── Lampe torche (via MediaStream torch constraint) ──
+async function _phoneTorch(reqId, data) {
+  const desired = data.state || "toggle";
+
+  try {
+    if (!_phoneTorchStream || !_phoneTorchStream.active) {
+      _phoneTorchStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+    }
+
+    const track = _phoneTorchStream.getVideoTracks()[0];
+    if (!track) throw new Error("Pas de piste vidéo");
+
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (!caps.torch) {
+      throw new Error("Lampe torche non supportée sur ce navigateur/appareil");
+    }
+
+    let newState;
+    if (desired === "toggle") {
+      newState = !_phoneTorchState;
+    } else {
+      newState = desired !== "off";
+    }
+
+    await track.applyConstraints({ advanced: [{ torch: newState }] });
+    _phoneTorchState = newState;
+    _phoneReply(reqId, { ok: true, torch_state: newState ? "on" : "off" });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+// ── GPS ──
+async function _phoneGps(reqId, _data) {
+  if (!navigator.geolocation) {
+    _phoneReply(reqId, { error: "Geolocation API non disponible" });
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      _phoneReply(reqId, {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: Math.round(pos.coords.accuracy),
+        altitude: pos.coords.altitude,
+        speed: pos.coords.speed,
+        heading: pos.coords.heading,
+      });
+    },
+    (err) => {
+      _phoneReply(reqId, { error: `GPS: ${err.message} (code ${err.code})` });
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+  );
+}
+
+// ── Clipboard lecture ──
+async function _phoneClipboardRead(reqId, _data) {
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      throw new Error("Clipboard API non disponible");
+    }
+    const text = await navigator.clipboard.readText();
+    _phoneReply(reqId, { text: text || "" });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+// ── Clipboard écriture ──
+async function _phoneClipboardWrite(reqId, data) {
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      throw new Error("Clipboard API non disponible");
+    }
+    await navigator.clipboard.writeText(data.text || "");
+    _phoneReply(reqId, { ok: true });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+// ── Alarme sonore (Web Audio API — génère un son fort) ──
+async function _phoneAlarm(reqId, data) {
+  const duration = Math.min(data.duration || 5, 30); // max 30s
+
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Créer un oscillateur à fréquence variable (sirène)
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Son sirène : alternance 800Hz ↔ 1200Hz
+    osc.type = "square";
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    const steps = duration * 4; // 4 transitions par seconde
+    for (let i = 0; i < steps; i++) {
+      const t = ctx.currentTime + i * 0.25;
+      osc.frequency.setValueAtTime(i % 2 === 0 ? 800 : 1200, t);
+    }
+
+    gain.gain.setValueAtTime(0.8, ctx.currentTime);
+    gain.gain.setValueAtTime(0, ctx.currentTime + duration);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+
+    _phoneAlarmOscillator = { osc, ctx };
+
+    // Vibrer aussi pendant l'alarme
+    if (navigator.vibrate) {
+      const vibePattern = [];
+      for (let i = 0; i < duration * 2; i++) {
+        vibePattern.push(400, 100);
+      }
+      navigator.vibrate(vibePattern);
+    }
+
+    osc.onended = () => {
+      ctx.close().catch(() => {});
+      _phoneAlarmOscillator = null;
+    };
+
+    _phoneReply(reqId, { ok: true, duration });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+// ── Notification locale ──
+async function _phoneNotification(reqId, data) {
+  const title = data.title || "PHOEBUS";
+  const message = data.message || "";
+
+  try {
+    if (!("Notification" in window)) {
+      throw new Error("Notifications non supportées");
+    }
+
+    if (Notification.permission === "denied") {
+      throw new Error("Notifications bloquées par l'utilisateur");
+    }
+
+    if (Notification.permission !== "granted") {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        throw new Error("Permission notifications refusée");
+      }
+    }
+
+    new Notification(title, {
+      body: message,
+      icon: "phoebus-face.png",
+      vibrate: [200, 100, 200],
+      tag: "phoebus-notification",
+    });
+
+    _phoneReply(reqId, { ok: true });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+// ── Batterie ──
+async function _phoneBattery(reqId, _data) {
+  try {
+    if (!navigator.getBattery) {
+      _phoneReply(reqId, { error: "Battery API non disponible" });
+      return;
+    }
+    const battery = await navigator.getBattery();
+    _phoneReply(reqId, {
+      level: Math.round(battery.level * 100),
+      charging: battery.charging,
+      chargingTime: battery.chargingTime,
+      dischargingTime: battery.dischargingTime,
+    });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+// ── Infos de l'appareil ──
+async function _phoneInfo(reqId, _data) {
+  _phoneReply(reqId, {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    language: navigator.language,
+    screen: `${screen.width}x${screen.height}`,
+    online: navigator.onLine,
+    cookieEnabled: navigator.cookieEnabled,
+    maxTouchPoints: navigator.maxTouchPoints || 0,
+  });
+}
+
 function connectWS() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
@@ -1205,6 +1479,12 @@ function connectWS() {
           (err) => console.error("[CAM] Capture KO :", err)
         );
       }
+      // ── Commandes de contrôle du téléphone (Tier 1) ──────────────────
+      else if (data.action === "phone_command" && data.id) {
+        handlePhoneCommand(data).catch(
+          (err) => console.error("[PHONE] Commande KO :", err)
+        );
+      }
     } catch (e) {
       console.error("[WS] Erreur parsing message :", e);
     }
@@ -1255,12 +1535,12 @@ function jouerAudioBase64(base64) {
     currentAudio.pause();
   }
   window.speechSynthesis.cancel();
-  
+
   applyState("speaking");
-  
+
   currentAudio = new Audio("data:audio/mp3;base64," + base64);
   currentAudio.play().catch(e => console.error("[AUDIO] Erreur lecture :", e));
-  
+
   // Fake volume for ORB
   if (fakeVolumeInterval) clearInterval(fakeVolumeInterval);
   fakeVolumeInterval = setInterval(() => {
@@ -1282,7 +1562,7 @@ function jouerAudioBase64(base64) {
     setVoiceLevel(0);
     currentAudio = null;
   });
-  
+
   currentAudio.addEventListener("pause", () => {
     if (currentState === "speaking") {
       applyState("idle");
@@ -1478,7 +1758,7 @@ if (BROWSER_STT_ENABLED && SpeechRecognition) {
     // Interruption : si on commence à parler, PHOEBUS se tait
     streamingPlayer.stop();
     cancelTimedLipsync();
-    
+
     applyState("listening");
     userTextEl.textContent  = "";
     PHOEBUSTextEl.textContent = "";

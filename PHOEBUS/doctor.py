@@ -132,6 +132,7 @@ def _check_config() -> list[CheckResult]:
             SERPAPI_API_KEY,
             TELEGRAM_TOKEN,
             WS_AUTH_REQUIRED,
+            XAI_API_KEY,
             _secret_is_configured,
         )
     except Exception as exc:
@@ -152,6 +153,8 @@ def _check_config() -> list[CheckResult]:
         providers.append("gemini")
     if _secret_is_configured(GROQ_API_KEY):
         providers.append("groq")
+    if _secret_is_configured(XAI_API_KEY):
+        providers.append("grok")
     if _secret_is_configured(MISTRAL_API_KEY):
         providers.append("mistral")
     if _secret_is_configured(OPENAI_API_KEY):

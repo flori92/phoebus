@@ -445,6 +445,68 @@ def _detect_vision(t: str) -> Optional[IntentResult]:
     return None
 
 
+def _detect_phone(t: str) -> Optional[IntentResult]:
+    """Détecte les commandes de contrôle du téléphone."""
+    # ── Vibration ──
+    if any(m in t for m in ("fais vibrer", "fait vibrer", "vibre mon", "vibrer mon", "vibration")):
+        return IntentResult(
+            "phone_vibrate",
+            json.dumps({"action": "phone_vibrate"}, ensure_ascii=False),
+        )
+    # ── Lampe torche ──
+    if any(m in t for m in ("lampe torche", "lampe de poche", "flashlight", "allume la lampe", "eteins la lampe", "éteins la lampe")):
+        state_val = "off" if any(m in t for m in ("eteins", "éteins", "coupe", "desactive", "désactive")) else "on"
+        return IntentResult(
+            "phone_torch",
+            json.dumps({"action": "phone_torch", "state": state_val}, ensure_ascii=False),
+        )
+    # ── Retrouver le téléphone ──
+    if any(m in t for m in ("où est mon téléphone", "ou est mon téléphone", "ou est mon telephone",
+                            "où est mon tel", "ou est mon tel",
+                            "retrouve mon téléphone", "retrouve mon telephone", "retrouve mon tel",
+                            "trouve mon téléphone", "trouve mon telephone", "trouve mon tel",
+                            "sonne mon téléphone", "sonne mon telephone", "sonne mon tel",
+                            "fais sonner")):
+        return IntentResult(
+            "phone_find",
+            json.dumps({"action": "phone_find"}, ensure_ascii=False),
+        )
+    # ── GPS / Position ──
+    if any(m in t for m in ("position du téléphone", "position du telephone", "position de mon tel",
+                            "localise mon tel", "localise mon téléphone", "localise mon telephone",
+                            "gps du téléphone", "gps du telephone", "gps de mon tel")):
+        return IntentResult(
+            "phone_gps",
+            json.dumps({"action": "phone_gps"}, ensure_ascii=False),
+        )
+    # ── Batterie ──
+    if any(m in t for m in ("batterie du téléphone", "batterie du telephone",
+                            "batterie de mon tel", "batterie du tel",
+                            "niveau de batterie", "charge du téléphone", "charge du telephone")):
+        return IntentResult(
+            "phone_battery",
+            json.dumps({"action": "phone_battery"}, ensure_ascii=False),
+        )
+    # ── Alarme ──
+    if any(m in t for m in ("alarme sur mon téléphone", "alarme sur mon telephone",
+                            "alarme sur le téléphone", "alarme sur le telephone",
+                            "alarme du téléphone", "alarme du telephone", "alarme du tel")):
+        return IntentResult(
+            "phone_alarm",
+            json.dumps({"action": "phone_alarm"}, ensure_ascii=False),
+        )
+    # ── Presse-papier ──
+    if any(m in t for m in ("presse-papier du téléphone", "presse-papier du telephone",
+                            "clipboard du tel",
+                            "copie sur mon téléphone", "copie sur mon telephone",
+                            "presse papier du tel")):
+        return IntentResult(
+            "phone_clipboard_read",
+            json.dumps({"action": "phone_clipboard_read"}, ensure_ascii=False),
+        )
+    return None
+
+
 def _detect_knowledge(t: str) -> Optional[IntentResult]:
     # ── Notes rapides (Obsidian/SiYuan) ──
     note_prefixes = ("note ", "note: ", "note :", "capture ", "mémorise ", "memorise ")
@@ -537,12 +599,13 @@ def detect(texte: str) -> Optional[IntentResult]:
     if email:
         return email
 
-    # --- Vision / Réseau / Système / Spotify / Connaissance ---
+    # --- Vision / Réseau / Système / Spotify / Téléphone / Connaissance ---
     for detector in (
         _detect_vision,
         _detect_network,
         _detect_system,
         _detect_spotify,
+        _detect_phone,
         _detect_knowledge,
     ):
         result = detector(t)

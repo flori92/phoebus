@@ -189,6 +189,13 @@ async def ws_handler(websocket):
                         if not fut.done():
                             fut.set_result(img_b64)
 
+                elif action == "phone_command_result":
+                    req_id = data.get("id")
+                    if req_id in state.PENDING_PHONE_COMMANDS:
+                        fut = state.PENDING_PHONE_COMMANDS.pop(req_id)
+                        if not fut.done():
+                            fut.set_result(data)
+
                 elif action == "audio_chunk":
                     pass
 

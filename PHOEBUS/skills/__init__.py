@@ -28,6 +28,7 @@ SKILL_MODULES = (
     "PHOEBUS.skills.knowledge_skills",
     "PHOEBUS.skills.media_skills",
     "PHOEBUS.skills.obsidian_skills",
+    "PHOEBUS.skills.phone_skills",
 )
 IMPORT_ERRORS: dict[str, str] = {}
 

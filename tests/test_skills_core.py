@@ -15,6 +15,7 @@ def test_capability_manifest_reflète_les_skills_noyau():
     assert "tailscale_status" in skills
     assert "task_status" in skills
     assert "cache_status" in skills
+    assert "phone_control" in skills
     assert "CAPACITES ENREGISTREES" in manifest
     assert "- python_run" in manifest
     assert "- brain_status" in manifest
