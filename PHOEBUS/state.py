@@ -318,3 +318,6 @@ async def broadcast(payload):
     if recipients:
         message = json.dumps(payload, ensure_ascii=False)
         await asyncio.gather(*[ws.send(message) for ws in recipients], return_exceptions=True)
+
+# ── Commandes pour iOS Shortcut (Focus Mode Hack) ──
+IOS_PENDING_COMMANDS = []

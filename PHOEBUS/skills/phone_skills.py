@@ -36,6 +36,19 @@ async def _send_phone_command(action: str, params: dict = None, timeout: float =
         # Fallback : envoyer à tous les clients authentifiés
         targets = list(state.get_authenticated_clients())
     if not targets:
+        # Fallback pour le contrôle natif iOS via Focus Mode
+        try:
+            import os
+            from PHOEBUS.state import IOS_PENDING_COMMANDS
+            IOS_PENDING_COMMANDS.append({"action": action, **(params or {})})
+            # On lance le raccourci sur le Mac qui active le Focus Mode
+            os.system('shortcuts run "TriggerPhoebus" > /dev/null 2>&1')
+            
+            # Pour éviter que la commande bloque, on retourne un succès simulé
+            # puisque l'exécution sur iOS est asynchrone et aveugle.
+            return {"ok": True, "iOS_fallback": True}
+        except ImportError:
+            pass
         return None
 
     req_id = str(uuid.uuid4())

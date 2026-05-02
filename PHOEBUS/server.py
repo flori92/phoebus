@@ -132,6 +132,19 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"status": "PHOEBUS Online", "ip": self.client_address[0]}).encode())
             return
         # ── Observabilité ────────────────────────────────────────────────
+        if self.path == '/api/ios/command':
+            try:
+                from PHOEBUS.state import IOS_PENDING_COMMANDS
+            except ImportError:
+                IOS_PENDING_COMMANDS = []
+            cmd = IOS_PENDING_COMMANDS.pop(0) if IOS_PENDING_COMMANDS else {"action": "none"}
+            body = json.dumps(cmd).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+            
         if self.path == '/metrics' or self.path.startswith('/metrics?'):
             from PHOEBUS.observability import render_json
             body = render_json().encode("utf-8")
