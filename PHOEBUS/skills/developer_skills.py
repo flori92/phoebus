@@ -128,3 +128,54 @@ async def terminal_run(data: dict):
             return f"❌ Erreur (code {process.returncode}) :\n" + "\n".join(res)
     except Exception as e:
         return f"Erreur d'exécution du terminal : {e}"
+
+
+@skill(
+    "file_read",
+    risk="low",
+    help_text="Lit le contenu d'un fichier (pratique pour lire PHOEBUS/intent.py ou PHOEBUS/skills/xxx.py pour voir ce qui ne va pas).",
+    describe=lambda d: f"Lecture de {d.get('path', '?')}",
+)
+async def file_read(data: dict):
+    path = data.get("path", "").strip()
+    if not path: return "Chemin manquant."
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+        # Si c'est trop long, on tronque avec un avertissement
+        if len(content) > 4000:
+            return f"Contenu (tronqué) de {path}:\n```\n{content[:4000]}\n...\n```"
+        return f"Contenu de {path}:\n```\n{content}\n```"
+    except Exception as e:
+        return f"Erreur de lecture : {e}"
+
+
+@skill(
+    "file_edit",
+    risk="high",
+    help_text="Modifie un fichier existant en remplaçant 'target_text' par 'replacement_text'. Utilise cela pour t'auto-corriger (ex: ajouter un mot-clé dans intent.py).",
+    describe=lambda d: f"Modification de {d.get('path', '?')}",
+)
+async def file_edit(data: dict):
+    path = data.get("path", "").strip()
+    target = data.get("target_text", "")
+    replacement = data.get("replacement_text", "")
+    
+    if not path or not target:
+        return "Il me faut un 'path', un 'target_text' et un 'replacement_text'."
+        
+    try:
+        p = Path(path)
+        content = p.read_text(encoding="utf-8")
+        if target not in content:
+            return f"Le texte cible '{target[:50]}...' n'a pas été trouvé dans le fichier."
+            
+        new_content = content.replace(target, replacement)
+        p.write_text(new_content, encoding="utf-8")
+        
+        # Redémarrage automatique si c'est un fichier du système
+        if "PHOEBUS" in path and path.endswith(".py"):
+            return "✅ Fichier modifié avec succès. Les modifications s'appliqueront au prochain redémarrage (ou seront prises en compte si auto-restart)."
+            
+        return "✅ Fichier modifié avec succès."
+    except Exception as e:
+        return f"Erreur de modification : {e}"
