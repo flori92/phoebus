@@ -213,9 +213,9 @@ async def append_block(parent_id: str, markdown: str) -> bool:
 
 
 async def delete_doc(doc_id: str) -> bool:
-    """Supprime un document."""
+    """Supprime un document par son ID."""
     data = await asyncio.to_thread(
-        lambda: _post("/api/filetree/removeDoc", {"notebook": "", "path": "", "id": doc_id})
+        lambda: _post("/api/filetree/removeDocByID", {"id": doc_id})
     )
     return data is not None
 
@@ -508,6 +508,19 @@ async def search_vault_semantic(query: str, n_results: int = 5) -> list[dict]:
         return []
 
 
+# ── Notifications dans SiYuan ───────────────────────────────────────────────
+
+async def push_notification(msg: str, timeout_ms: int = 7000) -> bool:
+    """Envoie une notification visible dans l'UI SiYuan."""
+    data = await asyncio.to_thread(
+        lambda: _post("/api/notification/pushMsg", {
+            "msg": msg,
+            "timeout": timeout_ms,
+        })
+    )
+    return data is not None
+
+
 # ── Statut ──────────────────────────────────────────────────────────────────
 
 async def siyuan_status() -> dict:
@@ -529,3 +542,4 @@ async def siyuan_status() -> dict:
         "indexed_chunks": indexed_count,
         "last_index_ts": _last_index_ts,
     }
+
