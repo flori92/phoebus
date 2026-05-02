@@ -294,8 +294,11 @@ async def adb_open_app(data: dict):
     # Mapping des noms courants → packages Android
     APP_PACKAGES = {
         "netflix": "com.netflix.mediaclient",
+        "netflix tv": "com.netflix.ninja",
         "youtube": "com.google.android.youtube",
+        "youtube tv": "com.google.android.youtube.tv",
         "spotify": "com.spotify.music",
+        "spotify tv": "com.spotify.tv.android",
         "chrome": "com.android.chrome",
         "camera": "com.android.camera2",
         "settings": "com.android.settings",
@@ -307,13 +310,63 @@ async def adb_open_app(data: dict):
         "twitter": "com.twitter.android",
         "discord": "com.discord",
         "prime video": "com.amazon.avod.thirdpartyclient",
+        "prime tv": "com.amazon.amazonvideo.livingroom",
         "disney": "com.disney.disneyplus",
     }
 
-    package = APP_PACKAGES.get(app.lower(), app)
+    app_lower = app.lower()
+    package = APP_PACKAGES.get(app_lower)
+    
+    # Si le package n'est pas dans la liste et contient un espace (ex: "smart tube"), on retire les espaces pour essayer de deviner
+    if not package:
+        package = app.replace(" ", "").lower()
+        
     result_data = {"command": f"monkey -p {package} -c android.intent.category.LAUNCHER 1"}
     return await adb_command(result_data)
 
+
+@skill(
+    "adb_tv_control",
+    risk="low",
+    help_text="Contrôle une TV Android (télécommande : pause, volume, éteindre, naviguer)",
+    describe=lambda d: f"Télécommande TV : {d.get('action', '?')}",
+)
+async def adb_tv_control(data: dict):
+    action = data.get("action", "").lower().strip()
+    
+    # Mapping des actions en Keycodes ADB
+    KEYCODES = {
+        "power": 26, "eteindre": 26, "allumer": 26,
+        "home": 3, "accueil": 3,
+        "back": 4, "retour": 4,
+        "up": 19, "haut": 19,
+        "down": 20, "bas": 20,
+        "left": 21, "gauche": 21,
+        "right": 22, "droite": 22,
+        "ok": 66, "enter": 66, "valider": 66,
+        "vol+": 24, "plus fort": 24, "monter le volume": 24, "baisse": 25, # baisse interceptera "baisse le volume"
+        "vol-": 25, "moins fort": 25, "baisser le volume": 25,
+        "mute": 164, "muet": 164, "couper le son": 164,
+        "play": 85, "pause": 85, "lecture": 85,
+        "next": 87, "suivant": 87,
+        "prev": 88, "precedent": 88, "précédent": 88
+    }
+    
+    # Recherche floue
+    keycode = None
+    for key, code in KEYCODES.items():
+        if key in action:
+            keycode = code
+            break
+            
+    if not keycode:
+        # Fallback si c'est directement un numéro
+        if action.isdigit():
+            keycode = int(action)
+        else:
+            return f"Action de télécommande inconnue : '{action}'."
+
+    return await adb_command({"command": f"input keyevent {keycode}"})
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SKILL 5 — Pushcut / iOS Shortcuts Bridge

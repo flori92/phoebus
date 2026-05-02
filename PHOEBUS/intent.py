@@ -579,6 +579,21 @@ def _detect_knowledge(t: str) -> Optional[IntentResult]:
     return None
 
 
+def _detect_tv(t: str) -> Optional[IntentResult]:
+    # ── Contrôle de la TV (ADB) ──
+    tv_words = ("la tv", "la télé", "la tele", "la television", "la télévision")
+    if any(tw in t for tw in tv_words):
+        action_words = ("baisse", "monte", "plus", "moins", "pause", "play", "lecture", 
+                        "accueil", "home", "eteins", "éteins", "allume", "retour", "gauche", "droite", "haut", "bas", "ok", "valider")
+        for aw in action_words:
+            if aw in t:
+                return IntentResult(
+                    "adb_tv_control",
+                    json.dumps({"action": "adb_tv_control", "action_tv": aw}, ensure_ascii=False),
+                )
+    return None
+
+
 def detect(texte: str) -> Optional[IntentResult]:
     """Tente une reconnaissance locale. Renvoie None si incertain."""
     if not texte:
@@ -630,12 +645,13 @@ def detect(texte: str) -> Optional[IntentResult]:
     if email:
         return email
 
-    # --- Vision / Réseau / Système / Téléphone / Spotify / Connaissance ---
+    # --- Vision / Réseau / Système / Téléphone / TV / Spotify / Connaissance ---
     for detector in (
         _detect_vision,
         _detect_network,
         _detect_system,
         _detect_phone,
+        _detect_tv,
         _detect_spotify,
         _detect_knowledge,
     ):
