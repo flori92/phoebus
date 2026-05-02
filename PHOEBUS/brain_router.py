@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
+from urllib.parse import urlparse
 
 from PHOEBUS.config import BASE_DIR
 
@@ -176,6 +177,55 @@ def _move_first(order: list[str], provider: str) -> list[str]:
     return [provider] + [p for p in order if p != provider]
 
 
+def _env_truthy(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on", "enabled", "always"}
+
+
+def _env_disabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"0", "false", "no", "off", "disabled", "never"}
+
+
+def arena_configured_without_network(
+    arena_url: str | None = None,
+    base_dir: Path | None = None,
+) -> bool:
+    """Indique si Arena vaut la peine d'etre tente, sans appel reseau.
+
+    `arena_client` existe des que le SDK OpenAI est installe, meme si aucun
+    bridge local n'est configure. Sans ce garde-fou, les requetes profondes
+    privilegient un provider qui echoue a chaque tour.
+    """
+    if _env_disabled("PHOEBUS_ARENA_ENABLED"):
+        return False
+    if _env_truthy("PHOEBUS_ARENA_ENABLED"):
+        return True
+
+    from PHOEBUS.config import ARENA_URL
+
+    raw_url = (arena_url or os.getenv("ARENA_URL") or ARENA_URL or "").strip()
+    host = urlparse(raw_url).hostname
+    if host not in {None, "", "localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+        return True
+
+    if any(
+        os.getenv(key, "").strip()
+        for key in (
+            "ARENA_AUTH_PROD_V1",
+            "ARENA_AUTH_TOKEN",
+            "LMARENA_AUTH_TOKEN",
+            "ARENA_COOKIE_HEADER",
+        )
+    ):
+        return True
+    if _env_truthy("PHOEBUS_ARENA_BRIDGE_ALLOW_ANONYMOUS"):
+        return True
+    if _env_truthy("PHOEBUS_ARENA_BRIDGE_AUTO_START"):
+        return True
+
+    root = base_dir or BASE_DIR
+    return (root / "external" / "LMArenaBridge" / "config.json").exists()
+
+
 def _load_metrics() -> dict:
     try:
         if METRICS_FILE.exists():
@@ -315,7 +365,7 @@ def available_provider_names() -> list[str]:
         names.append("openai")
     if mistral_client:
         names.append("mistral")
-    if arena_client:
+    if arena_client and arena_configured_without_network():
         names.append("arena")
     # Ollama est local : on le garde comme candidat meme s'il peut etre eteint.
     names.append("ollama")

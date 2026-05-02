@@ -12,7 +12,11 @@ from PHOEBUS.config_pydantic import (
     get_config,
     reload_config,
 )
-from PHOEBUS.brain_router import build_profile, rank_provider_names
+from PHOEBUS.brain_router import (
+    arena_configured_without_network,
+    build_profile,
+    rank_provider_names,
+)
 
 
 class TestLLMConfig:
@@ -68,9 +72,7 @@ class TestPhoebusConfig:
 
     def test_is_production_true(self):
         """Détection environnement prod."""
-        config = PhoebusConfig(
-            server=ServerConfig(ws_auth_required=True), _env_file=None
-        )
+        config = PhoebusConfig(server=ServerConfig(ws_auth_required=True), _env_file=None)
         assert config.is_production is True
 
     def test_get_available_providers(self):
@@ -183,3 +185,45 @@ def test_brain_router_priorise_grok_quand_disponible(monkeypatch):
 
     assert profile.preferred_provider == "grok"
     assert order[0] == "grok"
+
+
+def test_arena_non_configure_n_est_pas_disponible_par_defaut(tmp_path, monkeypatch):
+    monkeypatch.delenv("PHOEBUS_ARENA_ENABLED", raising=False)
+    monkeypatch.delenv("PHOEBUS_ARENA_BRIDGE_ALLOW_ANONYMOUS", raising=False)
+    monkeypatch.delenv("PHOEBUS_ARENA_BRIDGE_AUTO_START", raising=False)
+    for key in (
+        "ARENA_AUTH_PROD_V1",
+        "ARENA_AUTH_TOKEN",
+        "LMARENA_AUTH_TOKEN",
+        "ARENA_COOKIE_HEADER",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    assert (
+        arena_configured_without_network(
+            "http://localhost:8000/api/v1",
+            base_dir=tmp_path,
+        )
+        is False
+    )
+
+
+def test_arena_remote_ou_force_est_disponible(tmp_path, monkeypatch):
+    monkeypatch.delenv("PHOEBUS_ARENA_ENABLED", raising=False)
+
+    assert (
+        arena_configured_without_network(
+            "https://arena.example.test/api/v1",
+            base_dir=tmp_path,
+        )
+        is True
+    )
+
+    monkeypatch.setenv("PHOEBUS_ARENA_ENABLED", "1")
+    assert (
+        arena_configured_without_network(
+            "http://localhost:8000/api/v1",
+            base_dir=tmp_path,
+        )
+        is True
+    )

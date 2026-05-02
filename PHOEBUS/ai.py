@@ -103,6 +103,16 @@ def construire_ollama_prompt(texte_utilisateur=""):
     )
 
 
+def _capability_manifest_for_prompt() -> str:
+    try:
+        from PHOEBUS.skills import capability_manifest
+
+        return capability_manifest()
+    except Exception as exc:
+        print(f"[PROMPT] manifeste de capacites indisponible : {exc}")
+        return ""
+
+
 def construire_system_prompt(texte_utilisateur="", minimal=False):
     contexte_memoire = construire_contexte_memoire()
     profil_appris = resumer_profil()
@@ -222,6 +232,10 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
 
     # ── AJOUT : CONTROLE DU VOLUME ──
     base += "\n\nCONTROLE DU VOLUME :\n" '{"action": "volume_control", "value": "up/down/mute"}\n\n'
+
+    capabilities = _capability_manifest_for_prompt()
+    if capabilities:
+        base += "\n\n" + capabilities + "\n\n"
 
     # ── AJOUT IMPORTANT : CONTRÔLE NATIF DE LA MACHINE VIA AGENT AUTONOME ──
     base += (
@@ -725,7 +739,7 @@ async def demander_grok(texte):
         model = await _resolve_grok_model()
         system_prompt = construire_system_prompt(texte)
         messages = _messages_openai(system_prompt, texte)
-        
+
         response = await asyncio.to_thread(
             xai_client.chat.completions.create,
             model=model,
@@ -861,9 +875,8 @@ async def demander_ia(texte):
             "mistral": lambda: demander_mistral(texte),
             "arena": lambda: demander_arena(texte, profile=profile),
             "openai": lambda: demander_openai(texte),
-            "kimi": lambda: demander_kimi(texte),
             "ollama": lambda: demander_ollama(texte),
-            }
+        }
         for provider in order:
             call = provider_calls.get(provider)
             if call is None:

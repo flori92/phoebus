@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from typing import Callable, Dict, Any, Optional
 
 SKILL_REGISTRY: Dict[str, dict] = {}
+RISK_ORDER = ("high", "medium", "low")
 
 
 def skill(
@@ -90,3 +91,50 @@ def risk_of(action_name: str, fallback: str = "low") -> str:
     if action_name in SKILL_REGISTRY:
         return SKILL_REGISTRY[action_name].get("risk", fallback)
     return fallback
+
+
+def capability_manifest(max_items: int | None = None) -> str:
+    """Retourne un manifeste compact des skills réellement enregistrés.
+
+    Le prompt IA doit refléter les capacités exécutables, pas une liste
+    historique maintenue à la main. Ce manifeste reste volontairement textuel:
+    les arguments détaillés sont donnés par les règles spécialisées du prompt,
+    tandis que cette section sert de source de vérité pour les noms d'actions
+    et leur niveau de risque.
+    """
+    if not SKILL_REGISTRY:
+        return ""
+
+    grouped: dict[str, list[tuple[str, str]]] = {risk: [] for risk in RISK_ORDER}
+    grouped["other"] = []
+    for name, meta in sorted(SKILL_REGISTRY.items()):
+        risk = str(meta.get("risk") or "low").lower()
+        bucket = risk if risk in grouped else "other"
+        help_text = str(meta.get("help") or "").strip()
+        grouped[bucket].append((name, help_text))
+
+    lines = [
+        "CAPACITES ENREGISTREES (source de verite):",
+        'Pour utiliser une capacite, reponds avec un JSON strict: {"action": "nom_action", ...}.',
+        "Respecte le niveau de risque: high = confirmation obligatoire, medium = annonce avant execution, low = execution directe.",
+    ]
+    emitted = 0
+    labels = {
+        "high": "Risque high",
+        "medium": "Risque medium",
+        "low": "Risque low",
+        "other": "Risque non classe",
+    }
+    for risk in (*RISK_ORDER, "other"):
+        entries = grouped.get(risk) or []
+        if not entries:
+            continue
+        lines.append(f"{labels[risk]}:")
+        for name, help_text in entries:
+            if max_items is not None and emitted >= max_items:
+                lines.append("- ...")
+                return "\n".join(lines)
+            suffix = f" - {help_text}" if help_text else ""
+            lines.append(f"- {name}{suffix}")
+            emitted += 1
+    return "\n".join(lines)

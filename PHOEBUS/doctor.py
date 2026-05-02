@@ -9,6 +9,7 @@ voix/local : runtime unique, dépendances audio, STT, frontend, tokens et ports.
 from __future__ import annotations
 
 import argparse
+import glob
 import importlib.util
 import json
 import os
@@ -51,6 +52,35 @@ def _has_module(name: str) -> bool:
 
 def _run(cmd: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def _find_executable(name: str) -> str | None:
+    exe = shutil.which(name) or shutil.which(f"{name}.cmd")
+    if exe:
+        return exe
+
+    candidates = [
+        os.path.expanduser(f"~/.nvm/versions/node/*/bin/{name}"),
+        f"/opt/homebrew/bin/{name}",
+        f"/usr/local/bin/{name}",
+    ]
+    for pattern in candidates:
+        for path in sorted(glob.glob(pattern), reverse=True):
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                return path
+
+    try:
+        out = subprocess.check_output(
+            ["/bin/zsh", "-lc", f"command -v {name}"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+        ).strip()
+        if out and os.path.exists(out):
+            return out
+    except Exception:
+        pass
+    return None
 
 
 def _check_python() -> CheckResult:
@@ -190,7 +220,7 @@ def _check_runtime_singleton() -> CheckResult:
 
 def _check_frontend() -> list[CheckResult]:
     checks: list[CheckResult] = []
-    npm = shutil.which("npm")
+    npm = _find_executable("npm")
     if not npm:
         return [_warn("Frontend npm", "npm introuvable")]
     checks.append(_ok("Frontend npm", npm))
@@ -271,10 +301,39 @@ def _check_memory_backend() -> CheckResult:
     return _fail("Mémoire retrieval", "SQLite fallback indisponible")
 
 
+def _check_core_skills() -> CheckResult:
+    expected = {
+        "agent_planifie",
+        "brain_status",
+        "knowledge_query",
+        "meteo",
+        "python_run",
+        "recherche_web",
+    }
+    try:
+        from PHOEBUS.skills import IMPORT_ERRORS, capability_manifest, list_skills
+
+        skills = set(list_skills())
+        manifest = capability_manifest()
+    except Exception as exc:
+        return _fail("Skills noyau", f"registre indisponible: {exc}")
+
+    missing = sorted(expected - skills)
+    if missing:
+        return _fail("Skills noyau", "actions manquantes", ", ".join(missing))
+    if not manifest:
+        return _warn("Skills noyau", "manifeste vide")
+    if IMPORT_ERRORS:
+        details = "; ".join(f"{name}: {err}" for name, err in IMPORT_ERRORS.items())
+        return _warn("Skills noyau", f"{len(skills)} skills, imports partiels", details[:500])
+    return _ok("Skills noyau", f"{len(skills)} skills enregistrés")
+
+
 def run_checks() -> list[CheckResult]:
     checks = [_check_python()]
     checks.extend(_check_imports())
     checks.extend(_check_config())
+    checks.append(_check_core_skills())
     checks.append(_check_ollama_local())
     checks.append(_check_stt())
     checks.append(_check_runtime_singleton())
