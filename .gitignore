@@ -9,6 +9,7 @@ VOS_API.txt
 phoebus_memoire.json
 phoebus_devices.json
 phoebus_timeline.json
+.phoebus.lock
 PHOEBUS_tts_*.mp3
 PHOEBUS_vision_temp.png
 .spotify_cache
