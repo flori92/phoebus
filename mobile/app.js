@@ -235,14 +235,11 @@ function resolveAvatarPalette(state, mood) {
 }
 
 function resolveAvatarClip(state, _mood) {
-  if (state === "thinking") {
-    return "reflective";
-  }
   if (state === "speaking") {
     return "expressive";
   }
-  // En écoute ou au repos, on ne veut aucune vidéo (bouche fermée statique)
-  return "none";
+  // En écoute, repos ou réflexion, jouer la vidéo reflective (calme)
+  return "reflective";
 }
 
 function resolveFallbackFrame(state, mood) {
@@ -518,27 +515,30 @@ function renderFace() {
               ? 0.08
               : 0;
   const voiceEnergy = currentState === "speaking" ? currentVoiceLevel : 0;
-  const avatarEnergy = clamp(stateEnergy + moodEnergy + voiceEnergy * 0.42, 0.24, 1.2);
-  const avatarPresence = clamp(0.92 + avatarEnergy * 0.12, 0.92, 1.04);
+  const listenEnergy = currentState === "listening" ? currentVoiceLevel : 0; // Réagit aussi à MA voix quand je parle
+  const totalVoice = voiceEnergy + listenEnergy;
+  
+  const avatarEnergy = clamp(stateEnergy + moodEnergy + totalVoice * 0.8, 0.24, 1.5);
+  const avatarPresence = clamp(0.92 + avatarEnergy * 0.15, 0.92, 1.1);
   const shellShiftX = currentGaze.x * (currentState === "thinking" ? 1.45 : 1.05);
   const shellShiftY = currentGaze.y * (currentState === "thinking" ? 1.2 : 0.82);
-  const shellScale = clamp(1 + avatarEnergy * 0.04 + voiceEnergy * 0.05, 1.01, 1.09);
+  const shellScale = clamp(1 + avatarEnergy * 0.05 + totalVoice * 0.15, 1.01, 1.25); // Onde de choc vocale intense
   const shellTilt = clamp(
     currentGaze.x * (currentState === "thinking" ? 0.72 : 0.48),
     -4.2,
     4.2
   );
   const saturation = clamp(
-    1.08 + avatarEnergy * 0.24 + (currentMood === "joy" ? 0.05 : 0),
+    1.08 + avatarEnergy * 0.3 + (currentMood === "joy" ? 0.1 : 0),
     1.08,
-    1.44
+    1.6
   );
-  const contrast = clamp(1.08 + avatarEnergy * 0.16, 1.08, 1.3);
-  const brightness = clamp(1.02 + avatarEnergy * 0.16 + voiceEnergy * 0.06, 1.02, 1.28);
-  const haloOpacity = clamp(0.56 + avatarEnergy * 0.26, 0.56, 0.92);
-  const scanOpacity = clamp(0.34 + avatarEnergy * 0.32, 0.34, 0.84);
-  const neuralOpacity = clamp(0.28 + avatarEnergy * 0.44, 0.28, 0.92);
-  const ringOpacity = clamp(0.16 + avatarEnergy * 0.34, 0.16, 0.78);
+  const contrast = clamp(1.08 + avatarEnergy * 0.2, 1.08, 1.4);
+  const brightness = clamp(1.02 + avatarEnergy * 0.2 + totalVoice * 0.5, 1.02, 1.8); // Flash de lumière sur la voix
+  const haloOpacity = clamp(0.56 + avatarEnergy * 0.4, 0.56, 1.0);
+  const scanOpacity = clamp(0.34 + avatarEnergy * 0.4, 0.34, 0.9);
+  const neuralOpacity = clamp(0.28 + avatarEnergy * 0.5, 0.28, 1.0);
+  const ringOpacity = clamp(0.16 + avatarEnergy * 0.4, 0.16, 0.9);
   const opacity = clamp(0.86 + avatarPresence * 0.16, 0.9, 1);
   const neuralSpeed =
     currentState === "speaking"
