@@ -28,5 +28,33 @@
     "hostname": "mdns.mcast.net",
     "mac": "1:0:5e:0:0:fb",
     "last_seen": "2026-05-02 23:26"
+  },
+  "MacBook Pro": {
+    "ip": "100.101.55.12",
+    "ip_local": "192.168.1.124",
+    "mac": "e2:ee:ea:09:ed:9f",
+    "hostname": "macbook-pro-de-floriace",
+    "tailscale_dns": "macbook-pro-de-floriace.tail10c02e.ts.net",
+    "vendor": "Apple",
+    "type": "mac",
+    "name": "MacBook Pro",
+    "last_seen": "2026-05-02 23:34"
+  },
+  "iPhone 171": {
+    "ip": "100.124.33.14",
+    "hostname": "iphone171",
+    "tailscale_dns": "iphone171.tail10c02e.ts.net",
+    "vendor": "Apple",
+    "type": "iphone",
+    "name": "iPhone 171",
+    "last_seen": "2026-05-02 23:34"
+  },
+  "TCL BeyondTV2": {
+    "ip": "100.125.119.102",
+    "hostname": "tcl-beyondtv2",
+    "vendor": "TCL",
+    "type": "android_tv",
+    "name": "TCL BeyondTV2",
+    "last_seen": "2025-02 (offline)"
   }
 }
