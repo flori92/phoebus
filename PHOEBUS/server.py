@@ -446,8 +446,8 @@ def listen_and_process(main_loop):
                         is_echo = False
                         recent_speech = (
                             state.is_speaking
-                            or maintenant - state.last_speech_timestamp < 6.0
-                            or maintenant - state.speech_started_timestamp < 10.0
+                            or maintenant - state.last_speech_timestamp < 3.0
+                            or maintenant - state.speech_started_timestamp < 5.0
                         )
                         echo_candidates = [
                             normalize_text(state.current_PHOEBUS_speech),
@@ -462,10 +462,15 @@ def listen_and_process(main_loop):
                                     break
                         
                         # 2. Si le texte est court et arrive juste après la fin de parole
+                        # MAIS on ne rejette PAS si c'est un intent reconnu (commande valide)
                         if not is_echo and recent_speech:
                             if len(texte.split()) < 4:
-                                is_echo = True
-                                
+                                from PHOEBUS.intent import detect as _detect_intent
+                                if _detect_intent(texte) is None:
+                                    is_echo = True
+                                elif debug_mic:
+                                    print(f"[MIC] Phrase courte mais intent détecté, on garde : \"{texte}\"")
+                                    
                         if is_echo:
                             if debug_mic:
                                 print(f"[MIC] Écho détecté et ignoré : \"{texte}\"")

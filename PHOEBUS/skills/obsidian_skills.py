@@ -274,3 +274,28 @@ async def skill_obsidian_index(data: dict):
         f"Indexation terminée : {total.get('indexed', 0)} chunks au total "
         f"({detail}), {total.get('errors', 0)} erreurs."
     )
+
+
+# ── Aliases de capture rapide (fast-path intent) ──────────────────────────
+
+@skill(
+    "note_capture",
+    risk="low",
+    help_text="Capture vocale rapide d'une note",
+    describe=lambda d: f"Capturer : {d.get('content', '')[:40]}",
+)
+async def skill_note_capture(data: dict):
+    """Alias rapide de obsidian_capture pour le fast-path intent."""
+    return await skill_obsidian_capture(data)
+
+
+@skill(
+    "note_search",
+    risk="low",
+    help_text="Recherche rapide dans les notes",
+    describe=lambda d: f"Chercher : {d.get('query', '')}",
+)
+async def skill_note_search(data: dict):
+    """Alias rapide de obsidian_search pour le fast-path intent."""
+    return await skill_obsidian_search(data)
+

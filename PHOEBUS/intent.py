@@ -446,6 +446,31 @@ def _detect_vision(t: str) -> Optional[IntentResult]:
 
 
 def _detect_knowledge(t: str) -> Optional[IntentResult]:
+    # ── Notes rapides (Obsidian/SiYuan) ──
+    note_prefixes = ("note ", "note: ", "note :", "capture ", "mémorise ", "memorise ")
+    for prefix in note_prefixes:
+        if t.startswith(prefix):
+            content = t[len(prefix):].strip()
+            if content:
+                return IntentResult(
+                    "note_capture",
+                    json.dumps({"action": "note_capture", "content": content}, ensure_ascii=False),
+                )
+    # ── Recherche dans les notes ──
+    note_search_markers = (
+        "cherche dans mes notes", "cherche dans mes note",
+        "chercher dans mes notes", "dans mes notes",
+        "dans mon vault", "dans mon carnet",
+    )
+    for marker in note_search_markers:
+        if marker in t:
+            query = t.replace(marker, "").strip(" ,.")
+            if query:
+                return IntentResult(
+                    "note_search",
+                    json.dumps({"action": "note_search", "query": query}, ensure_ascii=False),
+                )
+    # ── Actualités / Connaissances ──
     if any(
         marker in t
         for marker in ("actualités", "actualites", "dernières nouvelles", "dernieres nouvelles")
