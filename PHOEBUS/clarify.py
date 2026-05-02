@@ -20,6 +20,10 @@ _MEDIA_NOISE_PATTERNS = (
     r"^merci d avoir regarde\b",
     r"^merci de nous regarder\b",
     r"^merci de votre ecoute\b",
+    r"^merci de votre attention\b",
+    r"^merci beaucoup\b",
+    r"^a tres bientot\b",
+    r"^a bientot\b",
     r"^sous titr(?:age|es?)\b",
     r"\bst\s*\d+\b",
     r"\bsubtitles?\b",
@@ -28,6 +32,8 @@ _MEDIA_NOISE_PATTERNS = (
     r"\byoutube\b",
     r"\babonnez vous\b",
     r"\bcliquez ici\b",
+    r"^fin de l'?enregistrement\b",
+    r"^merci\s*$",
 )
 
 
