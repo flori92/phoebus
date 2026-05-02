@@ -151,11 +151,37 @@ def recall(query: str, limit: int = 5) -> List[RecallResult]:
         from PHOEBUS.obsidian import OBSIDIAN_ENABLED, search_vault_semantic
         if OBSIDIAN_ENABLED:
             import asyncio
+            import threading
+
+            async def _search():
+                return await search_vault_semantic(q, n_results=min(limit, 3))
+
             try:
-                loop = asyncio.get_running_loop()
-                vault_hits = await search_vault_semantic(q, n_results=min(limit, 3))
+                asyncio.get_running_loop()
+                has_running_loop = True
             except RuntimeError:
-                vault_hits = asyncio.run(search_vault_semantic(q, n_results=min(limit, 3)))
+                has_running_loop = False
+
+            if has_running_loop:
+                holder = {"hits": [], "error": None}
+
+                def _runner():
+                    try:
+                        holder["hits"] = asyncio.run(_search())
+                    except Exception as exc:
+                        holder["error"] = exc
+
+                thread = threading.Thread(target=_runner, daemon=True)
+                thread.start()
+                thread.join(timeout=8)
+                if thread.is_alive():
+                    vault_hits = []
+                elif holder["error"] is not None:
+                    raise holder["error"]
+                else:
+                    vault_hits = holder["hits"]
+            else:
+                vault_hits = asyncio.run(_search())
             for hit in (vault_hits or []):
                 snippet = hit.get("text", "")[:300]
                 fname = hit.get("file", "?")
