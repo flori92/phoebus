@@ -59,3 +59,21 @@ PyAudio>=0.2.14
 # resemblyzer  ← embeddings vocaux haute qualité
 # scipy        ← fallback MFCC si resemblyzer absent
 # Activer avec PHOEBUS_MULTI_USER=1 dans .env
+
+# ── Notes & Connaissances (Obsidian + SiYuan) ────────────────────────────
+# PHOEBUS utilise un ou deux backends de notes comme cerveau étendu :
+#
+# Obsidian (gratuit, fichiers .md) :
+#   brew install --cask obsidian
+#   → Créer un vault (= dossier de notes .md)
+#   → Configurer OBSIDIAN_VAULT_PATH dans .env
+#   → Optionnel : plugin "Local REST API" pour les fonctions avancées
+#
+# SiYuan Note (open source AGPL-3.0, API REST native) :
+#   brew install --cask siyuan
+#   → Lancer SiYuan, aller dans Settings > About > API Token
+#   → Configurer SIYUAN_API_TOKEN dans .env
+#
+# Python deps (déjà dans requirements.txt) :
+#   requests     ← HTTP client pour les APIs REST
+#   chromadb     ← indexation sémantique des notes (RAG)
