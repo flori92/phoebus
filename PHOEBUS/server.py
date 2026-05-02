@@ -177,9 +177,9 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
         if self.path == '/obsidian' or self.path.startswith('/obsidian?'):
             try:
                 import asyncio
-                from PHOEBUS.obsidian import obsidian_status
+                from PHOEBUS.knowledge_vault import vault_status
                 loop = asyncio.new_event_loop()
-                status = loop.run_until_complete(obsidian_status())
+                status = loop.run_until_complete(vault_status())
                 loop.close()
                 body = json.dumps(status, ensure_ascii=False).encode("utf-8")
             except Exception as e:

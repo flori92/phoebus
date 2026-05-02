@@ -165,39 +165,39 @@ async def _rappel_calendrier(parler):
 
 # ── Boucle principale ─────────────────────────────────────────────────────
 
-# ── Règle 7 : Indexation automatique du vault Obsidian ────────────────
+# ── Règle 7 : Indexation automatique des notes (Obsidian + SiYuan) ────
 
-_obsidian_index_ts: float = 0.0
+_notes_index_ts: float = 0.0
 
 @rule
-async def _obsidian_auto_index(parler):
-    """Indexe le vault Obsidian dans ChromaDB toutes les heures (en arrière-plan)."""
-    global _obsidian_index_ts
+async def _notes_auto_index(parler):
+    """Indexe les backends notes dans ChromaDB toutes les heures."""
+    global _notes_index_ts
     if state.is_speaking or state.is_thinking:
         return
     now = time.time()
-    # Max une fois par heure
-    if now - _obsidian_index_ts < 3600:
+    if now - _notes_index_ts < 3600:
         return
     try:
-        from PHOEBUS.obsidian import OBSIDIAN_ENABLED, index_vault_to_chroma
-        if not OBSIDIAN_ENABLED:
+        from PHOEBUS.knowledge_vault import is_enabled, index_all
+        if not is_enabled():
             return
-        _obsidian_index_ts = now
-        result = await index_vault_to_chroma()
-        indexed = result.get("indexed", 0)
+        _notes_index_ts = now
+        result = await index_all()
+        total = result.get("total", {})
+        indexed = total.get("indexed", 0)
         if indexed > 0:
-            print(f"[PROACTIVE] Vault Obsidian indexé : {indexed} nouveaux chunks.")
+            print(f"[PROACTIVE] Notes indexées : {indexed} nouveaux chunks.")
     except Exception as e:
-        print(f"[PROACTIVE] Indexation Obsidian erreur : {e}")
+        print(f"[PROACTIVE] Indexation notes erreur : {e}")
 
 
-# ── Règle 8 : Synchronisation daily note Obsidian ─────────────────────
+# ── Règle 8 : Synchronisation daily note ──────────────────────────────
 
 _daily_sync_done: str = ""
 
 @rule
-async def _obsidian_daily_sync(parler):
+async def _notes_daily_sync(parler):
     """Crée la daily note du jour si elle n'existe pas encore (entre 7h et 8h)."""
     global _daily_sync_done
     if state.is_speaking or state.is_thinking:
@@ -209,14 +209,13 @@ async def _obsidian_daily_sync(parler):
     if now.hour not in (7, 8):
         return
     try:
-        from PHOEBUS.obsidian import OBSIDIAN_ENABLED, get_daily_note, write_note, _daily_path
-        if not OBSIDIAN_ENABLED:
+        from PHOEBUS.knowledge_vault import is_enabled, get_daily_note, write_note
+        if not is_enabled():
             return
         _daily_sync_done = today_str
         existing = await get_daily_note()
         if existing:
-            return  # Déjà existante
-        # Créer la daily note avec un template de base
+            return
         template = (
             f"---\n"
             f"date: {today_str}\n"
@@ -228,9 +227,8 @@ async def _obsidian_daily_sync(parler):
             f"## Notes\n\n"
             f"## Réflexions\n\n"
         )
-        path = _daily_path()
-        await write_note(path, template)
-        print(f"[PROACTIVE] Daily note créée : {path}")
+        await write_note(f"Daily Notes/{today_str}.md", template)
+        print(f"[PROACTIVE] Daily note créée : {today_str}")
     except Exception as e:
         print(f"[PROACTIVE] Daily note sync erreur : {e}")
 

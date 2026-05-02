@@ -146,57 +146,44 @@ def recall(query: str, limit: int = 5) -> List[RecallResult]:
                 )
             )
 
-    # ── Obsidian vault (notes personnelles indexées dans ChromaDB) ─────────
+    # ── Notes personnelles (Obsidian + SiYuan via ChromaDB) ─────────────────
     try:
-        from PHOEBUS.obsidian import OBSIDIAN_ENABLED, search_vault_semantic
-        if OBSIDIAN_ENABLED:
+        from PHOEBUS.knowledge_vault import is_enabled, search_semantic
+        if is_enabled():
             import asyncio
-            import threading
-
-            async def _search():
-                return await search_vault_semantic(q, n_results=min(limit, 3))
-
             try:
                 asyncio.get_running_loop()
-                has_running_loop = True
-            except RuntimeError:
-                has_running_loop = False
-
-            if has_running_loop:
-                holder = {"hits": [], "error": None}
-
-                def _runner():
+                # On est dans une boucle asyncio — on ne peut pas await ici
+                # car recall() est sync. On crée un thread dédié.
+                import threading
+                holder = {"hits": []}
+                def _run():
                     try:
-                        holder["hits"] = asyncio.run(_search())
-                    except Exception as exc:
-                        holder["error"] = exc
-
-                thread = threading.Thread(target=_runner, daemon=True)
-                thread.start()
-                thread.join(timeout=8)
-                if thread.is_alive():
-                    vault_hits = []
-                elif holder["error"] is not None:
-                    raise holder["error"]
-                else:
-                    vault_hits = holder["hits"]
-            else:
-                vault_hits = asyncio.run(_search())
+                        holder["hits"] = asyncio.run(search_semantic(q, n_results=min(limit, 3)))
+                    except Exception:
+                        pass
+                t = threading.Thread(target=_run, daemon=True)
+                t.start()
+                t.join(timeout=5)
+                vault_hits = holder["hits"]
+            except RuntimeError:
+                vault_hits = asyncio.run(search_semantic(q, n_results=min(limit, 3)))
             for hit in (vault_hits or []):
                 snippet = hit.get("text", "")[:300]
                 fname = hit.get("file", "?")
                 score = hit.get("score", 0)
-                if score > 0.3:  # Seuil de pertinence minimale
+                src = hit.get("source", "notes")
+                if score > 0.3:
                     results.append(
                         RecallResult(
-                            source="obsidian",
+                            source=src,
                             text=f"[Note: {fname}] {snippet}",
                             importance=2 if score > 0.6 else 1,
                             extra={"file": fname, "score": score},
                         )
                     )
-    except Exception as e:
-        pass  # Obsidian non configuré ou erreur, on ignore silencieusement
+    except Exception:
+        pass  # Backend notes non configuré, on ignore
 
     # Tri global : importance décroissante.
     results.sort(key=lambda r: -r.importance)
