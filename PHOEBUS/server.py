@@ -22,6 +22,13 @@ from PHOEBUS.voice import parler
 from PHOEBUS.stt_backends import get_backend as get_stt_backend, recognize_with_verification
 from PHOEBUS.clarify import transcription_incertaine, transcription_bruit_media
 from PHOEBUS.wake_utils import has_wake_word, strip_wake_word, is_stop_conversation
+from PHOEBUS.voice_diagnostics import (
+    audio_stats,
+    microphone_config,
+    microphone_inventory,
+    record_voice_event,
+    set_voice_status,
+)
 from PHOEBUS import proactive
 
 
@@ -103,6 +110,8 @@ def _float_env(name: str, default: float) -> float:
 COMMAND_REPLY_TIMEOUT = _float_env("PHOEBUS_COMMAND_REPLY_TIMEOUT", 10.0)
 AI_COMMAND_TIMEOUT = _float_env("PHOEBUS_AI_COMMAND_TIMEOUT", 35.0)
 TELEGRAM_REPLY_TIMEOUT = _float_env("PHOEBUS_TELEGRAM_REPLY_TIMEOUT", 75.0)
+STT_TRANSCRIBE_TIMEOUT = _float_env("PHOEBUS_STT_TIMEOUT", 10.0)
+_STT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="phoebus-stt")
 
 
 # ── Serveur Mobile (HTTP) ──────────────────────────────────────────────────
@@ -281,13 +290,22 @@ def listen_and_process(main_loop):
     if stt_recognize is None:
         print("[MIC] Aucun back-end STT disponible.")
         return
+    mic_cfg = microphone_config()
+    mic_inventory = microphone_inventory(sr)
+    if mic_cfg["device_index"] is None and mic_cfg.get("device_name"):
+        wanted = mic_cfg["device_name"].casefold()
+        for idx, name in enumerate(mic_inventory.get("names", [])):
+            if wanted in name.casefold():
+                mic_cfg = {**mic_cfg, "device_index": idx}
+                break
     print(f"[MIC] Back-end STT actif : {stt_name}")
+    set_voice_status(backend=stt_name, config=mic_cfg, available_microphones=mic_inventory)
     debug_mic = os.getenv("PHOEBUS_DEBUG_MIC", "0").strip().lower() in {"1", "true", "yes", "on"}
 
     r = sr.Recognizer()
-    # On ajuste les paramètres pour être moins sensible au bruit de fond/silence
-    r.pause_threshold = 1.1  # Temps de silence avant de valider une phrase
-    r.non_speaking_duration = 0.5
+    r.dynamic_energy_threshold = True
+    r.pause_threshold = mic_cfg["pause_threshold"]
+    r.non_speaking_duration = 0.35
     
     # Liste des hallucinations classiques de Whisper/Groq en cas de silence
     HALLUCINATIONS_STT = {
@@ -305,10 +323,24 @@ def listen_and_process(main_loop):
     }
 
     try:
-        with sr.Microphone() as source:
+        with sr.Microphone(device_index=mic_cfg["device_index"]) as source:
+            mic_name = "default"
+            try:
+                names = mic_inventory.get("names", [])
+                if mic_cfg["device_index"] is not None and 0 <= mic_cfg["device_index"] < len(names):
+                    mic_name = names[mic_cfg["device_index"]]
+                elif mic_inventory.get("default_input"):
+                    default_input = mic_inventory["default_input"]
+                    mic_name = f"default ({default_input.get('name')})"
+            except Exception:
+                pass
+            set_voice_status(microphone={"name": mic_name, "device_index": mic_cfg["device_index"]})
+            record_voice_event("microphone_open", microphone=mic_name, device_index=mic_cfg["device_index"])
             print("[MIC] Calibrage du bruit ambiant...")
             r.adjust_for_ambient_noise(source, duration=1.0)
-            r.energy_threshold += 150
+            r.energy_threshold += mic_cfg["energy_offset"]
+            set_voice_status(energy_threshold=round(r.energy_threshold, 1))
+            record_voice_event("calibrated", energy_threshold=round(r.energy_threshold, 1))
             print(f"[MIC] Prêt. Seuil d'énergie : {r.energy_threshold:.0f}")
             
             while True:
@@ -318,9 +350,15 @@ def listen_and_process(main_loop):
                     
                     # On réduit le timeout pour boucler plus souvent et rester réactif
                     try:
-                        audio = r.listen(source, timeout=5, phrase_time_limit=12)
+                        audio = r.listen(
+                            source,
+                            timeout=mic_cfg["timeout"],
+                            phrase_time_limit=mic_cfg["phrase_time_limit"],
+                        )
+                        stats = audio_stats(audio)
+                        record_voice_event("audio_captured", **stats)
                         if debug_mic:
-                            print("[MIC] Audio capturé, transcription en cours...")
+                            print(f"[MIC] Audio capturé, transcription en cours... {stats}")
                     except sr.WaitTimeoutError:
                         # Timeout normal quand personne ne parle, on continue simplement
                         continue
@@ -331,8 +369,20 @@ def listen_and_process(main_loop):
                         time.sleep(0.1)
 
                     try:
-                        texte = recognize_with_verification(audio, primary=(stt_name, stt_recognize))
+                        stt_future = _STT_EXECUTOR.submit(
+                            recognize_with_verification,
+                            audio,
+                            (stt_name, stt_recognize),
+                        )
+                        try:
+                            texte = stt_future.result(timeout=STT_TRANSCRIBE_TIMEOUT)
+                        except concurrent.futures.TimeoutError:
+                            stt_future.cancel()
+                            record_voice_event("stt_timeout", timeout_s=STT_TRANSCRIBE_TIMEOUT)
+                            asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
+                            continue
                         if not texte: raise sr.UnknownValueError()
+                        record_voice_event("transcribed", text=texte[:180])
                         
                         # ── Filtre anti-hallucination (Whisper/Groq) ───────────
                         from PHOEBUS.utils import normalize_text
@@ -345,6 +395,7 @@ def listen_and_process(main_loop):
                         ):
                             if debug_mic:
                                 print(f"[MIC] Bruit média/STT ignoré : \"{texte}\"")
+                            record_voice_event("ignored_noise", text=texte[:180])
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 
@@ -353,6 +404,11 @@ def listen_and_process(main_loop):
                         is_hall, confidence = check_hallucination(texte)
                         if is_hall:
                             print(f"[MIC] Hallucination acoustique ignorée (confiance={confidence:.2f}) : \"{texte}\"")
+                            record_voice_event(
+                                "ignored_hallucination",
+                                confidence=round(confidence, 3),
+                                text=texte[:180],
+                            )
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 
@@ -365,6 +421,7 @@ def listen_and_process(main_loop):
                         if state.looks_like_own_echo(texte):
                             if debug_mic:
                                 print(f"[ECHO] Ignoré (auto-écho détecté) : {texte!r}")
+                            record_voice_event("ignored_echo", text=texte[:180])
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 
@@ -396,14 +453,17 @@ def listen_and_process(main_loop):
                         if is_echo:
                             if debug_mic:
                                 print(f"[MIC] Écho détecté et ignoré : \"{texte}\"")
+                            record_voice_event("ignored_echo", text=texte[:180])
                             asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                             continue
 
                     except sr.UnknownValueError:
+                        record_voice_event("stt_empty")
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
                     except Exception as e:
                         print(f"[MIC] STT {stt_name} a échoué : {e}")
+                        record_voice_event("stt_error", error=f"{type(e).__name__}: {e}"[:180])
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
 
@@ -415,6 +475,7 @@ def listen_and_process(main_loop):
                         # Trop de bruit ambiant ? On réinitialise l'état et on continue.
                         if debug_mic:
                             print(f"[MIC] Hors wake/conversation ignoré : \"{texte}\"")
+                        record_voice_event("ignored_no_wake", text=texte[:180])
                         state.is_listening = False
                         asyncio.run_coroutine_threadsafe(state.send_web_state("idle"), main_loop)
                         continue
@@ -422,6 +483,17 @@ def listen_and_process(main_loop):
                     # On ne passe en 'thinking' que si le texte est adressé à PHOEBUS.
                     asyncio.run_coroutine_threadsafe(state.send_web_state("thinking"), main_loop)
                     print(f"\n[VOUS] {texte}")
+                    record_voice_event("accepted", wake=wake, conversation=en_conversation, text=texte[:180])
+                    asyncio.run_coroutine_threadsafe(
+                        state.broadcast(
+                            {
+                                "action": "user_transcript",
+                                "source": "backend_stt",
+                                "text": texte,
+                            }
+                        ),
+                        main_loop,
+                    )
 
                     # ── Identification du speaker ───────────────────────────
                     speaker = "Floriace"

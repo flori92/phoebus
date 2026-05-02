@@ -22,6 +22,10 @@ PHOEBUS_STT_VERIFY_BACKENDS = [
 ]
 PHOEBUS_STT_LOG = os.getenv("PHOEBUS_STT_LOG", "0").strip().lower() in {"1", "true", "yes", "on"}
 PHOEBUS_STT_DEBUG = os.getenv("PHOEBUS_STT_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
+try:
+    PHOEBUS_STT_API_TIMEOUT = float(os.getenv("PHOEBUS_STT_API_TIMEOUT", "8"))
+except ValueError:
+    PHOEBUS_STT_API_TIMEOUT = 8.0
 
 
 _backend_cache = None
@@ -114,8 +118,9 @@ def _groq_recognize_factory():
         api_wav = audio_data.get_wav_data()
         
         try:
+            client = groq_client.with_options(timeout=PHOEBUS_STT_API_TIMEOUT)
             # Groq API demande un tuple (nom_fichier, bytes) ou un file-like object
-            transcription = groq_client.audio.transcriptions.create(
+            transcription = client.audio.transcriptions.create(
                 file=("input.wav", api_wav),
                 model="whisper-large-v3",
                 language="fr",

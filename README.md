@@ -113,6 +113,28 @@ dépendances voix/STT, configuration, runtime unique, frontend et endpoint
 PyAudio est optionnel. S'il ne s'installe pas, le micro PC et les applaudissements
 sont desactives, mais le backend et l'interface mobile restent utilisables.
 
+## Architecture voix
+
+PHOEBUS suit le modele des assistants vocaux modernes: une seule autorite audio
+ecoute, detecte l'appel, transcrit et ouvre la session de commande. Le frontend
+ne fait pas de reconnaissance vocale concurrente; il affiche uniquement la
+transcription acceptee par le backend via WebSocket (`user_transcript`). Cela
+evite qu'une phrase differente soit affichee cote navigateur alors que le
+backend execute autre chose.
+
+Flux:
+
+1. backend STT continu sur le micro configure (`PHOEBUS_MIC_DEVICE_NAME` de
+   preference, plus stable que les index macOS)
+2. detection du wake word ou fenetre de conversation active
+3. diffusion de la transcription acceptee vers les clients
+4. routage intent/action/LLM
+5. reponse texte/audio diffusee aux interfaces
+
+Le diagnostic `/diagnostics` expose `voice`: backend STT actif, micro choisi,
+seuil d'energie, derniers evenements (`audio_captured`, `transcribed`,
+`ignored_no_wake`, `accepted`, `stt_timeout`).
+
 ## Home Assistant portable
 
 Le backend garde des alias historiques dans `main2.py`, mais la couche portable
@@ -134,15 +156,15 @@ Le fichier versionne est `phoebus_devices.example.json`. La copie locale
 
 ## Satellites
 
-L'interface mobile peut servir de satellite vocal sur le reseau local:
+L'interface mobile peut servir de satellite visuel sur le reseau local:
 
 - ouvrez `http://IP_DU_SERVEUR:8080`
 - l'app se connecte directement au WebSocket local
-- le micro mobile se relance automatiquement apres chaque segment de parole
+- elle affiche l'etat, la transcription backend et les reponses audio/texte
 
 L'architecture recommandee est:
 
 - `main2.py` pour l'orchestration locale
 - Home Assistant OS pour la domotique
-- clients web/mobile comme satellites
+- clients web/mobile comme satellites d'affichage et de controle
 - alias et politique de securite dans `phoebus_devices.json`

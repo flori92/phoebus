@@ -12,6 +12,7 @@ from PHOEBUS.config import BASE_DIR, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 from PHOEBUS.llm_health import status as llm_status
 from PHOEBUS.observability import request_snapshot, snapshot as phase_snapshot, trace_snapshot
 from PHOEBUS.brain_router import available_provider_names
+from PHOEBUS.voice_diagnostics import snapshot as voice_snapshot
 
 
 def _port_open(host: str, port: int, timeout: float = 0.2) -> bool:
@@ -92,6 +93,7 @@ def diagnostics_snapshot() -> dict:
             "phases": phase_snapshot(),
             "traces": trace_snapshot(),
         },
+        "voice": voice_snapshot(),
     }
 
 

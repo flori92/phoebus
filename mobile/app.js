@@ -12,6 +12,7 @@ const WS_SCHEME = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_URL = `${WS_SCHEME}://${window.location.hostname}:8765`;
 const RECONNECT_DELAY_MS = 2500;
 const SPEECH_LANG = "fr-FR";
+const BROWSER_STT_ENABLED = false;
 const WAKE_WORD_RE = /\b(?:phoebus|phébus|fébus|febus|feubus|rebus)\b/i;
 const CONFIRMATION_RE = /\b(?:confirme|je confirme|ok confirme|oui confirme|valide|vas[- ]?y|exécute|execute|annule|annuler|stop|laisse tomber|oublie|non)\b/i;
 
@@ -1171,15 +1172,13 @@ function connectWS() {
         return;
       }
 
+      if (data.action === "user_transcript" && data.text) {
+        afficherTexteUtilisateur(data.text);
+        return;
+      }
+
       // État de l'orbe (envoyé par le backend lors de ses propres actions)
       if (data.action === "set_state" && data.state) {
-        // Ignorer les états de microphone local du PC ("listening", "active") car le mobile gère son propre micro
-        if (data.state === "listening" || data.state === "active") return;
-        // Si le mobile est en train d'écouter, on ne le force pas en idle non plus
-        if (data.state === "idle" && isListening) return;
-
-        // On ignore l'état "speaking" du PC uniquement si on utilise le TTS local (SpeechSynthesis).
-        // Mais maintenant on joue l'audio distant, donc on peut accepter l'état speaking, bien qu'on l'applique localement au lancement de l'audio.
         if (data.state !== "speaking") {
           applyState(data.state);
         }
@@ -1465,7 +1464,7 @@ function dispatchCapturedText(text) {
   scheduleListenRestart(2200);
 }
 
-if (SpeechRecognition) {
+if (BROWSER_STT_ENABLED && SpeechRecognition) {
   recognition = new SpeechRecognition();
   recognition.lang           = SPEECH_LANG;
   recognition.continuous     = true;
@@ -1559,12 +1558,13 @@ if (SpeechRecognition) {
 } else {
   if (micBtn) micBtn.disabled = true;
   statusEl.textContent = "en attente";
-  console.error("[STT] SpeechRecognition non disponible.");
+  console.info("[STT] Reconnaissance navigateur désactivée : le backend est la source vocale unique.");
 }
 
 // ── Relance micro best-effort. Le bouton est masque, conserve seulement
 //    comme cible technique pour les plateformes qui exigent un geste humain.
 micBtn.addEventListener("click", () => {
+  if (!BROWSER_STT_ENABLED) return;
   if (!recognition) return;
 
   autoListenEnabled = true;
@@ -1579,5 +1579,7 @@ micBtn.addEventListener("click", () => {
 
 // ── Démarrage ───────────────────────────────────────────────────────────────
 connectWS();
-scheduleListenRestart(900);
+if (BROWSER_STT_ENABLED) {
+  scheduleListenRestart(900);
+}
 console.log("[PHOEBUS MOBILE] Interface initialisée. WebSocket :", WS_URL);
