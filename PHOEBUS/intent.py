@@ -521,6 +521,20 @@ def _detect_phone(t: str) -> Optional[IntentResult]:
             "phone_clipboard_read",
             json.dumps({"action": "phone_clipboard_read"}, ensure_ascii=False),
         )
+    # ── Ouvrir une app sur le téléphone ──
+    phone_words = ("téléphone", "telephone", "tel", "iphone", "mobile")
+    open_words = ("ouvre", "lance", "démarre", "demarre", "mets")
+    if any(ow in t for ow in open_words) and any(pw in t for pw in phone_words):
+        # Extraire le nom de l'app : "ouvre netflix sur mon telephone"
+        import re as _re
+        m = _re.search(r"(?:ouvre|lance|démarre|demarre|mets)\s+(.+?)\s+(?:sur|de|du)\s+(?:mon|le|la)\s+(?:téléphone|telephone|tel|iphone|mobile)", t)
+        if m:
+            app_name = m.group(1).strip()
+            if app_name:
+                return IntentResult(
+                    "phone_open_app",
+                    json.dumps({"action": "phone_open_app", "app": app_name}, ensure_ascii=False),
+                )
     return None
 
 
@@ -616,13 +630,13 @@ def detect(texte: str) -> Optional[IntentResult]:
     if email:
         return email
 
-    # --- Vision / Réseau / Système / Spotify / Téléphone / Connaissance ---
+    # --- Vision / Réseau / Système / Téléphone / Spotify / Connaissance ---
     for detector in (
         _detect_vision,
         _detect_network,
         _detect_system,
-        _detect_spotify,
         _detect_phone,
+        _detect_spotify,
         _detect_knowledge,
     ):
         result = detector(t)

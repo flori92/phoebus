@@ -1166,6 +1166,15 @@ async function handlePhoneCommand(data) {
       case "info":
         await _phoneInfo(reqId, data);
         break;
+      case "open_app":
+        await _phoneOpenApp(reqId, data);
+        break;
+      case "open_url":
+        await _phoneOpenUrl(reqId, data);
+        break;
+      case "share_text":
+        await _phoneShareText(reqId, data);
+        break;
       default:
         _phoneReply(reqId, { error: `Commande inconnue: ${cmd}` });
     }
@@ -1386,6 +1395,133 @@ async function _phoneInfo(reqId, _data) {
     cookieEnabled: navigator.cookieEnabled,
     maxTouchPoints: navigator.maxTouchPoints || 0,
   });
+}
+
+// ── Ouverture d'apps via URL schemes (iOS/Android natif) ──
+const APP_URL_SCHEMES = {
+  // Streaming & Media
+  netflix:       "nflx://",
+  "prime video": "aiv://",
+  prime:         "aiv://",
+  "disney+":     "disneyplus://",
+  disney:        "disneyplus://",
+  youtube:       "youtube://",
+  twitch:        "twitch://",
+  spotify:       "spotify://",
+  "apple music": "music://",
+  musique:       "music://",
+  podcasts:      "podcasts://",
+  // Social
+  instagram:     "instagram://",
+  tiktok:        "snssdk1128://",
+  twitter:       "twitter://",
+  x:             "twitter://",
+  snapchat:      "snapchat://",
+  facebook:      "fb://",
+  linkedin:      "linkedin://",
+  reddit:        "reddit://",
+  // Messaging
+  whatsapp:      "whatsapp://",
+  telegram:      "tg://",
+  messenger:     "fb-messenger://",
+  signal:        "sgnl://",
+  discord:       "discord://",
+  // Utilities
+  maps:          "maps://",
+  "google maps": "comgooglemaps://",
+  waze:          "waze://",
+  uber:          "uber://",
+  safari:        "x-web-search://",
+  chrome:        "googlechrome://",
+  mail:          "mailto:",
+  "app store":   "itms-apps://",
+  parametres:    "App-prefs://",
+  reglages:      "App-prefs://",
+  settings:      "App-prefs://",
+  camera:        "camera://",
+  photos:        "photos-redirect://",
+  fichiers:      "shareddocuments://",
+  notes:         "mobilenotes://",
+  rappels:       "x-apple-reminderkit://",
+  calendrier:    "calshow://",
+  calculatrice:  "calc://",
+  horloge:       "clock-worldclock://",
+  sante:         "x-apple-health://",
+  wallet:        "shoebox://",
+  telephone:     "tel://",
+  // Finance
+  paypal:        "paypal://",
+  revolut:       "revolut://",
+  // Raccourcis Apple
+  raccourcis:    "shortcuts://",
+  shortcuts:     "shortcuts://",
+};
+
+async function _phoneOpenApp(reqId, data) {
+  const appName = (data.app || data.name || "").toLowerCase().trim();
+  if (!appName) {
+    _phoneReply(reqId, { error: "Aucun nom d'app fourni" });
+    return;
+  }
+
+  // Chercher le URL scheme
+  let scheme = APP_URL_SCHEMES[appName];
+  
+  // Recherche partielle
+  if (!scheme) {
+    for (const [key, url] of Object.entries(APP_URL_SCHEMES)) {
+      if (key.includes(appName) || appName.includes(key)) {
+        scheme = url;
+        break;
+      }
+    }
+  }
+
+  if (!scheme) {
+    // Fallback : recherche dans l'App Store / Play Store
+    const searchUrl = /iphone|ipad|ios/i.test(navigator.userAgent)
+      ? `https://apps.apple.com/search?term=${encodeURIComponent(appName)}`
+      : `https://play.google.com/store/search?q=${encodeURIComponent(appName)}`;
+    window.open(searchUrl, "_blank");
+    _phoneReply(reqId, { ok: true, method: "store_search", app: appName });
+    return;
+  }
+
+  try {
+    window.location.href = scheme;
+    _phoneReply(reqId, { ok: true, method: "url_scheme", app: appName, scheme });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+async function _phoneOpenUrl(reqId, data) {
+  const url = (data.url || "").trim();
+  if (!url) {
+    _phoneReply(reqId, { error: "Aucune URL fournie" });
+    return;
+  }
+  try {
+    window.open(url, "_blank");
+    _phoneReply(reqId, { ok: true, url });
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
+}
+
+async function _phoneShareText(reqId, data) {
+  const text = data.text || "";
+  const title = data.title || "PHOEBUS";
+  try {
+    if (navigator.share) {
+      await navigator.share({ title, text });
+      _phoneReply(reqId, { ok: true });
+    } else {
+      _phoneReply(reqId, { error: "Web Share API non supportée" });
+    }
+  } catch (err) {
+    _phoneReply(reqId, { error: String(err.message || err) });
+  }
 }
 
 function connectWS() {

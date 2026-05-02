@@ -107,6 +107,11 @@ async def phone_control(data: dict):
         "battery": phone_battery,
         "batterie": phone_battery,
         "info": phone_info,
+        "open_app": phone_open_app,
+        "ouvrir": phone_open_app,
+        "open_url": phone_open_url,
+        "share": phone_share_text,
+        "partager": phone_share_text,
     }
 
     handler = dispatch.get(action)
@@ -299,3 +304,59 @@ async def phone_info(data: dict):
     screen = result.get("screen", "?")
     online = result.get("online", True)
     return f"Téléphone connecté : {ua[:60]}. Écran : {screen}. En ligne : {'oui' if online else 'non'}."
+
+
+@skill(
+    "phone_open_app",
+    risk="low",
+    help_text="Ouvre une application sur le téléphone (Netflix, YouTube, Spotify, WhatsApp, etc.)",
+    describe=lambda d: f"Ouvrir {d.get('app', '?')} sur le téléphone",
+)
+async def phone_open_app(data: dict):
+    app = data.get("app", data.get("name", "")).strip()
+    if not app:
+        return "Quelle application ouvrir sur le téléphone ?"
+    result = await _send_phone_command("open_app", {"app": app})
+    err = _phone_error(result, f"Ouverture de {app}")
+    if err:
+        return err
+    method = result.get("method", "url_scheme")
+    if method == "store_search":
+        return f"L'app '{app}' n'a pas de raccourci connu. J'ai ouvert la recherche dans le store."
+    return f"{app.title()} lancé sur ton téléphone."
+
+
+@skill(
+    "phone_open_url",
+    risk="low",
+    help_text="Ouvre une URL dans le navigateur du téléphone",
+    describe=lambda d: f"Ouvrir {d.get('url', '?')[:30]} sur le téléphone",
+)
+async def phone_open_url(data: dict):
+    url = data.get("url", "").strip()
+    if not url:
+        return "Quelle URL ouvrir sur le téléphone ?"
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    result = await _send_phone_command("open_url", {"url": url})
+    err = _phone_error(result, "Ouverture URL")
+    if err:
+        return err
+    return f"URL ouverte sur ton téléphone : {url}"
+
+
+@skill(
+    "phone_share_text",
+    risk="low",
+    help_text="Partage du texte depuis le téléphone via la feuille de partage native",
+    describe=lambda d: f"Partager sur le téléphone : {d.get('text', '')[:30]}",
+)
+async def phone_share_text(data: dict):
+    text = data.get("text", "").strip()
+    if not text:
+        return "Aucun texte à partager."
+    result = await _send_phone_command("share_text", {"text": text, "title": data.get("title", "PHOEBUS")})
+    err = _phone_error(result, "Partage")
+    if err:
+        return err
+    return "Feuille de partage ouverte sur ton téléphone."
