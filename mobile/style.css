@@ -162,14 +162,17 @@ html, body {
 
 /* ── Orbe ─────────────────────────────────────────────────────────────────── */
 #orb-container {
-  position: relative;
-  width: 100%;
-  height: 250px;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100vw;
+  height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   pointer-events: none;
+  z-index: 1;
 }
 
 #orb-canvas {
@@ -332,11 +335,17 @@ body.state-speaking .avatar-face-media {
   z-index: 3;
   opacity: 0;
   background: transparent;
+  transition: opacity 300ms ease;
 }
 
-.avatar-face-video[data-active="true"] {
+#avatar-core[data-PHOEBUS-clip="reflective"] #avatar-video-reflective {
   opacity: var(--avatar-opacity);
-  z-index: 4; /* Passe au dessus des autres pendant la transition */
+  z-index: 4;
+}
+
+#avatar-core[data-PHOEBUS-clip="expressive"] #avatar-video-expressive {
+  opacity: var(--avatar-opacity);
+  z-index: 4;
 }
 
 /* Mode 'none' ou fallback forcé : on n'affiche que l'image fixe (bouche fermée) */
@@ -346,6 +355,7 @@ body.state-speaking .avatar-face-media {
 #avatar-core[data-PHOEBUS-clip="none"] .avatar-face-fallback,
 #avatar-core[data-video-fallback="true"] .avatar-face-fallback {
   opacity: calc(var(--avatar-opacity) * 0.96);
+  z-index: 5;
 }
 
 #avatar-core[data-PHOEBUS-clip="reflective"] .avatar-face-media {
