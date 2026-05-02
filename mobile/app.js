@@ -32,12 +32,12 @@ const avatarFallbackEl = document.getElementById("avatar-face-fallback");
 const avatarReflectiveVideoEl = document.getElementById("avatar-video-reflective");
 const avatarExpressiveVideoEl = document.getElementById("avatar-video-expressive");
 
-// ── AVATAR 3D ───────────────────────────────────────────────────────────────
+// ── ORB 3D ──────────────────────────────────────────────────────────────────
 let orb = null;
-if (typeof createAvatar3D === "function") {
+if (typeof createOrb === "function") {
   const canvas = document.getElementById("orb-canvas");
   if (canvas) {
-    orb = createAvatar3D(canvas, "avatar/avatar_floriace.png");
+    orb = createOrb(canvas);
   }
 }
 

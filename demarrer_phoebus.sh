@@ -9,14 +9,15 @@ if [ -n "$existing_pids" ]; then
 fi
 
 LOCK_DIR="${TMPDIR:-/tmp}/phoebus-watchdog.lock"
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  if [ -f "$LOCK_DIR/pid" ] && kill -0 "$(cat "$LOCK_DIR/pid" 2>/dev/null)" 2>/dev/null; then
-    echo "[WATCHDOG] Un watchdog PHOEBUS est déjà actif (PID $(cat "$LOCK_DIR/pid"))."
-    exit 0
+if [ -d "$LOCK_DIR" ] && [ -f "$LOCK_DIR/pid" ]; then
+  old_watchdog_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null)"
+  if kill -0 "$old_watchdog_pid" 2>/dev/null; then
+    echo "[WATCHDOG] Un ancien script Watchdog tourne encore (PID $old_watchdog_pid). Arrêt forcé..."
+    kill -9 "$old_watchdog_pid" 2>/dev/null || true
   fi
   rm -rf "$LOCK_DIR"
-  mkdir "$LOCK_DIR" || exit 1
 fi
+mkdir -p "$LOCK_DIR" || exit 1
 echo "$$" > "$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT INT TERM
 
