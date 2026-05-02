@@ -360,29 +360,46 @@ def _detect_spotify(t: str) -> Optional[IntentResult]:
 
 
 def _detect_network(t: str) -> Optional[IntentResult]:
+    # ── Scan réseau ──
     if any(
         marker in t
         for marker in (
-            "scanne le réseau",
-            "scanne le reseau",
-            "scan réseau",
-            "scan reseau",
-            "liste le wifi",
+            "scanne le réseau", "scanne le reseau", "scan réseau", "scan reseau",
+            "liste le wifi", "appareils connectés", "appareils connectes",
+            "qui est sur le réseau", "qui est sur le reseau", "qui est connecté",
+            "qui est connecte", "appareils sur le réseau", "appareils sur le reseau",
         )
     ):
         return IntentResult("network_scan", json.dumps({"action": "network_scan", "refresh": True}))
+    # ── Liste des appareils connus ──
+    if any(marker in t for marker in ("liste des appareils", "mes appareils", "appareils connus")):
+        return IntentResult("device_list", json.dumps({"action": "device_list"}))
+    # ── Ping ──
     if t.startswith("ping "):
+        target = t[5:].strip()
         m = _RE_IP.search(t)
         if m:
             return IntentResult(
-                "network_ping", json.dumps({"action": "network_ping", "ip": m.group("ip")})
+                "device_ping", json.dumps({"action": "device_ping", "target": m.group("ip")})
             )
-    if t.startswith(("réveille ", "reveille ", "wake ")):
+        if target:
+            return IntentResult(
+                "device_ping", json.dumps({"action": "device_ping", "target": target})
+            )
+    # ── Wake-on-LAN ──
+    if t.startswith(("réveille ", "reveille ", "wake ", "allume le pc", "allume le mac",
+                     "allume l'ordinateur", "allume l ordinateur")):
         m = _RE_MAC.search(t)
         if m:
             return IntentResult(
-                "network_wake",
-                json.dumps({"action": "network_wake", "mac": m.group("mac").lower()}),
+                "wake_on_lan",
+                json.dumps({"action": "wake_on_lan", "mac": m.group("mac").lower()}),
+            )
+        # Par nom d'appareil
+        name = t.split(" ", 1)[-1].strip()
+        if name and name not in ("pc", "mac", "l'ordinateur", "l ordinateur"):
+            return IntentResult(
+                "wake_on_lan", json.dumps({"action": "wake_on_lan", "name": name})
             )
     return None
 
