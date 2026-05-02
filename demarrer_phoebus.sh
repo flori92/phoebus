@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
 cd "$(dirname "$0")"
 
-existing_pids="$(pgrep -f '[m]ain2.py --auto-restart' 2>/dev/null || true)"
+existing_pids="$(pgrep -f '[m]ain2.py' 2>/dev/null || true)"
 if [ -n "$existing_pids" ]; then
-  echo "[WATCHDOG] PHOEBUS tourne déjà (PID: $(echo "$existing_pids" | tr '\n' ' ')). Nouveau lancement annulé."
-  echo "[WATCHDOG] Arrêtez l'instance existante avant de relancer."
-  exit 0
+  echo "[WATCHDOG] Instance précédente trouvée (PIDs: $(echo "$existing_pids" | tr '\n' ' ')). Arrêt forcé en cours..."
+  kill -9 $existing_pids 2>/dev/null || true
+  sleep 1
 fi
 
 LOCK_DIR="${TMPDIR:-/tmp}/phoebus-watchdog.lock"
