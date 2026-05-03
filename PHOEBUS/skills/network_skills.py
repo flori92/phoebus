@@ -253,22 +253,35 @@ async def adb_command(data: dict):
     if not command:
         return "Il me faut une commande ADB à exécuter."
 
-    # Si on a une IP, connecter d'abord
+    # Optimisation : vérifier si déjà connecté pour gagner 2-3 secondes
+    is_connected = False
     if device_ip:
+        try:
+            check = await asyncio.to_thread(subprocess.run, [ADB_PATH, "devices"], capture_output=True, text=True, timeout=2)
+            if f"{device_ip}:5555" in check.stdout:
+                is_connected = True
+        except Exception:
+            pass
+
+    # Connexion seulement si nécessaire
+    if device_ip and not is_connected:
         try:
             await asyncio.to_thread(
                 subprocess.run,
                 [ADB_PATH, "connect", f"{device_ip}:5555"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=3,
             )
         except Exception:
             pass
 
     try:
-        args = [ADB_PATH, "shell"] + command.split()
+        # Utiliser -s pour être sûr de cibler la bonne TV et accélérer l'exécution
+        target_args = ["-s", f"{device_ip}:5555"] if device_ip else []
+        args = [ADB_PATH] + target_args + ["shell"] + command.split()
+        
         result = await asyncio.to_thread(
             subprocess.run, args,
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=5,
         )
         output = (result.stdout or "").strip()
         if result.returncode == 0:
