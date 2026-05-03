@@ -13,6 +13,7 @@ from pathlib import Path
 os.environ.setdefault("PYTHONUTF8", "1")
 os.environ.setdefault("LANG", "en_US.UTF-8")
 os.environ.setdefault("LC_ALL", "en_US.UTF-8")
+os.environ["OPENCV_AVFOUNDATION_SKIP_AUTH"] = "1"
 
 try:
     from dotenv import load_dotenv
