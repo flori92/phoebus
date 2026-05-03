@@ -80,7 +80,7 @@ def init_chroma():
                 emb_fn = get_google_embedding_function()
             
             _collection = _chroma_client.get_or_create_collection(
-                name="PHOEBUS_long_term_memory",
+                name="PHOEBUS_long_term_memory_v2",
                 metadata={"hnsw:space": "cosine"},
                 embedding_function=emb_fn
             )
