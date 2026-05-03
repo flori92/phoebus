@@ -216,6 +216,16 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         '{"action": "youtube", "query": "titre ou sujet de la vidéo"}\n\n'
     )
     base += (
+        "\n\nCONTRÔLE TV ANDROID (ADB) :\n"
+        "Tu as un accès total à la télévision de Floriace (TCL Android TV) via ADB.\n"
+        "- Allumage/Extinction: {'action': 'adb_tv_control', 'action_tv': 'allume/eteins'}\n"
+        "- Volume: {'action': 'adb_tv_control', 'action_tv': 'plus/moins/muet'}\n"
+        "- Navigation: {'action': 'adb_tv_control', 'action_tv': 'haut/bas/gauche/droite/ok/retour/home'}\n"
+        "- YouTube TV: {'action': 'adb_youtube_tv', 'query': 'titre de la vidéo'}\n"
+        "- Vision TV: {'action': 'vision_tv_ecran', 'question': 'que se passe-t-il sur la tv ?'}\n"
+        "Si Floriace te demande de 'vérifier' ou 'voir' ce qu'il y a sur la télé, utilise vision_tv_ecran.\n\n"
+    )
+    base += (
         "\n\nMEDIA, FILMS, SERIES, VOD :\n"
         "Si Floriace formule naturellement une envie de regarder quelque chose "
         '(ex. "je veux regarder un film comique", "trouve-moi une série thriller", '
