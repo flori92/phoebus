@@ -241,9 +241,17 @@ class MobileHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     data = json.loads(post_data)
                     texte = _payload_text(data, "text", "command", "commande", "message", "query", "question")
+                    
+                    # Mise à jour de la position pour le SecurityAgent
+                    lat = data.get("lat") or data.get("latitude")
+                    lon = data.get("lon") or data.get("longitude")
+                    if lat and lon:
+                        from PHOEBUS.agents.security_agent import SecurityAgent
+                        SecurityAgent().update_location(lat, lon, metadata=data)
+
                     metadata = {
                         "battery": data.get("battery", "Inconnue"),
-                        "location": data.get("location", "Inconnue"),
+                        "location": f"{lat}, {lon}" if lat else data.get("location", "Inconnue"),
                         "focus": data.get("focus", "Inconnu")
                     }
                 except:

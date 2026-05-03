@@ -58,6 +58,13 @@ class AgentOrchestrator:
             if method:
                 return await method(**params)
 
+        if "security" in tool or "phone" in tool or "vol" in tool:
+            from PHOEBUS.agents.security_agent import SecurityAgent
+            agent = SecurityAgent()
+            method = getattr(agent, action, None)
+            if method:
+                return await method(**params)
+
         # Fallback sur les anciens skills PHOEBUS si l'agent n'est pas encore implémenté
         try:
             from PHOEBUS.actions import executer_une_action

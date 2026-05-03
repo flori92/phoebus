@@ -116,10 +116,11 @@ class PhoebusBrain:
         tools_doc = """
         OUTILS DISPONIBLES :
         - 'system' : get_system_info, open_app, close_app, mac_set_volume, mac_dark_mode_toggle
-        - 'vision' : what_is_in_my_hand(source='pc'), see_and_describe(source='pc') # 'pc' est la webcam locale du Mac/PC
+        - 'vision' : what_is_in_my_hand(source='pc'), see_and_describe(source='pc')
         - 'note'   : add_note(content, title), search_notes(query), log_daily(content)
         - 'file'   : list_dir(path), read_file(path), write_file(path, content)
         - 'research': search_web(query), deep_research(topic)
+        - 'security': locate_phone, trigger_alarm, emergency_lock # Pour la sécurité mobile
         """
 
         instruction = (
