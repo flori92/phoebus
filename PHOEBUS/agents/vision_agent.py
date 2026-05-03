@@ -33,3 +33,7 @@ class VisionAgent:
         
         description = await analyser_image(image, "Décris l'environnement actuel en détail.")
         return {"success": True, "description": description}
+
+    # Aliases pour le routage plus flexible
+    async def describe_hand(self, **kwargs): return await self.what_is_in_my_hand(**kwargs)
+    async def describe_room(self, **kwargs): return await self.see_and_describe(**kwargs)

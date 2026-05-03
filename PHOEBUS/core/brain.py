@@ -113,9 +113,19 @@ class PhoebusBrain:
             state["plan"] = []
             return state
 
+        tools_doc = """
+        OUTILS DISPONIBLES :
+        - 'system' : get_system_info, open_app, close_app, mac_set_volume, mac_dark_mode_toggle
+        - 'vision' : what_is_in_my_hand(source='pc'/'phone'), see_and_describe(source='pc'/'phone')
+        - 'note'   : add_note(content, title), search_notes(query), log_daily(content)
+        - 'file'   : list_dir(path), read_file(path), write_file(path, content)
+        - 'research': search_web(query), deep_research(topic)
+        """
+
         instruction = (
             f"Planifie l'exécution. Intent: {state['intent']}. Mémoire: {state['memory_relevant']}\n"
-            "Réponds UNIQUEMENT en JSON: {\"steps\": [{\"action\": \"...\", \"tool\": \"...\", \"params\": {}, \"risk_level\": \"low\"}]}"
+            f"{tools_doc}\n"
+            "Réponds UNIQUEMENT en JSON: {\"steps\": [{\"action\": \"NOM_METHODE\", \"tool\": \"NOM_OUTIL\", \"params\": {}, \"risk_level\": \"low\"}]}"
         )
         resp = await demander_ia(f"{instruction}\n\nRequête: {state['user_input']}")
         try:
