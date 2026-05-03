@@ -295,6 +295,8 @@ async def adb_command(data: dict):
         if result.returncode == 0:
             return f"ADB OK :\n```\n{output[:800]}\n```" if output else "Commande ADB exécutée."
         return f"ADB erreur : {(result.stderr or '').strip()[:500]}"
+    except subprocess.TimeoutExpired:
+        return "La télévision ne répond pas (Timeout). Vérifie si elle est allumée et connectée au réseau (Tailscale)."
     except FileNotFoundError:
         return "ADB n'est pas installé. Installe Android SDK Platform Tools."
     except Exception as e:
