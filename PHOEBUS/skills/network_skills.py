@@ -371,7 +371,7 @@ async def adb_tv_control(data: dict):
     
     # Mapping des actions en Keycodes ADB
     KEYCODES = {
-        "power": 26, "eteindre": 26, "allumer": 26,
+        "power": 26, "eteindre": 26, "eteins": 26, "éteins": 26, "allumer": 26, "allume": 26,
         "home": 3, "accueil": 3,
         "back": 4, "retour": 4,
         "up": 19, "haut": 19,
