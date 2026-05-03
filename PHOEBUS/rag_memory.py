@@ -45,6 +45,17 @@ def _backup_corrupt_db() -> Path | None:
     shutil.move(str(db_path), str(backup_path))
     return backup_path
 
+def get_local_embedding_function():
+    """Crée une fonction d'embedding locale performante (SentenceTransformer)."""
+    try:
+        from chromadb.utils import embedding_functions
+        return embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+    except Exception as e:
+        print(f"[RAG] Erreur init embedding local : {e}")
+    return None
+
 def get_google_embedding_function():
     """Crée une fonction d'embedding utilisant l'API Google Gemini."""
     try:
@@ -52,7 +63,7 @@ def get_google_embedding_function():
         if GEMINI_API_KEY and "votre_clé" not in GEMINI_API_KEY:
             return GoogleGenerativeAiEmbeddingFunction(api_key=GEMINI_API_KEY)
     except Exception as e:
-        print(f"[RAG] Impossible d'initialiser les Google Embeddings, repli sur local : {e}")
+        pass
     return None
 
 def init_chroma():
@@ -63,7 +74,10 @@ def init_chroma():
         if _chroma_client is None:
             _chroma_client = chromadb.PersistentClient(path=DB_PATH)
             
-            emb_fn = get_google_embedding_function()
+            # Priorité au local pour la rapidité et éviter les quotas 429
+            emb_fn = get_local_embedding_function()
+            if not emb_fn:
+                emb_fn = get_google_embedding_function()
             
             _collection = _chroma_client.get_or_create_collection(
                 name="PHOEBUS_long_term_memory",
