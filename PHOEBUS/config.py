@@ -261,6 +261,7 @@ AUDIT_FILE = BASE_DIR / PHOEBUS_AUDIT_FILE
 SYSTEM_NAME = platform.system()
 IS_WINDOWS = SYSTEM_NAME == "Windows"
 IS_MACOS = SYSTEM_NAME == "Darwin"
+ADB_PATH = os.getenv("PHOEBUS_ADB_PATH", "adb").strip()
 
 # ── Réseau ──────────────────────────────────────────────────────────────────
 DEFAULT_FRONTEND_PORT = 5173

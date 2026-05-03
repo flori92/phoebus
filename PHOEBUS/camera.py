@@ -216,6 +216,64 @@ async def capturer_telephone(facing: str = "environment") -> Optional[bytes]:
         return None
 
 
+# ── Capture d'écran TV (via ADB) ──────────────────────────────────────────
+
+async def capturer_tv_ecran() -> Optional[bytes]:
+    """Capture l'écran de la TV via ADB. Renvoie bytes JPEG ou None."""
+    import subprocess
+    from PHOEBUS.config import ADB_PATH
+    from PHOEBUS.skills.network_skills import _load_devices
+    
+    # Trouver l'IP de la TV
+    device_ip = ""
+    devices = _load_devices()
+    for dinfo in devices.values():
+        if dinfo.get("type") == "android_tv":
+            device_ip = dinfo.get("ip", "")
+            break
+            
+    if not device_ip:
+        return None
+
+    target = f"{device_ip}:5555"
+    try:
+        # On s'assure d'être connecté
+        await asyncio.to_thread(subprocess.run, [ADB_PATH, "connect", target], capture_output=True, timeout=3)
+        
+        # Capture vers un fichier temporaire sur le Mac (plus simple que le pipe binaire ADB)
+        temp_file = "PHOEBUS_tv_cap.png"
+        
+        # screencap vers stdout est souvent corrompu sur certains Android (LF vs CRLF)
+        # donc on fait un screencap -> file -> pull -> delete
+        cmd_cap = [ADB_PATH, "-s", target, "shell", "screencap", "-p", "/sdcard/phoebus_cap.png"]
+        await asyncio.to_thread(subprocess.run, cmd_cap, capture_output=True, timeout=5)
+        
+        cmd_pull = [ADB_PATH, "-s", target, "pull", "/sdcard/phoebus_cap.png", temp_file]
+        await asyncio.to_thread(subprocess.run, cmd_pull, capture_output=True, timeout=5)
+        
+        if not os.path.exists(temp_file):
+            return None
+            
+        with open(temp_file, "rb") as f:
+            img_data = f.read()
+            
+        os.remove(temp_file)
+        
+        # Conversion PNG -> JPG (plus léger pour le LLM)
+        try:
+            from PIL import Image
+            img = Image.open(io.BytesIO(img_data))
+            out = io.BytesIO()
+            img.convert("RGB").save(out, format="JPEG", quality=85)
+            return out.getvalue()
+        except Exception:
+            return img_data # Retourne le PNG si PIL échoue
+            
+    except Exception as e:
+        print(f"[CAM] Erreur capture TV ADB : {e}")
+        return None
+
+
 # ── Analyse de l'image via LLM Vision ────────────────────────────────────
 
 async def analyser_image(image_bytes: bytes, question: str = "Décris ce que tu vois en une phrase.",
