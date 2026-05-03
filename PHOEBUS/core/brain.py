@@ -40,6 +40,8 @@ class PhoebusBrain:
         - Contrôle total des machines (Mac et PC) via commandes système
         - Gestion du réseau WiFi et des appareils connectés
         - Prise de notes et PKM (Obsidian, SiYuan)
+        - Vision par ordinateur (caméra, détection d'objets)
+        - Apprentissage autonome et auto-amélioration
         - Exécution de code Python, Shell, AppleScript, PowerShell
         - Recherche web avancée et analyse de données
         - Mémoire à long terme de toutes les interactions
@@ -62,12 +64,14 @@ class PhoebusBrain:
         workflow.add_node("plan_action", self.plan_action)
         workflow.add_node("execute_action", self.execute_action)
         workflow.add_node("generate_response", self.generate_response)
+        workflow.add_node("learn", self.learn)
         
         workflow.add_edge("analyze_intent", "retrieve_memory")
         workflow.add_edge("retrieve_memory", "plan_action")
         workflow.add_edge("plan_action", "execute_action")
         workflow.add_edge("execute_action", "generate_response")
-        workflow.add_edge("generate_response", END)
+        workflow.add_edge("generate_response", "learn")
+        workflow.add_edge("learn", END)
         
         workflow.set_entry_point("analyze_intent")
         
@@ -77,7 +81,7 @@ class PhoebusBrain:
         """Comprend exactement ce que l'utilisateur veut"""
         instruction = (
             "Analyse l'intention de l'utilisateur. "
-            "Catégories: SYSTEM_CONTROL, NETWORK, NOTES, CODE, RESEARCH, CONVERSATION, FILE_MANAGEMENT, AUTOMATION. "
+            "Catégories: SYSTEM_CONTROL, NETWORK, NOTES, VISION, CODE, RESEARCH, CONVERSATION, FILE_MANAGEMENT, AUTOMATION. "
             "Réponds UNIQUEMENT en JSON: {\"intent\": \"...\", \"sub_intent\": \"...\", \"entities\": [], \"urgency\": \"low/high\"}"
         )
         # On utilise le cerveau IA existant
@@ -146,6 +150,13 @@ class PhoebusBrain:
         context = f"Intent: {state['intent']}\nResults: {state['results']}\nMemory: {state['memory_relevant']}"
         resp = await demander_ia(f"Génère une réponse finale pour Floriace.\nContext: {context}\nRequête: {state['user_input']}")
         state["final_response"] = resp
+        return state
+
+    async def learn(self, state: PhoebusState):
+        """Phase d'apprentissage autonome post-interaction"""
+        from PHOEBUS.agents.learning_agent import LearningAgent
+        learner = LearningAgent()
+        await learner.reflect_and_learn(state["user_input"], state["final_response"])
         return state
     
     async def think(self, user_input: str) -> str:

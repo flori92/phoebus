@@ -51,6 +51,13 @@ class AgentOrchestrator:
             if method:
                 return await method(**params)
 
+        if "vision" in tool or "camera" in tool or "regarde" in tool:
+            from PHOEBUS.agents.vision_agent import VisionAgent
+            agent = VisionAgent()
+            method = getattr(agent, action, None)
+            if method:
+                return await method(**params)
+
         # Fallback sur les anciens skills PHOEBUS si l'agent n'est pas encore implémenté
         try:
             from PHOEBUS.actions import executer_une_action
