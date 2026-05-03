@@ -390,22 +390,44 @@ async def adb_youtube_tv(data: dict):
 async def adb_tv_control(data: dict):
     action = data.get("action_tv", data.get("action", "")).lower().strip()
     
-    # Mapping des actions en Keycodes ADB
+    # Mapping des actions en Keycodes ADB (étendu pour contrôle total)
     KEYCODES = {
+        # Alimentation
         "power": 26, "eteindre": 223, "eteins": 223, "éteins": 223, "allumer": 224, "allume": 224,
+        
+        # Navigation
         "home": 3, "accueil": 3,
         "back": 4, "retour": 4,
         "up": 19, "haut": 19,
         "down": 20, "bas": 20,
         "left": 21, "gauche": 21,
         "right": 22, "droite": 22,
-        "ok": 66, "enter": 66, "valider": 66,
+        "ok": 66, "enter": 66, "valider": 66, "entrer": 66,
+        
+        # Volume
         "vol+": 24, "plus fort": 24, "monter": 24, "monte": 24, "augmente": 24, "plus": 24,
         "vol-": 25, "moins fort": 25, "baisser": 25, "baisse": 25, "diminue": 25, "moins": 25,
         "mute": 164, "muet": 164, "couper": 164,
-        "play": 85, "pause": 85, "lecture": 85,
-        "next": 87, "suivant": 87,
-        "prev": 88, "precedent": 88, "précédent": 88
+        
+        # Médias
+        "play": 85, "pause": 85, "lecture": 85, "stop": 86,
+        "next": 87, "suivant": 87, "suivante": 87,
+        "prev": 88, "precedent": 88, "précédent": 88, "precedente": 88,
+        "avance": 90, "fast forward": 90,
+        "recule": 89, "rewind": 89,
+        
+        # Chaînes
+        "ch+": 166, "chaine suivante": 166, "chaîne suivante": 166,
+        "ch-": 167, "chaine precedente": 167, "chaîne précédente": 167,
+        
+        # Système & Entrées
+        "menu": 82, "reglage": 176, "réglage": 176, "parametres": 176, "paramètres": 176, "settings": 176,
+        "source": 178, "entree": 178, "entrée": 178, "input": 178,
+        "hdmi 1": 243, "hdmi1": 243,
+        "hdmi 2": 244, "hdmi2": 244,
+        "hdmi 3": 245, "hdmi3": 245,
+        "hdmi 4": 246, "hdmi4": 246,
+        "tv": 170
     }
     
     # Recherche floue

@@ -599,9 +599,19 @@ def _detect_tv(t: str) -> Optional[IntentResult]:
                 json.dumps({"action": "adb_youtube_tv", "query": query}, ensure_ascii=False),
             )
             
-        # 2. Télécommande basique
-        action_words = ("baisse", "monte", "plus", "moins", "pause", "play", "lecture", "augmente", "diminue", "volume",
-                        "accueil", "home", "eteins", "éteins", "allume", "retour", "gauche", "droite", "haut", "bas", "ok", "valider")
+        # 2. Entrées spécifiques (HDMI, etc.)
+        m_hdmi = re.search(r"(?:mets|passe sur|allume)\s+(hdmi\s*\d|source|entree|entrée)", t)
+        if m_hdmi:
+            target = m_hdmi.group(1).strip()
+            return IntentResult(
+                "adb_tv_control",
+                json.dumps({"action": "adb_tv_control", "action_tv": target}, ensure_ascii=False),
+            )
+
+        # 3. Télécommande basique (étendue)
+        action_words = ("baisse", "monte", "plus", "moins", "pause", "play", "lecture", "stop", "augmente", "diminue", "volume",
+                        "accueil", "home", "eteins", "éteins", "allume", "retour", "gauche", "droite", "haut", "bas", "ok", "valider", "entrer",
+                        "suivant", "suivante", "precedent", "précédent", "precedente", "chaine", "chaîne", "menu", "reglage", "réglage", "parametres", "paramètres", "settings")
         for aw in action_words:
             if aw in t:
                 return IntentResult(
