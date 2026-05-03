@@ -39,6 +39,7 @@ class PhoebusBrain:
         Tes capacités :
         - Contrôle total des machines (Mac et PC) via commandes système
         - Gestion du réseau WiFi et des appareils connectés
+        - Prise de notes et PKM (Obsidian, SiYuan)
         - Exécution de code Python, Shell, AppleScript, PowerShell
         - Recherche web avancée et analyse de données
         - Mémoire à long terme de toutes les interactions
@@ -76,7 +77,7 @@ class PhoebusBrain:
         """Comprend exactement ce que l'utilisateur veut"""
         instruction = (
             "Analyse l'intention de l'utilisateur. "
-            "Catégories: SYSTEM_CONTROL, NETWORK, CODE, RESEARCH, CONVERSATION, FILE_MANAGEMENT, AUTOMATION. "
+            "Catégories: SYSTEM_CONTROL, NETWORK, NOTES, CODE, RESEARCH, CONVERSATION, FILE_MANAGEMENT, AUTOMATION. "
             "Réponds UNIQUEMENT en JSON: {\"intent\": \"...\", \"sub_intent\": \"...\", \"entities\": [], \"urgency\": \"low/high\"}"
         )
         # On utilise le cerveau IA existant

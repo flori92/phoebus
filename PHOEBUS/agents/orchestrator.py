@@ -29,6 +29,27 @@ class AgentOrchestrator:
             method = getattr(agent, action, None)
             if method:
                 return method(**params)
+        
+        if "note" in tool or "obsidian" in tool or "siyuan" in tool:
+            from PHOEBUS.agents.notetaking_agent import NoteTakingAgent
+            agent = NoteTakingAgent()
+            method = getattr(agent, action, None)
+            if method:
+                return await method(**params)
+
+        if "file" in tool:
+            from PHOEBUS.agents.file_agent import FileAgent
+            agent = FileAgent()
+            method = getattr(agent, action, None)
+            if method:
+                return method(**params)
+
+        if "research" in tool or "search" in tool:
+            from PHOEBUS.agents.research_agent import ResearchAgent
+            agent = ResearchAgent()
+            method = getattr(agent, action, None)
+            if method:
+                return await method(**params)
 
         # Fallback sur les anciens skills PHOEBUS si l'agent n'est pas encore implémenté
         try:
