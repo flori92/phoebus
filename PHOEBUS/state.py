@@ -49,6 +49,12 @@ is_listening = False
 is_speaking = False
 is_thinking = False
 is_proactive = False
+
+async def set_thinking(status: bool):
+    """Met à jour l'état de réflexion global et informe les interfaces."""
+    global is_thinking
+    is_thinking = status
+    await send_web_state("thinking" if status else "idle")
 speak_volume = 0.0
 
 PHOEBUS_actif = False

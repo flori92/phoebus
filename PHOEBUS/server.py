@@ -696,21 +696,21 @@ async def run_telegram_bot(main_loop):
         except Exception:
             pass
 
-        # On exécute la commande via le cœur PHOEBUS sans bloquer la boucle Telegram.
-        future = asyncio.run_coroutine_threadsafe(
-            executer_commande_generique(user_text, source="telegram", metadata=metadata),
-            main_loop
-        )
+        # On exécute la commande directement (non-bloquant car handle_message est asynchrone)
         try:
-            print(f"[TELEGRAM] Envoi au cerveau (main_loop)...")
-            reponse_texte = await asyncio.wait_for(asyncio.wrap_future(future), timeout=TELEGRAM_REPLY_TIMEOUT)
+            print(f"[TELEGRAM] Envoi direct au cerveau...")
+            reponse_texte = await asyncio.wait_for(
+                executer_commande_generique(user_text, source="telegram", metadata=metadata),
+                timeout=TELEGRAM_REPLY_TIMEOUT
+            )
             print(f"[TELEGRAM] Réponse reçue du cerveau: '{reponse_texte}'")
             await update.message.reply_text(reponse_texte or "Action exécutée, Monsieur.")
             print(f"[TELEGRAM] Réponse envoyée à Floriace.")
         except asyncio.TimeoutError:
             print(f"[TELEGRAM] Timeout réponse après {TELEGRAM_REPLY_TIMEOUT}s pour chat_id={chat_id}")
-            future.cancel()
-            await update.message.reply_text("Je traite encore la demande. Réessayez avec une instruction plus courte si besoin.")
+            # Le message de timeout du router sera déjà retourné si le timeout router (35s) est inférieur au timeout telegram (75s)
+            # Mais ici on parle du timeout extrême du serveur lui-même
+            await update.message.reply_text("Ma connexion au cerveau est perturbée. Je tente de rétablir le lien.")
         except Exception as e:
             print(f"[TELEGRAM] Erreur handler message : {type(e).__name__}: {e}")
             import traceback

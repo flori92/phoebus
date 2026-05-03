@@ -120,8 +120,9 @@ class PhoebusBrain:
         except:
             state["intent"] = "CONVERSATION"
         
-        # Optimization: lancer la recherche mémoire en tâche de fond immédiatement
-        state["_memory_task"] = asyncio.create_task(self._async_retrieve_memory(state["user_input"]))
+        # Optimization: ne lancer la mémoire QUE si ce n'est pas une simple conversation
+        if state["intent"] != "CONVERSATION":
+            state["_memory_task"] = asyncio.create_task(self._async_retrieve_memory(state["user_input"]))
         return state
 
     async def _async_retrieve_memory(self, query: str):

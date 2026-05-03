@@ -179,6 +179,8 @@ async def executer_commande(texte: str, source: str = "voix", metadata: dict = N
         if not text_only:
             await speech.say(s)
 
+    # On marque le début de la réflexion
+    await state.set_thinking(True)
     try:
         rep_finale_ia = await asyncio.wait_for(
             route_request(query_enrichie, source=source, metadata=metadata, on_sentence=_on_sentence),
@@ -233,11 +235,14 @@ async def executer_commande(texte: str, source: str = "voix", metadata: dict = N
     except asyncio.TimeoutError:
         result.ok = False
         result.status = "timeout"
-        msg = "Je réfléchis encore, Floriace. Réessayez avec une instruction plus courte si besoin." if text_only else "Je réfléchis encore, Floriace. La réponse vocale arrive dès que le cerveau se débloque."
+        # Message unifié et plus pro
+        msg = "Je poursuis ma réflexion, Floriace. La tâche est complexe, mais je reste sur le coup."
         if not text_only:
             await speech.say(msg)
         result.text = msg
         record_trace_event(trace_id, "command.timeout", timeout_s=AI_COMMAND_TIMEOUT)
+        state.ajouter_historique("user", texte)
+        state.ajouter_historique("model", msg)
         return result
     except Exception as e:
         result.ok = False
@@ -250,6 +255,8 @@ async def executer_commande(texte: str, source: str = "voix", metadata: dict = N
         record_trace_event(trace_id, "command.error", error=type(e).__name__)
         return result
     finally:
+        # Fin de la réflexion (peu importe le résultat)
+        await state.set_thinking(False)
         result.duration_ms = (time.perf_counter() - request_started) * 1000
         record_request(
             source=source,
@@ -311,10 +318,20 @@ async def route_request(
         state.ajouter_historique("model", reply)
         return reply
 
+    # --- OPTIMISATION RADICALE : Court-circuit pour la conversation ---
+    if decision.route == "chat":
+        from PHOEBUS.ai import demander_ia
+        print(f"[ROUTER] Route conversationnelle directe (bypass brain)")
+        return await demander_ia(texte)
+
     # Intelligence Cloud / Hybride / Modular v2
     from PHOEBUS.core.brain import PhoebusBrain
-    brain = PhoebusBrain()
-    rep = await brain.think(texte)
+    
+    # On utilise une instance persistante pour éviter de recompiler le graphe à chaque fois
+    if not hasattr(route_request, "_brain"):
+        route_request._brain = PhoebusBrain()
+    
+    rep = await route_request._brain.think(texte)
 
     fallback = resolve_after_ai_failure(texte, rep or "")
     if fallback is not None:
