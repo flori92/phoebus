@@ -18,6 +18,7 @@ import time
 from datetime import datetime
 
 import PHOEBUS.state as state
+from PHOEBUS.awareness import announce_due as _awareness_announce
 
 
 _RULES = []
@@ -31,6 +32,19 @@ def rule(fn):
     """Décorateur pour enregistrer une coroutine de règle proactive."""
     _RULES.append(fn)
     return fn
+
+
+# ── Règle : Awareness (Conscience contextuelle) ─────────────────────────────
+
+@rule
+async def _awareness_check(parler):
+    """Vérifie périodiquement les observations (calendrier, météo, machine)."""
+    if state.is_speaking or state.is_thinking:
+        return
+    try:
+        await _awareness_announce(parler)
+    except Exception as e:
+        print(f"[PROACTIVE] Awareness erreur : {e}")
 
 
 # ── Règle 1 : Silence ping ────────────────────────────────────────────────

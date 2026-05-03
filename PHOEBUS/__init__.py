@@ -47,3 +47,12 @@ def discover_cameras(*args, **kwargs):
 def get_camera_manager(*args, **kwargs):
     from PHOEBUS.network_cameras import get_camera_manager as _get_camera_manager
     return _get_camera_manager(*args, **kwargs)
+
+
+# ── Auto-découverte des Plugins (Skills Externes) ───────────────────────────
+try:
+    from PHOEBUS.plugins import discover_and_load
+    discover_and_load()
+except Exception as e:
+    print(f"[BOOT] Plugins discovery erreur : {e}")
+
