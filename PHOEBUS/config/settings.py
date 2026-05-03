@@ -23,7 +23,7 @@ except ImportError:
 
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Chargement robuste du .env
 ENV_PATH = BASE_DIR / ".env"

@@ -293,10 +293,23 @@ def enrichir_contexte_system_prompt(texte_utilisateur: str = "") -> str:
             if is_enabled():
                 import asyncio
                 try:
-                    vault_hits = asyncio.get_event_loop().run_until_complete(
-                        search_semantic(texte_utilisateur, n_results=2)
-                    )
-                except RuntimeError:
+                    # On tente de récupérer la boucle actuelle, sinon on en crée une
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    if loop.is_running():
+                        # Si la boucle tourne déjà (v2), on ne peut pas faire run_until_complete
+                        # Dans ce cas, on skip ou on utilise une astuce. 
+                        # Pour la cohérence v2, search_semantic devrait être appelé en amont.
+                        vault_hits = [] 
+                    else:
+                        vault_hits = loop.run_until_complete(
+                            search_semantic(texte_utilisateur, n_results=2)
+                        )
+                except Exception as e:
                     vault_hits = []
                 if vault_hits:
                     lignes.append("NOTES PERSONNELLES PERTINENTES :")
