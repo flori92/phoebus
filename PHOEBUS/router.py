@@ -417,7 +417,7 @@ async def traiter_reponse_ia(
                         print(f"[ROUTER] Action {action} échouée. Tentative d'auto-guérison...")
                         # On ré-analyse l'intention initiale pour trouver un fallback
                         # Note: on utilise la reponse d'erreur comme trigger
-                        fallback = resolve_after_ai_failure(action, msg)
+                        fallback = resolve_after_ai_failure(texte, msg)
                         if fallback and fallback.payload.get("action") != action:
                             print(f"[ROUTER] Auto-guérison : repli sur {fallback.name}")
                             await _emit("Je rencontre une difficulté, je tente une autre approche.")

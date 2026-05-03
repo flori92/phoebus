@@ -41,10 +41,10 @@ async def skill_recherche_web(data: dict):
     describe=lambda d: f"Chercher une réponse pour : {d.get('question')}"
 )
 async def skill_knowledge_query(data: dict):
-    from PHOEBUS.knowledge import knowledge_query
+    from PHOEBUS.knowledge import query
     q = data.get("question")
     if not q: return "Je n'ai pas compris la question."
-    return await knowledge_query(q)
+    return await query(q)
 
 @skill(
     "youtube",
