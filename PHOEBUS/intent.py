@@ -76,6 +76,7 @@ _RE_SYS_STATS = re.compile(
 _RE_SYS_VOLUME = re.compile(
     rf"^{_WAKE_PREFIX}(?:mets|règle|regle)\s+le\s+volume\s+syst[eè]me\s+(?:à|a|sur)?\s*(?P<percent>\d+)"
 )
+_RE_PING_LOCATION = re.compile(rf"^{_WAKE_PREFIX}ping_location$")
 _RE_IP = re.compile(r"\b(?P<ip>(?:\d{1,3}\.){3}\d{1,3})\b")
 _RE_MAC = re.compile(r"\b(?P<mac>[0-9a-f]{2}(?::[0-9a-f]{2}){5})\b", re.IGNORECASE)
 _RE_EMAIL_ADDRESS = re.compile(r"(?P<email>[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,})", re.IGNORECASE)
@@ -541,6 +542,13 @@ def _detect_phone(t: str) -> Optional[IntentResult]:
                     "phone_open_app",
                     json.dumps({"action": "phone_open_app", "app": app_name}, ensure_ascii=False),
                 )
+
+    if t == "ping_location":
+        return IntentResult(
+            "phone_ping_location",
+            json.dumps({"action": "phone_ping_location"}, ensure_ascii=False),
+        )
+
     return None
 
 

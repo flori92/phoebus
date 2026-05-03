@@ -389,3 +389,14 @@ async def phone_share_text(data: dict):
     if err:
         return err
     return "Feuille de partage ouverte sur ton téléphone."
+
+@skill(
+    "phone_ping_location",
+    risk="low",
+    help_text="Accusé de réception pour le ping de position automatique (iOS)",
+    describe=lambda d: "Accusé de réception position iOS",
+)
+async def phone_ping_location(data: dict):
+    """Accusé de réception silencieux pour les raccourcis iOS."""
+    # Le travail de mise à jour a déjà été fait dans server.py via SecurityAgent
+    return "Position enregistrée, Monsieur."
