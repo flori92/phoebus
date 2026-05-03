@@ -371,7 +371,7 @@ async def adb_tv_control(data: dict):
     
     # Mapping des actions en Keycodes ADB
     KEYCODES = {
-        "power": 26, "eteindre": 26, "eteins": 26, "éteins": 26, "allumer": 26, "allume": 26,
+        "power": 26, "eteindre": 223, "eteins": 223, "éteins": 223, "allumer": 224, "allume": 224,
         "home": 3, "accueil": 3,
         "back": 4, "retour": 4,
         "up": 19, "haut": 19,
@@ -401,7 +401,15 @@ async def adb_tv_control(data: dict):
         else:
             return f"Action de télécommande inconnue : '{action}'."
 
-    return await adb_command({"command": f"input keyevent {keycode}"})
+    # Tenter de trouver l'IP de la TV automatiquement
+    device_ip = ""
+    devices = _load_devices()
+    for dinfo in devices.values():
+        if dinfo.get("type") == "android_tv":
+            device_ip = dinfo.get("ip", "")
+            break
+
+    return await adb_command({"command": f"input keyevent {keycode}", "device_ip": device_ip})
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SKILL 5 — Pushcut / iOS Shortcuts Bridge
