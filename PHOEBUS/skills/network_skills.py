@@ -375,7 +375,14 @@ async def adb_youtube_tv(data: dict):
         adb_cmd = f"am start -a android.intent.action.VIEW -d '{video_url}' com.google.android.youtube.tv"
         
         await adb_command({"command": adb_cmd})
-        return f"Lecture de '{query}' lancée sur YouTube TV !"
+        
+        # --- Profil Floriace F Automation ---
+        # YouTube TV demande souvent "Qui regarde ?" au lancement. 
+        # On attend 3 secondes et on envoie "OK" pour valider le profil par défaut (Floriace F).
+        await asyncio.sleep(3.5)
+        await adb_command({"command": "input keyevent 66"}) # 66 = OK/ENTER
+        
+        return f"Lecture de '{query}' lancée sur ton profil Floriace F !"
         
     except Exception as e:
         return f"Erreur lors de la recherche YouTube : {e}"
