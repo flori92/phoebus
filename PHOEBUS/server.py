@@ -656,6 +656,7 @@ async def run_telegram_bot(main_loop):
                 return
 
         if not user_text: return
+        print(f"[TELEGRAM] Message reçu de {chat_id} : '{user_text}'")
 
         try:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -680,7 +681,7 @@ async def run_telegram_bot(main_loop):
 
     try:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-        app.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), handle_message))
+        app.add_handler(MessageHandler(filters.ALL, handle_message))
         conflict_event = asyncio.Event()
         conflict_reported = False
 
@@ -696,7 +697,7 @@ async def run_telegram_bot(main_loop):
 
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(error_callback=on_polling_error, drop_pending_updates=True)
+        await app.updater.start_polling(error_callback=on_polling_error, drop_pending_updates=False)
         print("[TELEGRAM] Bot opérationnel.")
         while not conflict_event.is_set():
             await asyncio.sleep(1)
