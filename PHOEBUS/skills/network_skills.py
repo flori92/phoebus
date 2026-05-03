@@ -367,7 +367,7 @@ async def adb_youtube_tv(data: dict):
     describe=lambda d: f"Télécommande TV : {d.get('action', '?')}",
 )
 async def adb_tv_control(data: dict):
-    action = data.get("action", "").lower().strip()
+    action = data.get("action_tv", data.get("action", "")).lower().strip()
     
     # Mapping des actions en Keycodes ADB
     KEYCODES = {

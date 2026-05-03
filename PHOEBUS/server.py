@@ -630,6 +630,31 @@ async def run_telegram_bot(main_loop):
             return
 
         user_text = update.message.text
+
+        if not user_text and update.message.voice:
+            try:
+                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
+                voice_file = await context.bot.get_file(update.message.voice.file_id)
+                ogg_bytes = await voice_file.download_as_bytearray()
+                
+                import soundfile as sf
+                import speech_recognition as sr
+                import io
+                from PHOEBUS.stt_backends import get_backend
+                
+                data, samplerate = sf.read(io.BytesIO(ogg_bytes), dtype='int16')
+                if len(data.shape) > 1:
+                    data = data[:, 0]
+                audio = sr.AudioData(data.tobytes(), samplerate, 2)
+                
+                backend_name, recognize_fn = get_backend()
+                user_text = await asyncio.to_thread(recognize_fn, audio)
+                print(f"[TELEGRAM] Audio transcrit : '{user_text}' via {backend_name}")
+            except Exception as e:
+                print(f"[TELEGRAM] Erreur décodage audio: {e}")
+                await update.message.reply_text("Désolé, je n'ai pas réussi à comprendre l'audio.")
+                return
+
         if not user_text: return
 
         try:
@@ -655,7 +680,7 @@ async def run_telegram_bot(main_loop):
 
     try:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-        app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+        app.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), handle_message))
         conflict_event = asyncio.Event()
         conflict_reported = False
 
