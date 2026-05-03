@@ -629,6 +629,7 @@ async def run_telegram_bot(main_loop):
     print("[TELEGRAM] Démarrage du bot...")
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print(f"--- [DEBUG TELEGRAM] Message entrant ---")
         chat_id = str(update.effective_chat.id)
         # Sécurité : on ne répond qu'au propriétaire
         if not TELEGRAM_CHAT_ID:
@@ -637,6 +638,7 @@ async def run_telegram_bot(main_loop):
             print(f"[TELEGRAM] Message ignoré de chat_id inconnu : {chat_id}")
             return
 
+        metadata = {}
         user_text = update.message.text
 
         if not user_text and update.message.photo:
@@ -696,18 +698,23 @@ async def run_telegram_bot(main_loop):
 
         # On exécute la commande via le cœur PHOEBUS sans bloquer la boucle Telegram.
         future = asyncio.run_coroutine_threadsafe(
-            executer_commande_generique(user_text, source="telegram"),
+            executer_commande_generique(user_text, source="telegram", metadata=metadata),
             main_loop
         )
         try:
+            print(f"[TELEGRAM] Envoi au cerveau (main_loop)...")
             reponse_texte = await asyncio.wait_for(asyncio.wrap_future(future), timeout=TELEGRAM_REPLY_TIMEOUT)
+            print(f"[TELEGRAM] Réponse reçue du cerveau: '{reponse_texte}'")
             await update.message.reply_text(reponse_texte or "Action exécutée, Monsieur.")
+            print(f"[TELEGRAM] Réponse envoyée à Floriace.")
         except asyncio.TimeoutError:
             print(f"[TELEGRAM] Timeout réponse après {TELEGRAM_REPLY_TIMEOUT}s pour chat_id={chat_id}")
             future.cancel()
             await update.message.reply_text("Je traite encore la demande. Réessayez avec une instruction plus courte si besoin.")
         except Exception as e:
             print(f"[TELEGRAM] Erreur handler message : {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text("Désolé, une erreur est survenue côté Telegram. Phoebus reste opérationnel.")
 
     try:

@@ -314,7 +314,7 @@ async def route_request(
     # Intelligence Cloud / Hybride / Modular v2
     from PHOEBUS.core.brain import PhoebusBrain
     brain = PhoebusBrain()
-    rep = await brain.think(query_enrichie)
+    rep = await brain.think(texte)
 
     fallback = resolve_after_ai_failure(texte, rep or "")
     if fallback is not None:

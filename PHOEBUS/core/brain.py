@@ -66,28 +66,52 @@ class PhoebusBrain:
         workflow.add_node("generate_response", self.generate_response)
         workflow.add_node("learn", self.learn)
         
-        workflow.add_edge("analyze_intent", "retrieve_memory")
+        # --- NOUVELLE ARCHITECTURE PARALLÈLE ---
+        workflow.set_entry_point("analyze_intent")
+        
+        def should_act(state: PhoebusState):
+            if state.get("intent") == "CONVERSATION":
+                return "generate_response"
+            return "plan_action"
+
+        workflow.add_conditional_edges(
+            "analyze_intent",
+            should_act,
+            {
+                "generate_response": "generate_response",
+                "plan_action": "retrieve_memory"
+            }
+        )
+        
         workflow.add_edge("retrieve_memory", "plan_action")
         workflow.add_edge("plan_action", "execute_action")
         workflow.add_edge("execute_action", "generate_response")
         workflow.add_edge("generate_response", "learn")
         workflow.add_edge("learn", END)
         
-        workflow.set_entry_point("analyze_intent")
-        
         return workflow.compile()
     
     async def analyze_intent(self, state: PhoebusState):
-        """Comprend exactement ce que l'utilisateur veut"""
+        """Comprend exactement ce que l'utilisateur veut (Mode Turbo)"""
         instruction = (
             "Analyse l'intention de l'utilisateur. "
-            "Catégories: SYSTEM_CONTROL, NETWORK, NOTES, VISION, CODE, RESEARCH, CONVERSATION, FILE_MANAGEMENT, AUTOMATION. "
-            "Réponds UNIQUEMENT en JSON: {\"intent\": \"...\", \"sub_intent\": \"...\", \"entities\": [], \"urgency\": \"low/high\"}"
+            "Catégories: SYSTEM_CONTROL, NETWORK, NOTES, VISION, CODE, RESEARCH, CONVERSATION, FILE_MANAGEMENT, AUTOMATION, SECURITY. "
+            "Réponds UNIQUEMENT en JSON: {\"intent\": \"...\", \"sub_intent\": \"...\"}"
         )
-        # On utilise le cerveau IA existant
-        resp = await demander_ia(f"{instruction}\n\nRequête: {state['user_input']}")
+        
+        # --- PRIORITÉ GROQ POUR LA VITESSE ---
+        from PHOEBUS.ai import demander_groq, demander_ia
         try:
-            # On nettoie le JSON si l'IA a ajouté du texte
+            # On tente Groq en premier (ultra-rapide)
+            resp = await asyncio.wait_for(demander_groq(f"{instruction}\n\nRequête: {state['user_input']}"), timeout=2.0)
+        except:
+            # Fallback sur le routeur IA standard
+            try:
+                resp = await asyncio.wait_for(demander_ia(f"{instruction}\n\nRequête: {state['user_input']}"), timeout=3.0)
+            except:
+                resp = "{}"
+
+        try:
             if "{" in resp:
                 raw_json = resp[resp.find("{"):resp.rfind("}")+1]
                 intent_data = json.loads(raw_json)
@@ -95,16 +119,26 @@ class PhoebusBrain:
                 state["sub_intent"] = intent_data.get("sub_intent", "")
         except:
             state["intent"] = "CONVERSATION"
+        
+        # Optimization: lancer la recherche mémoire en tâche de fond immédiatement
+        state["_memory_task"] = asyncio.create_task(self._async_retrieve_memory(state["user_input"]))
         return state
-    
-    async def retrieve_memory(self, state: PhoebusState):
-        """Récupère les souvenirs pertinents (RAG)"""
+
+    async def _async_retrieve_memory(self, query: str):
         from PHOEBUS.core.memory.long_term import LongTermMemory
         try:
             ltm = LongTermMemory()
-            state["memory_relevant"] = ltm.search(state["user_input"], top_k=3)
+            return ltm.search(query, top_k=3)
         except:
-            state["memory_relevant"] = []
+            return []
+
+    async def retrieve_memory(self, state: PhoebusState):
+        """Récupère les souvenirs (attend la tâche de fond)"""
+        task = state.get("_memory_task")
+        if task:
+            state["memory_relevant"] = await task
+        else:
+            state["memory_relevant"] = await self._async_retrieve_memory(state["user_input"])
         return state
     
     async def plan_action(self, state: PhoebusState):
@@ -157,7 +191,18 @@ class PhoebusBrain:
         return state
 
     async def generate_response(self, state: PhoebusState):
-        """Génère la réponse finale basée sur les résultats"""
+        """Génère la réponse finale basée sur les résultats (Mode Turbo)"""
+        # Si c'est une simple conversation, on demande une réponse directe sans contexte lourd
+        from PHOEBUS.ai import demander_groq, demander_ia
+        
+        if state["intent"] == "CONVERSATION":
+            try:
+                resp = await asyncio.wait_for(demander_groq(state["user_input"]), timeout=4.0)
+            except:
+                resp = await demander_ia(state["user_input"])
+            state["final_response"] = resp
+            return state
+
         context = f"Intent: {state['intent']}\nResults: {state['results']}\nMemory: {state['memory_relevant']}"
         resp = await demander_ia(f"Génère une réponse finale pour Floriace.\nContext: {context}\nRequête: {state['user_input']}")
         state["final_response"] = resp

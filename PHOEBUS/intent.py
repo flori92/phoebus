@@ -593,6 +593,30 @@ def _detect_knowledge(t: str) -> Optional[IntentResult]:
     return None
 
 
+def _detect_conversation(t: str) -> Optional[IntentResult]:
+    """Gère les interactions sociales basiques sans IA."""
+    # On normalise encore plus pour la comparaison
+    t_simple = t.replace("-", " ").replace("'", " ").strip()
+    
+    greetings = {
+        "bonjour": "Bonjour Monsieur. Comment puis-je vous aider aujourd'hui ?",
+        "salut": "Bonjour Floriace. Je suis à votre écoute.",
+        "ça va": "Je fonctionne parfaitement, merci Monsieur. Et vous ?",
+        "ca va": "Je fonctionne parfaitement, merci Monsieur. Et vous ?",
+        "comment vas tu": "Mon système est optimal. Prêt à vous assister.",
+        "comment vas tu": "Mon système est optimal. Prêt à vous assister.",
+        "comment allez vous": "Je suis opérationnel à 100%, Monsieur.",
+        "qui es tu": "Je suis PHOEBUS v2.0, votre intelligence artificielle personnelle conçue par Floriace FAVI.",
+        "merci": "À votre service, Monsieur.",
+        "au revoir": "Au revoir Monsieur. Je reste en veille.",
+        "bonne nuit": "Bonne nuit Monsieur. Je veille sur vos systèmes.",
+    }
+    for k, v in greetings.items():
+        if t_simple == k or t_simple.startswith(k + " "):
+            return IntentResult("conversation_simple", v)
+    return None
+
+
 def _detect_tv(t: str) -> Optional[IntentResult]:
     # ── Contrôle de la TV (ADB) ──
     tv_words = ("la tv", "la télé", "la tele", "la television", "la télévision")
@@ -689,6 +713,7 @@ def detect(texte: str) -> Optional[IntentResult]:
         _detect_tv,
         _detect_spotify,
         _detect_knowledge,
+        _detect_conversation,
     ):
         result = detector(t)
         if result:

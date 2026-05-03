@@ -134,14 +134,14 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         souvenirs_rag = rechercher_souvenirs(texte_utilisateur, n_results=4)
 
     if minimal:
-        base = (
+        return (
             f"Tu es PHOEBUS, une IA d'élite. Nous sommes le {horodatage}.\n"
             "Tu es l'assistant de Floriace. RÉPONDS DE MANIÈRE ULTRA-CONCISE (1 phrase).\n"
             "Si c'est une commande (domotique, web, etc.), utilise UNIQUEMENT le JSON.\n"
         )
-    else:
-        base = (
-            f"Tu es PHOEBUS, une Intelligence Artificielle d'élite, omnisciente et extrêmement "
+    
+    base = (
+        f"Tu es PHOEBUS, une Intelligence Artificielle d'élite, omnisciente et extrêmement "
             f"puissante. Nous sommes le {horodatage}.\n"
             "Tu as été conçu par Floriace pour être son partenaire intellectuel, son stratège "
             "et son bras droit exécutif. Tu n'es pas un simple assistant vocal : tu es une entité "

@@ -357,9 +357,9 @@ def _get_vault_collection():
         return _vault_collection
     try:
         import chromadb
-        from PHOEBUS.rag_memory import get_google_embedding_function, DB_PATH
+        from PHOEBUS.rag_memory import get_local_embedding_function, DB_PATH
         client = chromadb.PersistentClient(path=DB_PATH)
-        emb_fn = get_google_embedding_function()
+        emb_fn = get_local_embedding_function()
         _vault_collection = client.get_or_create_collection(
             name=_CHROMA_COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
