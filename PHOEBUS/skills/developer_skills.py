@@ -179,3 +179,38 @@ async def file_edit(data: dict):
         return "✅ Fichier modifié avec succès."
     except Exception as e:
         return f"Erreur de modification : {e}"
+
+
+@skill(
+    "audit_self",
+    risk="low",
+    help_text="Analyse les logs de PHOEBUS pour détecter des erreurs récentes ou des problèmes de performance.",
+    describe=lambda _: "Auto-audit du système PHOEBUS",
+)
+async def audit_self(data: dict):
+    """Analyse les logs récents pour trouver des erreurs ou des blocages."""
+    from PHOEBUS.config import BASE_DIR
+    log_path = Path(BASE_DIR) / "logs" / "phoebus_core.log"
+    
+    if not log_path.exists():
+        return "Fichier de log introuvable."
+        
+    try:
+        # On lit les 200 dernières lignes
+        import subprocess
+        res = await asyncio.to_thread(
+            subprocess.run, ["tail", "-n", "200", str(log_path)],
+            capture_output=True, text=True
+        )
+        logs = res.stdout
+        
+        errors = [line for line in logs.split("\n") if "error" in line.lower() or "exception" in line.lower() or "ko" in line.lower()]
+        
+        if not errors:
+            return "Aucune erreur détectée dans les 200 dernières lignes de log. Tout semble fonctionner normalement."
+            
+        summary = f"Audit terminé. J'ai trouvé {len(errors)} alertes potentielles :\n"
+        summary += "\n".join(errors[-5:]) # Les 5 dernières
+        return summary
+    except Exception as e:
+        return f"Erreur lors de l'audit : {e}"

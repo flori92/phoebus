@@ -202,13 +202,13 @@ async def query(question: str) -> str:
         if _looks_like_code(question):
             return await asyncio.to_thread(github_code_search, question)
 
-        # 4. Par défaut → Wikipedia.
-        ans = await asyncio.to_thread(wikipedia_summary, question)
-        if ans:
-            return ans
+    # 5. Dernier recours : Wolfram (si configuré)
+    if WOLFRAM_APP_ID:
+        ans = await asyncio.to_thread(wolfram_short_answer, question)
+        if ans: return ans
 
-        # Dernier recours Wolfram.
-        if WOLFRAM_APP_ID:
-            return await asyncio.to_thread(wolfram_short_answer, question)
-
-    return ""
+    # 6. ULTIME RECOURS : Recherche Web SerpAPI (Auto-guérison)
+    # Si tout a échoué, on tente une recherche web large.
+    from PHOEBUS.home import recherche_web_serpapi
+    print(f"[KNOW] Échec sources structurées. Tentative de repli sur SerpAPI pour : {question}")
+    return await asyncio.to_thread(recherche_web_serpapi, question)

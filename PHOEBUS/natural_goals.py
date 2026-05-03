@@ -37,7 +37,8 @@ _SEARCH_MARKERS = (
 )
 _CURRENT_MARKERS = (
     "aujourd'hui", "maintenant", "actuel", "actuelle", "dernier",
-    "dernière", "derniere", "actualité", "actualite", "news",
+    "dernière", "derniere", "actualité", "actualite", "news", "nouvelles",
+    "nouvelle", "bénin", "france", "monde",
     "prix", "disponible", "où trouver", "ou trouver",
 )
 _QUESTION_MARKERS = (
@@ -68,6 +69,7 @@ _INCAPABLE_MARKERS = (
     "mes serveurs de réflexion sont temporairement indisponibles",
     "je n'ai pas l'information", "je n ai pas l'information",
     "je ne dispose pas", "je ne peux pas effectuer",
+    "erreur lors de l'exécution", "échec", "echec", "raté",
 )
 
 

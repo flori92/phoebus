@@ -6,21 +6,20 @@ import PHOEBUS.state as state
 from PHOEBUS.voice import parler
 from PHOEBUS.skills import is_skill_registered, execute_skill
 
-async def executer_une_action(d, *, speak: bool = True):
-    """Exécute un bloc JSON d'action unique en utilisant le Skill Registry."""
+async def executer_une_action(d, *, speak: bool = True) -> tuple[bool, str]:
+    """Exécute un bloc JSON d'action unique et renvoie (succès, message)."""
     action = d.get("action")
     if not action:
-        return ""
+        return False, ""
 
     # 1. Utilisation du Registre de Skills (Architecture PHOEBUS 3.0)
-    # Toutes les capacités (HA, Spotify, Google, Système, etc.) sont désormais ici.
     if is_skill_registered(action):
         ok, msg = await execute_skill(action, d)
         if msg and speak:
             await parler(msg)
-        return msg or ""
+        return ok, msg or ""
 
-    # 2. Fallback pour les actions système résiduelles non encore migrées
+    # 2. Fallback pour les actions système résiduelles
     if action == "redemarrer_phoebus":
         msg = "À vos ordres. Je me relance."
         if speak:
@@ -28,6 +27,7 @@ async def executer_une_action(d, *, speak: bool = True):
         await asyncio.sleep(1.5)
         import sys
         sys.exit(42)
+        return True, msg
 
     elif action == "mode_interprete":
         state.INTERPRETE_ACTIF = (d.get("etat") == "on")
@@ -35,8 +35,8 @@ async def executer_une_action(d, *, speak: bool = True):
         msg = f"Mode interprète {'activé' if state.INTERPRETE_ACTIF else 'désactivé'}."
         if speak:
             await parler(msg)
-        return msg
+        return True, msg
         
     else:
-        print(f"[ACTIONS] Action non reconnue ou non migrée : {action}")
-        return ""
+        print(f"[ACTIONS] Action non reconnue : {action}")
+        return False, f"Action '{action}' non reconnue."

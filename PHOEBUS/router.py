@@ -140,13 +140,19 @@ async def executer_commande(texte: str, source: str = "voix", metadata: dict = N
             if not text_only:
                 await _parler_safe("Action confirmée, Floriace. J'exécute.")
             from PHOEBUS.actions import executer_une_action
-            msg = await executer_une_action(pending, speak=not text_only)
+            ok, msg = await executer_une_action(pending, speak=not text_only)
+            if not ok:
+                # Tentative d'auto-guérison si confirmation échouée
+                fallback = resolve_after_ai_failure(texte, msg)
+                if fallback:
+                    ok, msg = await executer_une_action(fallback.payload, speak=not text_only)
+            
             if msg:
                 result.action_messages.append(msg)
             result.actions.append({"action": pending.get("action", "")})
             result.text = msg or "Action confirmée, Monsieur."
-            result.status = "confirmed"
-            record_trace_event(trace_id, "confirmation.confirmed", action=pending.get("action"))
+            result.status = "confirmed" if ok else "failed_after_confirmation"
+            record_trace_event(trace_id, "confirmation.confirmed", action=pending.get("action"), success=ok)
             return result
         msg = _confirmation_prompt(pending)
         if not text_only:
@@ -402,13 +408,25 @@ async def traiter_reponse_ia(
                                 record_trace_event(trace_id, "action.aborted", action=action)
                             continue
                         audit_log("medium_action_executed", action=action, description=desc)
-                        msg = await executer_une_action(d, speak=speak)
+                        ok, msg = await executer_une_action(d, speak=speak)
                     else:
-                        msg = await executer_une_action(d, speak=speak)
+                        ok, msg = await executer_une_action(d, speak=speak)
+                    
+                    if not ok:
+                        # --- AUTO-GUÉRISON (Self-Healing) ---
+                        print(f"[ROUTER] Action {action} échouée. Tentative d'auto-guérison...")
+                        # On ré-analyse l'intention initiale pour trouver un fallback
+                        # Note: on utilise la reponse d'erreur comme trigger
+                        fallback = resolve_after_ai_failure(action, msg)
+                        if fallback and fallback.payload.get("action") != action:
+                            print(f"[ROUTER] Auto-guérison : repli sur {fallback.name}")
+                            await _emit("Je rencontre une difficulté, je tente une autre approche.")
+                            ok, msg = await executer_une_action(fallback.payload, speak=speak)
+
                     if msg and action_messages is not None:
                         action_messages.append(msg)
                     if trace_id:
-                        record_trace_event(trace_id, "action.executed", action=action, risk=risk)
+                        record_trace_event(trace_id, "action.executed", action=action, risk=risk, success=ok)
                 return True
 
         # 3. Réponse naturelle
