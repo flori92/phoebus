@@ -253,6 +253,14 @@ async def adb_command(data: dict):
     if not command:
         return "Il me faut une commande ADB à exécuter."
 
+    # Si l'IP n'est pas fournie, on tente de la trouver dans la base
+    if not device_ip:
+        devices = _load_devices()
+        for dinfo in devices.values():
+            if dinfo.get("type") == "android_tv":
+                device_ip = dinfo.get("ip", "")
+                break
+
     # Optimisation : vérifier si déjà connecté pour gagner 2-3 secondes
     is_connected = False
     if device_ip:
@@ -414,15 +422,7 @@ async def adb_tv_control(data: dict):
         else:
             return f"Action de télécommande inconnue : '{action}'."
 
-    # Tenter de trouver l'IP de la TV automatiquement
-    device_ip = ""
-    devices = _load_devices()
-    for dinfo in devices.values():
-        if dinfo.get("type") == "android_tv":
-            device_ip = dinfo.get("ip", "")
-            break
-
-    return await adb_command({"command": f"input keyevent {keycode}", "device_ip": device_ip})
+    return await adb_command({"command": f"input keyevent {keycode}"})
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SKILL 5 — Pushcut / iOS Shortcuts Bridge
