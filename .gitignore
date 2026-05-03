@@ -16,9 +16,12 @@ PHOEBUS_vision_temp.png
 logs/
 phoebus_tts_cache/
 phoebus_vector_db/
+data/
 external/
 backups/
 output/
+*.bin
+*.sqlite3
 
 # AI Models
 models/
