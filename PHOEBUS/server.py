@@ -631,6 +631,29 @@ async def run_telegram_bot(main_loop):
 
         user_text = update.message.text
 
+        if not user_text and update.message.photo:
+            try:
+                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+                photo_file = await update.message.photo[-1].get_file()
+                img_bytes = await photo_file.download_as_bytearray()
+                
+                # Sauvegarde temporaire pour l'analyse
+                temp_path = "data/telegram_vision_temp.jpg"
+                os.makedirs("data", exist_ok=True)
+                with open(temp_path, "wb") as f:
+                    f.write(img_bytes)
+                
+                # On informe le cerveau qu'on a une image
+                user_text = update.message.caption or "Analyse cette image."
+                # On pourrait passer l'image directement au brain, 
+                # mais pour l'instant on va juste dire au brain d'utiliser cette image temp.
+                metadata["image_path"] = temp_path
+                print(f"[TELEGRAM] Image reçue pour analyse : {temp_path}")
+            except Exception as e:
+                print(f"[TELEGRAM] Erreur réception photo: {e}")
+                await update.message.reply_text("Désolé, je n'ai pas pu traiter l'image.")
+                return
+
         if not user_text and update.message.voice:
             try:
                 await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")

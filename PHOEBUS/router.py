@@ -311,11 +311,10 @@ async def route_request(
         state.ajouter_historique("model", reply)
         return reply
 
-    # Intelligence Cloud / Hybride
-    if on_sentence:
-        rep = await demander_ia_stream(texte, on_sentence=on_sentence)
-    else:
-        rep = await demander_ia(texte)
+    # Intelligence Cloud / Hybride / Modular v2
+    from PHOEBUS.core.brain import PhoebusBrain
+    brain = PhoebusBrain()
+    rep = await brain.think(query_enrichie)
 
     fallback = resolve_after_ai_failure(texte, rep or "")
     if fallback is not None:
