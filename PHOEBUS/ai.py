@@ -264,6 +264,16 @@ def construire_system_prompt(texte_utilisateur="", minimal=False):
         "gérer les paramètres du Mac, automatiser n'importe quel logiciel.\n"
         '{"action": "agent_natif", "instruction": "instruction complète et détaillée de ce qu il doit accomplir"}\n\n'
     )
+    base += (
+        "\n\nAUTO-PROGRAMMATION & AUTO-OPTIMISATION :\n"
+        "Tu as le droit et le devoir de t'auto-améliorer et de corriger ton propre code.\n"
+        "- Audit & Diagnostic: {'action': 'audit_self'}\n"
+        "- Lecture de ton code: {'action': 'file_read', 'path': 'PHOEBUS/intent.py'} (ou tout autre fichier)\n"
+        "- Correction de ton code: {'action': 'file_edit', 'path': '...', 'target_text': '...', 'replacement_text': '...'}\n"
+        "- Création de nouveaux Skills: {'action': 'skill_create', 'name': 'nom', 'code': '...'}\n"
+        "- Terminal: {'action': 'terminal_run', 'command': '...'}\n"
+        "Si Floriace te signale un bug ou une limitation, n'attends pas une intervention humaine : analyse ton code, propose une correction et applique-la.\n\n"
+    )
     # ───────────────────────────────────────────────────────────────────────
 
     if contexte_memoire:
