@@ -177,6 +177,43 @@ async def _rappel_calendrier(parler):
         print(f"[PROACTIVE] Rappel calendrier erreur : {e}")
 
 
+# ── Règle 7 : Surveillance TV Proactive ───────────────────────────────────
+
+_dernier_scan_tv: float = 0.0
+
+@rule
+async def _tv_monitoring(parler):
+    """Vérifie périodiquement ce qui passe à la télé pour la mémoire à long terme."""
+    global _dernier_scan_tv
+    if state.is_speaking or state.is_thinking:
+        return
+    
+    now = time.time()
+    # Intervalle de 15 minutes (900s) pour ne pas saturer l'IA de vision
+    if now - _dernier_scan_tv < 900:
+        return
+    
+    try:
+        from PHOEBUS.camera import capturer_tv_ecran, analyser_image
+        from PHOEBUS.memory_timeline import ajouter_evenement_timeline
+        
+        _dernier_scan_tv = now
+        print("[PROACTIVE] Tentative de scan TV...")
+        
+        img_bytes = await capturer_tv_ecran()
+        if img_bytes:
+            description = await analyser_image(img_bytes, "Dis-moi uniquement ce qui est affiché sur cet écran de TV (application, titre du film ou match). Sois bref.")
+            if description and "Impossible" not in description:
+                print(f"[PROACTIVE] TV détectée : {description}")
+                # On enregistre dans la timeline pour consultation future
+                from PHOEBUS.memory_timeline import enregistrer_evenement
+                enregistrer_evenement("tv_activity", f"TV : {description}", importance=1)
+                # On l'ajoute aussi en mémoire vive pour réponse rapide
+                state.ajouter_historique("system", f"[OBSERVATION TV] {description}")
+    except Exception as e:
+        print(f"[PROACTIVE] Erreur scan TV : {e}")
+
+
 # ── Boucle principale ─────────────────────────────────────────────────────
 
 # ── Règle 7 : Indexation automatique des notes (Obsidian + SiYuan) ────

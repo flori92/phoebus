@@ -34,6 +34,26 @@ class VisionAgent:
         description = await analyser_image(image, "Décris l'environnement actuel en détail.")
         return {"success": True, "description": description}
 
+    async def analyze_image(self, image_path: str, query: str = None):
+        """Analyse une image spécifique (ex: reçue via Telegram) avec OCR."""
+        import os
+        if not os.path.exists(image_path):
+            return {"success": False, "error": f"Fichier introuvable : {image_path}"}
+        
+        with open(image_path, "rb") as f:
+            img_bytes = f.read()
+        
+        # Prompt enrichi pour l'OCR et la reconnaissance précise
+        vision_prompt = (
+            f"Analyse cette image avec précision. {query if query else ''}\n"
+            "1. Identifie l'objet principal.\n"
+            "2. LIS TOUT LE TEXTE visible (OCR).\n"
+            "3. Décris les détails importants (marque, couleur, état)."
+        )
+        
+        description = await analyser_image(img_bytes, vision_prompt)
+        return {"success": True, "description": description}
+
     # Aliases pour le routage plus flexible
     async def describe_hand(self, **kwargs): return await self.what_is_in_my_hand(**kwargs)
     async def describe_room(self, **kwargs): return await self.see_and_describe(**kwargs)

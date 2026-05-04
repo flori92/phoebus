@@ -331,7 +331,7 @@ async def route_request(
     if not hasattr(route_request, "_brain"):
         route_request._brain = PhoebusBrain()
     
-    rep = await route_request._brain.think(texte)
+    rep = await route_request._brain.think(texte, metadata=metadata)
 
     fallback = resolve_after_ai_failure(texte, rep or "")
     if fallback is not None:

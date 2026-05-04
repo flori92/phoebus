@@ -25,6 +25,7 @@ class PhoebusState(TypedDict):
     results: list
     final_response: str
     confidence: float
+    metadata: dict # Ajout des métadonnées (image_path, location, etc.)
 
 class PhoebusBrain:
     def __init__(self):
@@ -119,6 +120,11 @@ class PhoebusBrain:
                 state["sub_intent"] = intent_data.get("sub_intent", "")
         except:
             state["intent"] = "CONVERSATION"
+
+        # --- DÉTECTION FORCEE DE LA VISION ---
+        if state.get("metadata") and state["metadata"].get("image_path"):
+            print(f"[BRAIN] Image détectée dans les métadonnées, passage en mode VISION.")
+            state["intent"] = "VISION"
         
         # Optimization: ne lancer la mémoire QUE si ce n'est pas une simple conversation
         if state["intent"] != "CONVERSATION":
@@ -146,6 +152,17 @@ class PhoebusBrain:
         """Planifie les étapes à exécuter"""
         if state["intent"] == "CONVERSATION":
             state["plan"] = []
+            return state
+
+        # --- LOGIQUE VISION FORCEE ---
+        if state["intent"] == "VISION" and state.get("metadata", {}).get("image_path"):
+            image_path = state["metadata"]["image_path"]
+            state["plan"] = [{
+                "action": "analyze_image", 
+                "tool": "vision", 
+                "params": {"image_path": image_path, "query": state["user_input"]},
+                "risk_level": "low"
+            }]
             return state
 
         tools_doc = """
@@ -216,7 +233,7 @@ class PhoebusBrain:
         await learner.reflect_and_learn(state["user_input"], state["final_response"])
         return state
     
-    async def think(self, user_input: str) -> str:
+    async def think(self, user_input: str, metadata: dict = None) -> str:
         """Point d'entrée principal pour le raisonnement"""
         initial_state: PhoebusState = {
             "user_input": user_input,
@@ -228,7 +245,8 @@ class PhoebusBrain:
             "current_step": 0,
             "results": [],
             "final_response": "",
-            "confidence": 0.0
+            "confidence": 0.0,
+            "metadata": metadata or {}
         }
         
         try:
