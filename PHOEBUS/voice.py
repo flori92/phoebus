@@ -23,6 +23,21 @@ from PHOEBUS.observability import timed
 
 # ── Résolution locale (Math, Fr, Conversions, Trad) ──────────────────────
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _audio_io_disabled() -> bool:
+    """Désactive les accès audio natifs en tests/headless.
+
+    PyAudio peut planter le processus au niveau natif si plusieurs streams sont
+    ouverts en parallèle. En test, on garde les états WebSocket et l'historique,
+    mais on n'ouvre jamais micro, mixer ou sortie audio.
+    """
+    return (
+        os.getenv("PHOEBUS_DISABLE_AUDIO_IO", "0").strip().lower() in _TRUTHY
+        or "PYTEST_CURRENT_TEST" in os.environ
+    )
+
 def reponse_locale(texte):
     t = texte.lower().strip()
     if any(m in t for m in ["qui es-tu", "ton nom", "quelle es ton identité"]):
@@ -106,7 +121,8 @@ class BargeInMonitor(threading.Thread):
         self.stop_requested = False
 
     def run(self):
-        if not pyaudio: return
+        if _audio_io_disabled() or not pyaudio:
+            return
         self.running = True
         pa = pyaudio.PyAudio()
         stream = None
@@ -157,7 +173,8 @@ class BargeInMonitor(threading.Thread):
             self.running = False
 
 def start_barge_in_monitor():
-    if not pyaudio: return None
+    if _audio_io_disabled() or not pyaudio:
+        return None
     monitor = BargeInMonitor(
         threshold=getattr(state, "BARGE_IN_THRESHOLD", 2200),
         consecutive=getattr(state, "BARGE_IN_CONSECUTIVE_CHUNKS", 3)
@@ -169,7 +186,8 @@ def start_barge_in_monitor():
 # ── TTS (Edge-TTS + Pygame) ────────────────────────────────────────────────
 
 def init_mixer():
-    if not pygame: return False
+    if _audio_io_disabled() or not pygame:
+        return False
     if not pygame.mixer.get_init(): pygame.mixer.init()
     return True
 
@@ -261,7 +279,7 @@ async def parler(texte, keep_conversation=True):
     texte_tts = naturaliser(texte)
     print(f"[PHOEBUS] {texte_tts}")
 
-    if os.getenv("PHOEBUS_MUTE", "0") == "1":
+    if os.getenv("PHOEBUS_MUTE", "0") == "1" or _audio_io_disabled():
         # On ajoute quand même à l'historique et aux états web pour que l'interface bouge
         if state.historique and len(state.historique) > 0:
             if state.historique[-1].parts[0].text != texte:
@@ -343,7 +361,7 @@ async def parler(texte, keep_conversation=True):
 # ── Claps Monitoring ───────────────────────────────────────────────────────
 
 def monitor_claps():
-    if not pyaudio:
+    if _audio_io_disabled() or not pyaudio:
         print("[CLAP] PyAudio indisponible.")
         return
     try:

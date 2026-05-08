@@ -315,7 +315,7 @@ def _check_request_metrics() -> CheckResult:
     try:
         from PHOEBUS.observability import request_snapshot
 
-        snap = request_snapshot(limit=50)
+        snap = request_snapshot(limit=200, max_age_seconds=24 * 3600)
     except Exception as exc:
         return _warn("Métriques requêtes", f"indisponibles: {exc}")
     if not snap.get("count"):
@@ -323,7 +323,7 @@ def _check_request_metrics() -> CheckResult:
     last = snap.get("last") or {}
     return _ok(
         "Métriques requêtes",
-        f"p50={snap['p50_ms']}ms p95={snap['p95_ms']}ms",
+        f"24h p50={snap['p50_ms']}ms p95={snap['p95_ms']}ms",
         f"dernière={last.get('duration_ms')}ms source={last.get('source')}",
     )
 

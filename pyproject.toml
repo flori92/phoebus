@@ -76,19 +76,6 @@ disallow_untyped_defs = false
 ignore_missing_imports = true
 show_error_codes = true
 
-[tool.pytest.ini_options]
-minversion = "8.0"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short --strict-markers"
-markers = [
-    "slow: marks tests as slow",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
-
 [tool.coverage.run]
 source = ["PHOEBUS"]
 omit = [

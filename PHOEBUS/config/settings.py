@@ -268,7 +268,12 @@ ADB_PATH = os.getenv("PHOEBUS_ADB_PATH", "adb").strip()
 DEFAULT_FRONTEND_PORT = 5173
 DEFAULT_WS_PORT = 8765
 DEFAULT_MOBILE_PORT = 8080
-WS_AUTH_REQUIRED = False
+WS_AUTH_REQUIRED = os.getenv("PHOEBUS_WS_AUTH_REQUIRED", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 # ── Géo / Météo ─────────────────────────────────────────────────────────────
 VILLE_PAR_DEFAUT = "Amilly"

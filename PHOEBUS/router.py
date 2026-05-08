@@ -69,6 +69,29 @@ def _confirmation_prompt(payload: dict[str, Any]) -> str:
     return f"Confirmation requise : {desc}. Répondez 'je confirme' ou 'annule'."
 
 
+def _normalize_action_result(raw: Any) -> tuple[bool, str]:
+    """Accepte les anciens retours d'action en plus du tuple canonique."""
+    if isinstance(raw, tuple):
+        if len(raw) >= 2:
+            return bool(raw[0]), str(raw[1] or "")
+        if len(raw) == 1:
+            return bool(raw[0]), ""
+        return True, ""
+    if isinstance(raw, bool):
+        return raw, "" if raw else "Action échouée."
+    if isinstance(raw, str):
+        return True, raw
+    if raw is None:
+        return True, ""
+    return True, ""
+
+
+async def _executer_action_safe(payload: dict[str, Any], *, speak: bool = True) -> tuple[bool, str]:
+    from PHOEBUS.actions import executer_une_action
+
+    return _normalize_action_result(await executer_une_action(payload, speak=speak))
+
+
 class _SpeechQueue:
     """File de parole non bloquante: le LLM continue pendant que PHOEBUS parle."""
     def __init__(self):
@@ -139,13 +162,12 @@ async def executer_commande(texte: str, source: str = "voix", metadata: dict = N
             audit_log("sensitive_action_confirmed", action=pending.get("action"))
             if not text_only:
                 await _parler_safe("Action confirmée, Floriace. J'exécute.")
-            from PHOEBUS.actions import executer_une_action
-            ok, msg = await executer_une_action(pending, speak=not text_only)
+            ok, msg = await _executer_action_safe(pending, speak=not text_only)
             if not ok:
                 # Tentative d'auto-guérison si confirmation échouée
                 fallback = resolve_after_ai_failure(texte, msg)
                 if fallback:
-                    ok, msg = await executer_une_action(fallback.payload, speak=not text_only)
+                    ok, msg = await _executer_action_safe(fallback.payload, speak=not text_only)
             
             if msg:
                 result.action_messages.append(msg)
@@ -320,9 +342,15 @@ async def route_request(
 
     # --- OPTIMISATION RADICALE : Court-circuit pour la conversation ---
     if decision.route == "chat":
-        from PHOEBUS.ai import demander_ia
         print(f"[ROUTER] Route conversationnelle directe (bypass brain)")
-        return await demander_ia(texte)
+        rep = await demander_ia(texte)
+        fallback = resolve_after_ai_failure(texte, rep or "")
+        if fallback is not None:
+            print(f"[ROUTER] Fallback objectif : {fallback.name} ({fallback.reason})")
+            state.ajouter_historique("user", texte)
+            state.ajouter_historique("model", fallback.reply)
+            return fallback.reply
+        return rep
 
     # Intelligence Cloud / Hybride / Modular v2
     from PHOEBUS.core.brain import PhoebusBrain
@@ -363,12 +391,17 @@ async def traiter_reponse_ia(
                 d = state.PENDING_CONFIRMATION
                 state.PENDING_CONFIRMATION = None
                 audit_log("sensitive_action_confirmed", action=d.get("action"))
-                from PHOEBUS.actions import executer_une_action
-                msg = await executer_une_action(d, speak=speak)
+                ok, msg = await _executer_action_safe(d, speak=speak)
                 if msg and action_messages is not None:
                     action_messages.append(msg)
                 if trace_id:
-                    record_trace_event(trace_id, "action.executed", action=d.get("action"), confirmed=True)
+                    record_trace_event(
+                        trace_id,
+                        "action.executed",
+                        action=d.get("action"),
+                        confirmed=True,
+                        success=ok,
+                    )
                 return True
             elif is_cancellation_text(reponse):
                 await _emit("Action annulée, Monsieur.")
@@ -387,7 +420,6 @@ async def traiter_reponse_ia(
             
             if parties:
                 from PHOEBUS.skills import is_skill_registered, describe_skill
-                from PHOEBUS.actions import executer_une_action
                 guard = ActionSequenceGuard()
                 
                 for d in parties:
@@ -424,20 +456,20 @@ async def traiter_reponse_ia(
                                 record_trace_event(trace_id, "action.aborted", action=action)
                             continue
                         audit_log("medium_action_executed", action=action, description=desc)
-                        ok, msg = await executer_une_action(d, speak=speak)
+                        ok, msg = await _executer_action_safe(d, speak=speak)
                     else:
-                        ok, msg = await executer_une_action(d, speak=speak)
+                        ok, msg = await _executer_action_safe(d, speak=speak)
                     
                     if not ok:
                         # --- AUTO-GUÉRISON (Self-Healing) ---
                         print(f"[ROUTER] Action {action} échouée. Tentative d'auto-guérison...")
                         # On ré-analyse l'intention initiale pour trouver un fallback
                         # Note: on utilise la reponse d'erreur comme trigger
-                        fallback = resolve_after_ai_failure(texte, msg)
+                        fallback = resolve_after_ai_failure(reponse, msg)
                         if fallback and fallback.payload.get("action") != action:
                             print(f"[ROUTER] Auto-guérison : repli sur {fallback.name}")
                             await _emit("Je rencontre une difficulté, je tente une autre approche.")
-                            ok, msg = await executer_une_action(fallback.payload, speak=speak)
+                            ok, msg = await _executer_action_safe(fallback.payload, speak=speak)
 
                     if msg and action_messages is not None:
                         action_messages.append(msg)

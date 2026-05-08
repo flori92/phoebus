@@ -177,7 +177,7 @@ def record_trace_event(trace_id: str, event: str, **details) -> None:
         print(f"[TRACE] évènement non enregistré : {exc}")
 
 
-def request_snapshot(limit: int = 50) -> dict:
+def request_snapshot(limit: int = 50, max_age_seconds: float | None = None) -> dict:
     items = list(_request_samples)[-limit:]
     if not items and REQUEST_METRICS_FILE.exists():
         lines = REQUEST_METRICS_FILE.read_text(encoding="utf-8").splitlines()[-limit:]
@@ -186,6 +186,13 @@ def request_snapshot(limit: int = 50) -> dict:
                 items.append(json.loads(line))
             except Exception:
                 continue
+    if max_age_seconds is not None:
+        cutoff = time.time() - max_age_seconds
+        items = [
+            item
+            for item in items
+            if float(item.get("ts", 0) or 0) >= cutoff
+        ]
     durations = sorted(float(item.get("duration_ms", 0) or 0) for item in items)
     return {
         "count": len(items),
@@ -193,6 +200,7 @@ def request_snapshot(limit: int = 50) -> dict:
         "p95_ms": round(_percentile(durations, 0.95), 1) if durations else 0.0,
         "last": items[-1] if items else None,
         "recent": items[-10:],
+        "window_seconds": max_age_seconds,
     }
 
 
